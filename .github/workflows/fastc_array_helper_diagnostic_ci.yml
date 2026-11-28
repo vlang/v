@@ -1,0 +1,258 @@
+name: FastC array helper declaration diagnostics
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/fastc_array_helper_diagnostic_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  declarations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Original FastC regressions on unmodified compiler
+        id: original
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/fastc-array-diagnostic"
+          mkdir -p "$root"
+          failed=0
+          for cc in gcc tcc; do
+            for test in vlib/v/tests/compiler_processes/fastc_nil_context_test.v vlib/v/gen/fastc/integer_variant_and_option_test.v vlib/v/gen/fastc/vox_constructs_test.v vlib/v/gen/fastc/main_type_capture_test.v vlib/v/gen/fastc/vox_review_test.v; do
+              label="$cc-$(basename "$test" .v)"
+              rc=0
+              ./v -cc "$cc" -no-retry-compilation -silent "$test" >"$root/$label.log" 2>&1 || rc=$?
+              cat "$root/$label.log"
+              printf '%s %s\n' "$label" "$rc" >>"$root/original-status.txt"
+              if [ "$rc" -ne 0 ]; then failed=1; fi
+            done
+          done
+          exit "$failed"
+      - name: Instrument a separate diagnostic compiler to retain split C
+        id: instrument
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x ./v
+          root="$RUNNER_TEMP/fastc-array-diagnostic"
+          mkdir -p "$root/split"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("vlib/v/gen/fastc/fastc.v")
+          s = p.read_text()
+          start = s.index("fn fastc_render_c_unit(")
+          end = s.index("// fastc_mono_unit_bytes", start)
+          section = s[start:end]
+          old = "\treturn fastc_take_string(mut out)"
+          new = """\ttext := fastc_take_string(mut out)
+          \tcapture := os.getenv('FASTC_DIAGNOSTIC_CAPTURE')
+          \tif capture != '' {
+          \t\tos.write_file(os.join_path(capture, '${os.getpid()}-${g}.c'), text) or { panic(err) }
+          \t}
+          \treturn text"""
+          assert section.count(old) == 1, "unexpected split-unit renderer"
+          s = s[:start] + section.replace(old, new) + s[end:]
+          p.write_text(s)
+          PY
+          git diff -- vlib/v/gen/fastc/fastc.v | tee "$root/diagnostic-compiler.patch"
+          ./v -prod -cg -compile-backend fastc -o v-diagnostic cmd/v
+          git restore -- vlib/v/gen/fastc/fastc.v
+          git diff --exit-code
+      - name: Capture minimal original cases and compare declarations
+        if: always() && !cancelled() && steps.instrument.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/fastc-array-diagnostic"
+          mkdir -p "$root/cases"
+          cat >"$root/cases/method.v" <<'V'
+          struct Item {}
+          fn (s Item) is_null(p voidptr) bool { return isnil(p) }
+          fn main() { assert Item{}.is_null(nil); println("ok") }
+          V
+          cat >"$root/cases/parenthesized.v" <<'V'
+          fn is_null(p voidptr) bool { return isnil(p) }
+          fn main() { assert is_null((nil)); println("ok") }
+          V
+          cat >"$root/cases/left_comparison.v" <<'V'
+          fn main() { p := voidptr(0); ready := true; assert nil == p; assert nil != voidptr(1); assert nil == p && ready; println("ok") }
+          V
+          cat >"$root/cases/array.v" <<'V'
+          fn main() { values := [voidptr(0), nil]; assert values.len == 2; assert isnil(values[1]); println("ok") }
+          V
+          export FASTC_DIAGNOSTIC_CAPTURE="$root/split"
+          failed=0
+          for source in "$root"/cases/*.v; do
+            label=$(basename "$source" .v)
+            case_dir="$root/cases/$label"
+            mkdir -p "$case_dir"
+            { printf "module main\n"; cat "$source"; } >"$case_dir/main.v"
+            for attempt in 1 2 3; do
+              out="$root/$label-$attempt"
+              rc=0
+              ./v-diagnostic -b fastc -nocache -gc none -keepc -showcc -o "$out" "$case_dir" >"$out.build.log" 2>&1 || rc=$?
+              cat "$out.build.log"
+              printf '%s %s %s\n' "$label" "$attempt" "$rc" >>"$root/probe-status.txt"
+              if [ "$rc" -eq 0 ]; then
+                if ! "$out" >"$out.run.log" 2>&1 || ! grep -qx ok "$out.run.log"; then failed=1; fi
+              else
+                failed=1
+              fi
+            done
+          done
+          for test in vlib/v/tests/compiler_processes/fastc_nil_context_test.v vlib/v/gen/fastc/integer_variant_and_option_test.v vlib/v/gen/fastc/vox_constructs_test.v vlib/v/gen/fastc/main_type_capture_test.v vlib/v/gen/fastc/vox_review_test.v; do
+            rc=0
+            label=$(basename "$test" .v)
+            ./v-diagnostic -silent "$test" >"$root/$label.instrumented.log" 2>&1 || rc=$?
+            cat "$root/$label.instrumented.log"
+            printf '%s %s\n' "$label" "$rc" >>"$root/instrumented-status.txt"
+            if [ "$rc" -ne 0 ]; then failed=1; fi
+          done
+          if ! find "$root/split" -type f -name '*.c' -print -quit | grep -q .; then
+            echo "No split units captured; diagnostic is incomplete" >&2
+            failed=1
+          fi
+          python3 - "$root" <<'PY'
+          import pathlib, re, sys
+          root = pathlib.Path(sys.argv[1])
+          pattern = re.compile(r'\bbuiltin__array_data_(?:header(?:_size)?|allocation_size)\s*\(')
+          with (root / 'helper-occurrences.txt').open('w') as out:
+              for path in sorted(root.rglob('*.c')):
+                  for i, line in enumerate(path.read_text(errors='replace').splitlines(), 1):
+                      if pattern.search(line):
+                          print(f'{path.relative_to(root)}:{i}: {line}', file=out)
+          PY
+          cat "$root/helper-occurrences.txt"
+          exit "$failed"
+      - name: Reproduce the original GCC default shard with split C capture
+        if: always() && !cancelled() && steps.instrument.outcome == 'success'
+        shell: bash
+        env:
+          VFLAGS: -cc gcc
+          VTEST_FAIL_FAST: '1'
+          VJOBS: '4'
+          VTEST_SELF_SHARD_INDEX: '1'
+          VTEST_SELF_SHARD_COUNT: '4'
+          VTEST_SHOW_LONGEST_BY_RUNTIME: '3'
+          VTEST_SHOW_LONGEST_BY_COMPTIME: '3'
+          VTEST_SHOW_LONGEST_BY_TOTALTIME: '3'
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/fastc-array-diagnostic"
+          mkdir -p "$root/shard-split"
+          ./v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_gcc
+          export FASTC_DIAGNOSTIC_CAPTURE="$root/shard-split"
+          rc=0
+          ./v-diagnostic -W -silent test-self vlib >"$root/gcc-default-shard-1.log" 2>&1 || rc=$?
+          printf '%s\n' "$rc" >"$root/gcc-default-shard-1.status"
+          tail -n 100 "$root/gcc-default-shard-1.log"
+          if ! find "$root/shard-split" -type f -name '*.c' -print -quit | grep -q .; then
+            echo "No full-shard split units captured" >&2
+            exit 1
+          fi
+          exit "$rc"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fastc-array-helper-declarations
+          path: ${{ runner.temp }}/fastc-array-diagnostic
+
+  upstream-fixed:
+    name: Verify upstream reference snapshot (${{ matrix.cc }}, ${{ matrix.suite }}, shard ${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cc: gcc
+            suite: default
+            shard: 1
+            count: 4
+            task: self_tests_gcc
+            flags: '-cc gcc'
+          - cc: gcc
+            suite: default
+            shard: 2
+            count: 4
+            task: self_tests_gcc
+            flags: '-cc gcc'
+          - cc: gcc
+            suite: prod
+            shard: 2
+            count: 4
+            task: self_tests_prod_gcc
+            flags: '-cc gcc'
+          - cc: clang
+            suite: default
+            shard: 1
+            count: 4
+            task: self_tests_clang
+            flags: '-cc clang'
+          - cc: tcc
+            suite: default
+            shard: 1
+            count: 3
+            task: self_tests_vprod_tcc
+            flags: '-cc tcc -no-retry-compilation'
+          - cc: tcc
+            suite: default
+            shard: 2
+            count: 3
+            task: self_tests_vprod_tcc
+            flags: '-cc tcc -no-retry-compilation'
+    env:
+      VFLAGS: ${{ matrix.flags }}
+      VJOBS: '4'
+      VTEST_FAIL_FAST: '1'
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: ${{ matrix.count }}
+      VTEST_SHOW_LONGEST_BY_RUNTIME: '3'
+      VTEST_SHOW_LONGEST_BY_COMPTIME: '3'
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: '3'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 25e6fe4b3b137a04a9aed595c4a4a40225f042f6
+          persist-credentials: false
+      - name: Confirm exact fixed revision
+        run: |
+          test "$(git rev-parse HEAD)" = 25e6fe4b3b137a04a9aed595c4a4a40225f042f6
+          git log -1 --format='%H %s'
+      - uses: ./.github/actions/cache-apt-packages-action
+      - uses: ./.github/actions/setup-v
+      - name: Original dependency setup
+        run: v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_${{ matrix.cc }}
+      - name: Original full failing shard
+        run: v run ci/linux_ci.vsh ${{ matrix.task }}
+      - name: Repeat original focused FastC regressions
+        if: always() && !cancelled()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x ./v
+          compiler=./v
+          if [ "${{ matrix.suite }}" = prod ]; then
+            test -x ./vprod
+            compiler=./vprod
+          fi
+          for attempt in 1 2 3; do
+            for test in vlib/v/tests/compiler_processes/fastc_nil_context_test.v vlib/v/tests/compiler_processes/fastc_remaining_regressions_test.v vlib/v/gen/fastc/integer_variant_and_option_test.v vlib/v/gen/fastc/vox_constructs_test.v vlib/v/gen/fastc/main_type_capture_test.v vlib/v/gen/fastc/vox_review_test.v; do
+              "$compiler" -cc "${{ matrix.cc }}" -no-retry-compilation -silent "$test"
+            done
+          done
+      - name: Original stdout synchronization regression
+        if: matrix.cc == 'gcc' && matrix.suite == 'prod'
+        run: ./vprod -cc gcc -silent vlib/v/slow_tests/race_detector_test.v

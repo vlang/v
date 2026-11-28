@@ -1,21 +1,11 @@
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
+import v.tempname
 
 fn test_c_identifier_hygiene_for_escaped_names_unix_and_main_const() {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_test_${pid}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-
-	src := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_input_${pid}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_c_identifier_hygiene_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_c_identifier_hygiene_input.v')
 	os.write_file(src, 'const block_size = 4
 
 struct Token {
@@ -112,10 +102,8 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_input_${pid}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_c_identifier_hygiene_input')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
@@ -151,7 +139,7 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '124\n3\n5\n15'
 
-	csym_src := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_csym_${pid}.v')
+	csym_src := os.join_path(root, 'v3_c_identifier_hygiene_csym.v')
 	os.write_file(csym_src, 'fn C.unix(i64) i64
 
 fn main() {
@@ -160,9 +148,8 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	csym_c := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_csym_${pid}.c')
-	os.rm(csym_c) or {}
-	csym_compile := os.exec([v3_bin, '${csym_src}', '-b', 'c', '-o', '${csym_c}'])
+	csym_c := os.join_path(root, 'v3_c_identifier_hygiene_csym.c')
+	csym_compile := os.exec([@VEXE, '${csym_src}', '-b', 'c', '-o', '${csym_c}'])
 	assert csym_compile.exit_code == 0, csym_compile.output
 	csym_code := os.read_file(csym_c) or { panic(err) }
 	assert csym_code.contains('unix(10)'), csym_code
@@ -170,18 +157,18 @@ fn main() {
 	assert !csym_code.contains('C.unix'), csym_code
 
 	$if macos {
-		objc_src := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_objc_${pid}.m')
+		objc_src := os.join_path(root, 'v3_c_identifier_hygiene_objc.m')
 		os.write_file(objc_src,
 			'#include <Cocoa/Cocoa.h>\n\nint v3_point_sum(main__V3PointUnique p) {\n\treturn p.x + 1;\n}\n') or {
 			panic(err)
 		}
-		objc_v := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_objc_${pid}.v')
+		objc_v := os.join_path(root, 'v3_c_identifier_hygiene_objc.v')
 		os.write_file(objc_v,
 			'#flag darwin -fobjc-arc\n#flag darwin -framework Cocoa\n#include "${objc_src}"\n\nstruct V3PointUnique {\n\tx int\n}\n\nfn C.v3_point_sum(V3PointUnique) int\n\nfn main() {\n\tprintln(int_str(C.v3_point_sum(V3PointUnique{x: 8})))\n}\n') or {
 			panic(err)
 		}
-		objc_bin := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_objc_${pid}')
-		objc_compile := os.exec([v3_bin, '${objc_v}', '-b', 'c', '-o', objc_bin])
+		objc_bin := os.join_path(root, 'v3_c_identifier_hygiene_objc')
+		objc_compile := os.exec([@VEXE, '${objc_v}', '-b', 'c', '-o', objc_bin])
 		assert objc_compile.exit_code == 0, objc_compile.output
 		objc_code := os.read_file(objc_bin + '.c') or { panic(err) }
 		type_pos := objc_code.index('struct main__V3PointUnique {') or { -1 }

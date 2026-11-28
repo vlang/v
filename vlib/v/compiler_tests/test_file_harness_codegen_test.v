@@ -1,33 +1,33 @@
 import os
+import v.cmdexec
+import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
+const v3_bin = @VEXE
+const harness_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_test_harness_${tempname.unique_token()}')
 const harness_entry_point = $if windows { 'int wmain(' } $else { 'int main(' }
 
-fn build_v3_with(name string, flags string) string {
-	v3_bin := os.join_path(os.temp_dir(), name)
-	build :=
-		os.exec([vexe, '-gc', 'none', ...(os.split_args(flags) or { panic(err) }), '-path',
-			'${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn testsuite_begin() {
+	os.mkdir(harness_fixture_dir) or { panic(err) }
 }
 
-fn build_v3() string {
-	return build_v3_with('v3_test_file_harness_test', '')
+fn testsuite_end() {
+	os.rmdir_all(harness_fixture_dir) or {}
+}
+
+fn run_harness_compiler(compiler string, args []string) os.Result {
+	return cmdexec.run_in_merged_with_env(compiler, args, '', {
+		'VFLAGS': ''
+	})
 }
 
 fn write_source(name string, suffix string, src string) string {
-	src_path := os.join_path(os.temp_dir(), 'v3_${name}${suffix}')
+	src_path := os.join_path(harness_fixture_dir, 'v3_${name}${suffix}')
 	os.write_file(src_path, src) or { panic(err) }
 	return src_path
 }
 
 fn write_project(name string, files map[string]string) string {
-	root := os.join_path(os.temp_dir(), 'v3_${name}')
+	root := os.join_path(harness_fixture_dir, 'v3_${name}')
 	os.rmdir_all(root) or {}
 	for rel, src in files {
 		path := os.join_path(root, rel)
@@ -37,39 +37,51 @@ fn write_project(name string, files map[string]string) string {
 	return root
 }
 
-fn gen_c(v3_bin string, name string, suffix string, src string) string {
-	return gen_c_flags(v3_bin, name, suffix, src, '')
+fn gen_c(compiler string, name string, suffix string, src string) string {
+	return gen_c_flags(compiler, name, suffix, src, '')
 }
 
-fn gen_c_flags(v3_bin string, name string, suffix string, src string, flags string) string {
+fn gen_c_flags(compiler string, name string, suffix string, src string, flags string) string {
 	src_path := write_source(name, suffix, src)
-	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	c_path := os.join_path(harness_fixture_dir, 'v3_${name}.c')
 	os.rm(c_path) or {}
-	compile := os.exec([v3_bin, ...(os.split_args(flags) or { panic(err) }), src_path, '-b', 'c',
-		'-o', c_path])
+	compile := run_harness_compiler(compiler, [
+		...(os.split_args(flags) or { panic(err) }),
+		src_path,
+		'-b',
+		'c',
+		'-o',
+		c_path,
+	])
 	assert compile.exit_code == 0, '${name}: C output failed: ${compile.output}'
 	assert os.exists(c_path), '${name}: missing generated C file ${c_path}'
 	return os.read_file(c_path) or { panic(err) }
 }
 
-fn compile_and_run(v3_bin string, name string, suffix string, src string) os.Result {
-	return compile_and_run_flags(v3_bin, name, suffix, src, '')
+fn compile_and_run(compiler string, name string, suffix string, src string) os.Result {
+	return compile_and_run_flags(compiler, name, suffix, src, '')
 }
 
-fn compile_and_run_flags(v3_bin string, name string, suffix string, src string, flags string) os.Result {
+fn compile_and_run_flags(compiler string, name string, suffix string, src string, flags string) os.Result {
 	src_path := write_source(name, suffix, src)
-	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.exec([v3_bin, ...(os.split_args(flags) or { panic(err) }), src_path, '-b', 'c',
-		'-o', bin_path])
+	bin_path := os.join_path(harness_fixture_dir, 'v3_${name}')
+	compile := run_harness_compiler(compiler, [
+		...(os.split_args(flags) or { panic(err) }),
+		src_path,
+		'-b',
+		'c',
+		'-o',
+		bin_path,
+	])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains("undefined reference to `main'"), compile.output
 	return os.exec([bin_path])
 }
 
-fn compile_and_run_with_stats(v3_bin string, name string, suffix string, src string) os.Result {
+fn compile_and_run_with_stats(compiler string, name string, suffix string, src string) os.Result {
 	src_path := write_source(name, suffix, src)
-	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
-	return os.exec([v3_bin, '-stats', src_path, '-b', 'c', '-o', bin_path])
+	bin_path := os.join_path(harness_fixture_dir, 'v3_${name}')
+	return run_harness_compiler(compiler, ['-stats', src_path, '-b', 'c', '-o', bin_path])
 }
 
 fn test_v3_test_file_harness_formats_propagation_paths_safely() {
@@ -80,7 +92,6 @@ fn test_v3_test_file_harness_formats_propagation_paths_safely() {
 			os.setenv('VTEST_ONLY_FN', run_only, true)
 		}
 	}
-	v3_bin := build_v3()
 	run := compile_and_run(v3_bin, 'harness_propagation_%s_path', '_test.v', "fn test_failure() ! {
 	return error('bad result')
 }
@@ -98,7 +109,6 @@ fn test_v3_test_body_formats_propagation_paths_safely() {
 			os.setenv('VTEST_ONLY_FN', run_only, true)
 		}
 	}
-	v3_bin := build_v3()
 	run := compile_and_run(v3_bin, 'body_propagation_%s_path', '_test.v', "fn fail() ! {
 	return error('bad result')
 }
@@ -120,7 +130,6 @@ fn test_v3_test_file_harness_measures_stats_durations() {
 			os.setenv('VTEST_ONLY_FN', run_only, true)
 		}
 	}
-	v3_bin := build_v3()
 	run := compile_and_run_with_stats(v3_bin, 'harness_stats_duration', '_test.v', 'import time
 
 fn test_wait() {
@@ -143,7 +152,6 @@ fn test_v3_assertion_operands_run_once_and_stats_count_executed_assertions() {
 			os.setenv('VTEST_ONLY_FN', run_only, true)
 		}
 	}
-	v3_bin := build_v3()
 	failing_run := compile_and_run(v3_bin, 'assert_operand_once', '_test.v', '
 fn test_operand_once() {
 	mut values := [1]
@@ -180,7 +188,6 @@ fn test_v3_failing_assert_in_defer_emits_each_cleanup_once() {
 			os.setenv('VTEST_ONLY_FN', run_only, true)
 		}
 	}
-	v3_bin := build_v3()
 	run := compile_and_run(v3_bin, 'assert_defer_cleanup_once', '_test.v', "fn test_deferred_assertion() {
 	defer {
 		println('earlier defer')
@@ -207,7 +214,6 @@ fn test_v3_failing_assert_in_function_defer_emits_each_cleanup_once() {
 			os.setenv('VTEST_ONLY_FN', run_only, true)
 		}
 	}
-	v3_bin := build_v3()
 	run := compile_and_run(v3_bin, 'assert_function_defer_cleanup_once', '_test.v', "fn test_deferred_assertion() {
 	{
 		defer(fn) {
@@ -228,31 +234,37 @@ fn test_v3_failing_assert_in_function_defer_emits_each_cleanup_once() {
 	assert run.output.count('later function defer') == 1, run.output
 }
 
-fn compile_project_and_run(v3_bin string, name string, files map[string]string) (os.Result, string) {
+fn compile_project_and_run(compiler string, name string, files map[string]string) (os.Result, string) {
 	root := write_project(name, files)
-	return compile_project_root_and_run(v3_bin, name, root)
+	return compile_project_root_and_run(compiler, name, root)
 }
 
-fn compile_project_root_and_run(v3_bin string, name string, root string) (os.Result, string) {
+fn compile_project_root_and_run(compiler string, name string, root string) (os.Result, string) {
 	bin_path := os.join_path(root, 'out')
-	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin_path])
+	compile := run_harness_compiler(compiler, [root, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	run := os.exec([bin_path])
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
 	return run, c_code
 }
 
-fn compile_expect_failure(v3_bin string, name string, suffix string, src string) os.Result {
-	return compile_expect_failure_flags(v3_bin, name, suffix, src, '')
+fn compile_expect_failure(compiler string, name string, suffix string, src string) os.Result {
+	return compile_expect_failure_flags(compiler, name, suffix, src, '')
 }
 
-fn compile_expect_failure_flags(v3_bin string, name string, suffix string, src string, flags string) os.Result {
+fn compile_expect_failure_flags(compiler string, name string, suffix string, src string, flags string) os.Result {
 	src_path := write_source(name, suffix, src)
-	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
+	bin_path := os.join_path(harness_fixture_dir, 'v3_${name}')
 	c_path := bin_path + '.c'
 	os.rm(c_path) or {}
-	compile := os.exec([v3_bin, ...(os.split_args(flags) or { panic(err) }), src_path, '-b', 'c',
-		'-o', bin_path])
+	compile := run_harness_compiler(compiler, [
+		...(os.split_args(flags) or { panic(err) }),
+		src_path,
+		'-b',
+		'c',
+		'-o',
+		bin_path,
+	])
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !os.exists(c_path), '${name}: generated C despite harness input failure'
 	return compile
@@ -268,7 +280,6 @@ fn test_v3_test_run_only_matches_declared_module() {
 			os.unsetenv('VTEST_ONLY_FN')
 		}
 	}
-	v3_bin := build_v3()
 	source := "module sample
 
 fn test_one() {
@@ -291,7 +302,6 @@ fn test_two() {
 }
 
 fn test_v3_generates_minimal_test_file_harness() {
-	v3_bin := build_v3()
 	order_src := "fn test_one() {
 	println('one')
 }
@@ -309,16 +319,8 @@ fn test_two() {
 	order_run := compile_and_run(v3_bin, 'harness_order_run', '_test.c.v', order_src)
 	assert order_run.exit_code == 0, order_run.output
 	assert order_run.output.trim_space() == 'one\ntwo'
-
-	parallel_v3_bin := build_v3_with('v3_test_file_harness_parallel_test', '-d parallel')
-	parallel_c := gen_c(parallel_v3_bin, 'harness_parallel_order', '_test.c.v', order_src)
-	assert parallel_c.contains(harness_entry_point), parallel_c
-	assert parallel_c.contains('test_one();'), parallel_c
-	assert parallel_c.contains('test_two();'), parallel_c
-	parallel_run := compile_and_run(parallel_v3_bin, 'harness_parallel_order_run', '_test.c.v',
-		order_src)
-	assert parallel_run.exit_code == 0, parallel_run.output
-	assert parallel_run.output.trim_space() == 'one\ntwo'
+	// Compiler builds enable the parallel generator by default, so this also covers what a
+	// separate `-d parallel` build used to check.
 
 	hooks_src := "fn testsuite_begin() {
 	println('begin')
@@ -484,7 +486,6 @@ fn test_v3_wrapped_assertion_failures_return_to_harness() {
 			os.setenv('VTEST_ONLY_FN', run_only, true)
 		}
 	}
-	v3_bin := build_v3()
 	wrapped_assert_fail := compile_and_run(v3_bin, 'harness_wrapped_assert_fail', '_test.v', "fn after_each() {
 	println('after')
 }
@@ -511,7 +512,7 @@ fn test_after_failures() {
 	assert wrapped_assert_fail.output.contains('result')
 	assert wrapped_assert_fail.output.contains('option')
 	assert wrapped_assert_fail.output.contains('next')
-	assert wrapped_assert_fail.output.count('after') == 3
+	assert wrapped_assert_fail.output.split_into_lines().count(it == 'after') == 3, wrapped_assert_fail.output
 	assert wrapped_assert_fail.output.contains('end')
 }
 
@@ -523,7 +524,6 @@ fn test_v3_test_hook_assertion_failures_return_to_harness() {
 			os.setenv('VTEST_ONLY_FN', run_only, true)
 		}
 	}
-	v3_bin := build_v3()
 	helper_fail := compile_and_run_with_stats(v3_bin, 'harness_helper_assert_fail', '_test.v', "fn fail_helper() {
 	println('HELPER_MARKER')
 	assert false
@@ -613,7 +613,6 @@ fn test_two() {
 }
 
 fn test_v3_test_file_harness_rejects_top_level_stmt() {
-	v3_bin := build_v3()
 	// The statement follows the test function: a statement before a definition is already
 	// rejected by the parser, as in V1 ('all definitions must occur before code in script
 	// mode', 50b5ce9d18), before the test harness sees the file.
@@ -628,7 +627,6 @@ println('top')
 }
 
 fn test_v3_test_file_harness_owns_entrypoint_over_user_main() {
-	v3_bin := build_v3()
 	src := "fn main() {
 	println('user-main')
 }
@@ -646,7 +644,6 @@ fn test_one() {
 }
 
 fn test_v3_test_file_harness_keeps_user_main_callable() {
-	v3_bin := build_v3()
 	src := "fn main() {
 	println('user-main')
 }
@@ -666,7 +663,6 @@ fn test_call_main() {
 }
 
 fn test_v3_test_file_harness_forward_declares_user_main() {
-	v3_bin := build_v3()
 	src := "fn test_call_main() {
 	main()
 }
@@ -688,7 +684,6 @@ fn main() {
 }
 
 fn test_v3_test_file_harness_renames_user_main_without_collision() {
-	v3_bin := build_v3()
 	src := "fn main__user_main() {
 	println('collision')
 }
@@ -714,7 +709,6 @@ fn test_call_both() {
 }
 
 fn test_v3_test_file_harness_renames_user_main_fn_value() {
-	v3_bin := build_v3()
 	src := "fn main() {
 	println('user-main')
 }
@@ -735,7 +729,6 @@ fn test_fn_value_main() {
 }
 
 fn test_v3_test_file_harness_renames_user_main_fn_arg() {
-	v3_bin := build_v3()
 	src := "fn takes(cb fn ()) {
 	cb()
 }
@@ -758,7 +751,6 @@ fn test_fn_arg_main() {
 }
 
 fn test_v3_test_file_harness_does_not_rename_shadowed_main_fn_value_call() {
-	v3_bin := build_v3()
 	src := "fn call_shadowed(main fn ()) {
 	main()
 }
@@ -785,7 +777,6 @@ fn test_shadowed_main() {
 }
 
 fn test_v3_test_file_harness_finds_top_level_comptime_block_tests() {
-	v3_bin := build_v3()
 	src := "$if v3_nested_harness ? {
 	fn before_each() {
 		println('before')
@@ -827,7 +818,6 @@ fn test_v3_test_file_harness_finds_top_level_comptime_block_tests() {
 }
 
 fn test_v3_top_level_main_preserves_file_import_alias_context() {
-	v3_bin := build_v3()
 	run, c_code := compile_project_and_run(v3_bin, 'harness_file_alias_context', {
 		'v.mod':      'Module { name: "alias_context" }
 '
@@ -868,7 +858,6 @@ println(int_str(b_value))
 }
 
 fn test_v3_top_level_match_lowers_before_cgen_main() {
-	v3_bin := build_v3()
 	run := compile_and_run(v3_bin, 'harness_top_level_match', '.v', "x := match 2 {
 	2 {
 		7
@@ -890,7 +879,6 @@ match 2 {
 }
 
 fn test_v3_top_level_defer_runs_after_synthetic_main_body() {
-	v3_bin := build_v3()
 	run := compile_and_run(v3_bin, 'harness_top_level_defer', '.v', "fn deferred_msg() string {
 	return 'deferred'
 }

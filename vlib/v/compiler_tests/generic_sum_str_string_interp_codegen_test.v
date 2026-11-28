@@ -1,25 +1,12 @@
 import os
-
-const generic_sum_str_vexe = @VEXE
-const generic_sum_str_tests_dir = os.dir(@FILE)
-const generic_sum_str_v3_dir = os.dir(generic_sum_str_tests_dir)
-const generic_sum_str_vlib_dir = os.dir(generic_sum_str_v3_dir)
-const generic_sum_str_v3_src = os.join_path(generic_sum_str_v3_dir, 'v.v')
-
-fn generic_sum_str_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_sum_str_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([generic_sum_str_vexe, '-gc', 'none', '-path',
-			'${generic_sum_str_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${generic_sum_str_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn test_generic_sum_str_is_used_for_string_interpolation() {
-	v3_bin := generic_sum_str_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_generic_sum_str_input_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_generic_sum_str_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'v3_generic_sum_str_input')
+	src := bin + '.v'
 	os.write_file(src, "type Maybe[T] = Empty | Some[T]
 
 struct Empty {}
@@ -44,10 +31,7 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_str_input_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -62,11 +46,13 @@ fn main() {
 }
 
 fn test_monomorphization_synthesizes_late_auto_str_helpers() {
-	v3_bin := generic_sum_str_build_v3()
-	src := os.join_path(generic_sum_str_vlib_dir, 'toml', 'tests', 'reflect_test.v')
-	bin := os.join_path(os.temp_dir(), 'v3_late_auto_str_test_${os.getpid()}')
-	os.rm(bin) or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	root := os.join_path(os.vtmp_dir(), 'v3_late_auto_str_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	vlib_dir := os.dir(os.dir(os.dir(@FILE)))
+	src := os.join_path(vlib_dir, 'toml', 'tests', 'reflect_test.v')
+	bin := os.join_path(root, 'v3_late_auto_str_test')
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 

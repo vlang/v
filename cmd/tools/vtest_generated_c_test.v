@@ -2,6 +2,14 @@ import os
 import time
 import v.cmdexec
 
+// The module cache is not what these tests check, so one cache, outside every
+// environment's root, spares each build from compiling builtin from scratch.
+const test_c_module_cache = os.join_path(os.vtmp_dir(), 'test c cleanup cache ${os.getpid()}')
+
+fn testsuite_end() {
+	os.rmdir_all(test_c_module_cache) or {}
+}
+
 struct TestCEnvironment {
 	root     string
 	previous map[string]string
@@ -12,22 +20,21 @@ fn new_test_c_environment() !TestCEnvironment {
 	os.mkdir_all(root)!
 	mut previous := map[string]string{}
 	for name in ['VFLAGS', 'VOSARGS', 'VTMP', 'V3CACHE', 'VTEST_KEEP_SESSION', 'VTEST_ONLY_FN',
-		'VTEST_ONLY', 'V_MACOS_V3_NO_FALLBACK'] {
+		'VTEST_ONLY'] {
 		if value := os.getenv_opt(name) {
 			previous[name] = value
 		}
 		os.unsetenv(name)
 	}
 	os.setenv('VTMP', os.join_path(root, 'tmp'), true)
-	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
+	os.setenv('V3CACHE', test_c_module_cache, true)
 	os.setenv('VTEST_KEEP_SESSION', '1', true)
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	return TestCEnvironment{root, previous}
 }
 
 fn (e TestCEnvironment) restore() {
 	for name in ['VFLAGS', 'VOSARGS', 'VTMP', 'V3CACHE', 'VTEST_KEEP_SESSION', 'VTEST_ONLY_FN',
-		'VTEST_ONLY', 'V_MACOS_V3_NO_FALLBACK'] {
+		'VTEST_ONLY'] {
 		if value := e.previous[name] {
 			os.setenv(name, value, true)
 		} else {
@@ -39,7 +46,7 @@ fn (e TestCEnvironment) restore() {
 
 fn run_test_c(args []string) os.Result {
 	// Let V select an available compiler, including bundled TCC.
-	mut options := ['-new-compiler', '-no-retry-compilation']
+	mut options := ['-no-retry-compilation']
 	options << args
 	return cmdexec.run_with_timeout(@VEXE, options, 120_000)
 }

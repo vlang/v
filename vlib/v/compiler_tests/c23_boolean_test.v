@@ -50,8 +50,8 @@ fn main() {
 			dialect
 		}
 		binary := os.join_path(test_dir, name)
-		compiled := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-gc', 'none', '-cstrict',
-			'-cc', compiler, '-cflags', flags, '-o', binary, source])
+		compiled := cmdexec.run(@VEXE, ['-nocache', '-gc', 'none', '-cstrict', '-cc', compiler,
+			'-cflags', flags, '-o', binary, source])
 		assert compiled.exit_code == 0, '${name} ${dialect}: ${compiled.output}'
 		executed := cmdexec.run(binary, [])
 		assert executed.exit_code == 0, executed.output

@@ -134,7 +134,6 @@ fn test_embedded_receiver_lookup_terminates_on_cyclic_metadata() {
 fn test_embedded_receiver_closures_keep_imported_storage_and_method_dispatch() {
 	root := embedded_receiver_scope_fixture('native')!
 	defer { os.rmdir_all(root) or {} }
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', @CCOMPILER, 'run',
-		root])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-cc', @CCOMPILER, 'run', root])
 	assert result.exit_code == 0, result.output
 }

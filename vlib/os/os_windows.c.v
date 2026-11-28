@@ -428,6 +428,290 @@ pub fn ls(path string) ![]string {
 	return dir_files
 }
 
+// The pinned TCC import library does not export GetFileInformationByHandleEx.
+// Use the real SDK calling convention when invoking the resolved address.
+#define v_os_walk_file_info(address, handle, info_class, buffer, size) (((BOOL (WINAPI *)(HANDLE, int, LPVOID, DWORD))(address))((handle), (info_class), (buffer), (size)))
+
+fn C.v_os_walk_file_info(address voidptr, handle voidptr, info_class int, buffer voidptr, size u32) i32
+
+fn walk_file_info_address() voidptr {
+	kernel32 := C.GetModuleHandleA(c'kernel32.dll')
+	if kernel32 == 0 {
+		return unsafe { nil }
+	}
+	return C.GetProcAddress(kernel32, c'GetFileInformationByHandleEx')
+}
+
+// FILE_LIST_DIRECTORY: the right to list a directory.
+const walk_access_list = u32(1)
+// FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE: nobody is kept from using, renaming
+// or removing the directory while it is open here.
+const walk_share_all = u32(7)
+// FILE_FLAG_BACKUP_SEMANTICS is what opens a directory. FILE_FLAG_OPEN_REPARSE_POINT opens a
+// link itself, where it would otherwise open what the link leads to.
+const walk_open_flags = u32(0x02000000 | 0x00200000)
+// FileIdBothDirectoryRestartInfo starts a listing, FileIdBothDirectoryInfo continues it.
+const walk_info_first = 11
+const walk_info_next = 10
+// FileAttributeTagInfo asks an open handle for its attributes alone.
+const walk_info_attribute_tag = 9
+// INVALID_FILE_ATTRIBUTES: what a look that failed gives in place of attributes.
+const walk_attributes_unknown = u32(0xFFFFFFFF)
+// Where FILE_ID_BOTH_DIR_INFO, one entry of such a listing, keeps what a walk reads.
+const walk_entry_attributes = 56
+const walk_entry_name_bytes = 60
+const walk_entry_name = 104
+
+// WalkPending is a path that walk or walk_with_context still has to visit.
+struct WalkPending {
+	path string
+	// listed_as_dir is what the listing of its folder said: a directory that is not a link.
+	// It can be out of date by the time the path is visited, see walk_list.
+	listed_as_dir bool
+}
+
+// WalkKind is what walk_list found a pending path to be.
+enum WalkKind {
+	// other is anything that a walk does not enter and that was not found to be a link: a
+	// file, a path that is gone, one that could not be looked at, and one that was not listed
+	// as a directory, which is not looked at again and may be a link.
+	other
+	// link is a link that the system reports as a directory: a junction or a link to a
+	// directory. A walk reports it and never enters it.
+	link
+	// entered is a directory that is not a link. Its entries were added, unless it may not
+	// be listed.
+	entered
+}
+
+// walk_root returns the starting entry for a walk of `path`: the path with `/` written as `\`
+// and without the separators at its end. Nothing is left of the empty path and of one that is
+// only separators, and walk_list does not open what is left then.
+// It does not look at what the path names: walk_list finds that out, as it does for an entry.
+fn walk_root(path string) WalkPending {
+	return WalkPending{
+		path:          path.replace('/', '\\').trim_right(path_separator)
+		listed_as_dir: true
+	}
+}
+
+// walk_list appends the entries of the directory `pending` to `remaining`, in reverse listing
+// order, so that popping them visits them in the order that `ls` reports. It returns what
+// `pending` is: `.entered` for a directory that is not a link, also when it may not be listed
+// and nothing was added for it, `.link` for a link to a directory, and `.other` for the rest.
+// The directory is opened once, without following a link. What was opened is then asked what
+// it is, and it is listed through that same handle. So what is listed is always what was
+// looked at, also when the callback or another process replaces the directory by a link in
+// between, and whatever way Windows reads the name.
+// The path is opened with a separator at its end, which is how Windows reads it in the paths
+// of the entries that the walk reports: `C:` is then the root of the drive and not its current
+// directory, and a space at the end of the name stays a part of it.
+// The listing says what kind each entry is, so a file needs no lookup of its own, which is
+// where a walk used to spend most of its time. That is also why an entry that was not listed
+// as a directory is not opened here.
+fn walk_list(pending WalkPending, mut remaining []WalkPending) WalkKind {
+	return walk_list_with(pending, mut remaining, 0, walk_info_first)
+}
+
+// walk_attributes returns the file attributes of what `handle` has open, which was opened under
+// the path `wpath`, or walk_attributes_unknown. A file system or a server may not answer every
+// way of asking, so up to three are tried, and a way that fails is never read as an answer:
+// way 0 asks through the handle, way 1 asks through it for the attributes alone, and way 2
+// looks the path up by name, as walk_list_with does for a path that it could not open.
+// The ways before `first_way` are left out. A walk passes 0; the tests pass more, to get what
+// a file system gives that does not answer the earlier ways.
+fn walk_attributes(handle voidptr, wpath &u16, first_way int) u32 {
+	if first_way <= 0 {
+		mut info := WindowsFileInformation{}
+		if C.GetFileInformationByHandle(handle, voidptr(&info)) != 0 {
+			return info.file_attributes
+		}
+	}
+	if first_way <= 1 {
+		// FILE_ATTRIBUTE_TAG_INFO: the attributes, then the tag of a link.
+		tag_info := [2]u32{}
+		address := walk_file_info_address()
+		if address != unsafe { nil } && C.v_os_walk_file_info(address, handle, walk_info_attribute_tag, voidptr(&tag_info[0]),
+			u32(sizeof(tag_info))) != 0 {
+			return tag_info[0]
+		}
+	}
+	if first_way <= 2 {
+		return C.GetFileAttributesW(wpath)
+	}
+	return walk_attributes_unknown
+}
+
+// walk_list_handle appends the entries of the directory that `handle` has open, whose path is
+// `path`, to `remaining`, in listing order and without `.` and `..`. It returns false when the
+// first call of the listing fails, whatever the reason: nothing was added then, and the caller
+// lists the directory another way. A call that fails after the first one ends the listing with
+// what was added: that is how the end of a directory is reported, and the listing by name ends
+// on any failure as well.
+// A walk passes walk_info_first as `first_class`; the tests pass a class that does not exist,
+// to get what a file system gives that does not offer this listing.
+fn walk_list_handle(handle voidptr, path string, first_class int, mut remaining []WalkPending) bool {
+	// 32 KiB of entries per call into the kernel, aligned as the entries need it.
+	address := walk_file_info_address()
+	if address == unsafe { nil } {
+		return false
+	}
+	buffer := [4096]u64{}
+	mut info_class := first_class
+	for {
+		if C.v_os_walk_file_info(address, handle, info_class, voidptr(&buffer[0]), u32(sizeof(buffer))) == 0 {
+			return info_class == walk_info_next
+		}
+		info_class = walk_info_next
+		mut entry := unsafe { &u8(&buffer[0]) }
+		for {
+			// Each entry starts with the distance to the next one, which is 0 for the last.
+			next := unsafe { *(&u32(entry)) }
+			attr := unsafe { *(&u32(entry + walk_entry_attributes)) }
+			name_bytes := unsafe { *(&u32(entry + walk_entry_name_bytes)) }
+			name := unsafe { string_from_wide2(&u16(entry + walk_entry_name), int(name_bytes / 2)) }
+			if name != '.' && name != '..' {
+				remaining << WalkPending{
+					path:          path + path_separator + name
+					listed_as_dir: (attr & u32(C.FILE_ATTRIBUTE_DIRECTORY)) != 0
+						&& (attr & windows_file_attribute_reparse_point) == 0
+				}
+			}
+			if next == 0 {
+				break
+			}
+			entry = unsafe { entry + next }
+		}
+	}
+	return true
+}
+
+// walk_list_by_name appends the entries of the directory `path` to `remaining` as
+// walk_list_handle does, and returns whether the directory could be listed. It finds the
+// directory by its name, as `ls` does and as a walk did before. walk_list_with uses it
+// only for a directory that walk_list_handle could not list.
+fn walk_list_by_name(path string, mut remaining []WalkPending) bool {
+	mut found := Win32finddata{}
+	wpattern := (path + path_separator + '*').to_wide()
+	search := C.FindFirstFile(wpattern, voidptr(&found))
+	unsafe { free(wpattern) }
+	if search == invalid_handle_value {
+		return false
+	}
+	for {
+		name := unsafe { string_from_wide(&found.c_file_name[0]) }
+		if name != '.' && name != '..' {
+			remaining << WalkPending{
+				path:          path + path_separator + name
+				listed_as_dir: (found.dw_file_attributes & u32(C.FILE_ATTRIBUTE_DIRECTORY)) != 0
+					&& (found.dw_file_attributes & windows_file_attribute_reparse_point) == 0
+			}
+		}
+		if C.FindNextFile(search, voidptr(&found)) == 0 {
+			break
+		}
+	}
+	C.FindClose(search)
+	return true
+}
+
+// walk_list_with is walk_list, with the first way of asking what the directory is and the
+// first class of its listing given by the caller: see walk_attributes and walk_list_handle.
+// What opened and does not say what it is, in any of the three ways, is listed through its
+// handle like a directory, and is one when that works: the handle was opened without following
+// a link, so this lists a link itself, which has no entries, and never what it leads to.
+// A directory that said it is no link and can not be listed through its handle is listed by
+// name while the handle is still open. That is the one place where a walk on Windows finds a
+// directory by its name again, as a walk does on other systems.
+fn walk_list_with(pending WalkPending, mut remaining []WalkPending, first_way int, first_class int) WalkKind {
+	if !pending.listed_as_dir || pending.path == '' {
+		// The empty path with a separator after it would be the root of the current drive.
+		// It is what is left of a root that was empty or only separators, which is not walked.
+		return .other
+	}
+	wpath := (pending.path + path_separator).to_wide()
+	handle := C.CreateFileW(wpath, walk_access_list, walk_share_all, unsafe { nil }, u32(C.OPEN_EXISTING),
+		walk_open_flags, unsafe { nil })
+	if handle == invalid_handle_value {
+		// Nothing is listed, so nothing depends on this second look by name: it only tells a
+		// directory that may not be listed, which is passed over, from a link that may not be,
+		// and from a path that is gone or is no directory.
+		attr := C.GetFileAttributesW(wpath)
+		unsafe { free(wpath) }
+		if attr == walk_attributes_unknown || (attr & u32(C.FILE_ATTRIBUTE_DIRECTORY)) == 0 {
+			return .other
+		}
+		if (attr & windows_file_attribute_reparse_point) != 0 {
+			return .link
+		}
+		return .entered
+	}
+	attr := walk_attributes(handle, wpath, first_way)
+	unsafe { free(wpath) }
+	if attr != walk_attributes_unknown {
+		// What is no directory is no link to one either: through a share, a link to a file and
+		// a FIFO open under a path that ends in a separator, and are neither entered nor a root.
+		if (attr & u32(C.FILE_ATTRIBUTE_DIRECTORY)) == 0 {
+			C.CloseHandle(handle)
+			return .other
+		}
+		if (attr & windows_file_attribute_reparse_point) != 0 {
+			C.CloseHandle(handle)
+			return .link
+		}
+	}
+	first := remaining.len
+	mut listed := walk_list_handle(handle, pending.path, first_class, mut remaining)
+	if !listed && attr != walk_attributes_unknown {
+		// A listing by name follows a link, so it is only for what said that it is none.
+		listed = walk_list_by_name(pending.path, mut remaining)
+	}
+	C.CloseHandle(handle)
+	if attr == walk_attributes_unknown && !listed {
+		// It did not say what it is and could not be listed either, so nothing shows that it
+		// is a directory.
+		return .other
+	}
+	mut lo := first
+	mut hi := remaining.len - 1
+	for lo < hi {
+		remaining[lo], remaining[hi] = remaining[hi], remaining[lo]
+		lo++
+		hi--
+	}
+	return .entered
+}
+
+// walk_windows is the implementation of `walk` on Windows.
+fn walk_windows(path string, f fn (string)) {
+	root := walk_root(path)
+	mut remaining := []WalkPending{cap: 1000}
+	// A root that is a link is the one entry of its walk. A root that is anything else than a
+	// directory is not walked, and is no entry either.
+	if walk_list(root, mut remaining) == .link {
+		f(root.path)
+	}
+	for remaining.len > 0 {
+		cur := remaining.pop()
+		if walk_list(cur, mut remaining) != .entered {
+			f(cur.path)
+		}
+	}
+}
+
+// walk_with_context_windows is the implementation of `walk_with_context` on Windows.
+fn walk_with_context_windows(path string, context voidptr, fcb FnWalkContextCB) {
+	root := walk_root(path)
+	mut remaining := []WalkPending{cap: 1000}
+	// `fcb` is called for everything but the root.
+	walk_list(root, mut remaining)
+	for remaining.len > 0 {
+		cur := remaining.pop()
+		fcb(context, cur.path)
+		walk_list(cur, mut remaining)
+	}
+}
+
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string, params MkdirParams) ! {
 	if path == '.' {
@@ -790,7 +1074,10 @@ pub type VectoredExceptionHandler = fn (&ExceptionPointers) u32
 // duplicate definitions from displeasing the compiler
 // fn C.AddVectoredExceptionHandler(u32, VectoredExceptionHandler)
 pub fn add_vectored_exception_handler(first bool, handler VectoredExceptionHandler) {
-	C.AddVectoredExceptionHandler(u32(first), voidptr(handler))
+	// Pass the handler as `void*`: the V signature returns u32 where the header's
+	// PVECTORED_EXCEPTION_HANDLER returns LONG, and strict C rejects that pointer.
+	c_handler := voidptr(handler)
+	C.AddVectoredExceptionHandler(u32(first), c_handler)
 }
 
 // uname returns information about the platform on which the program is running.

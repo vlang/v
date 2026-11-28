@@ -238,52 +238,56 @@ mut:
 	ownership_fn_literal_ret_types   map[string]Type
 	ownership_fn_literal_param_types map[string][]Type
 	ownership_fn_param_mut           map[string][]bool
-	ownership_fn_param_descs         map[string][]OwnershipParamDescendant
-	ownership_fn_param_desc_count    int
-	owned_structs                    map[u32]bool
-	copy_structs                     map[u32]bool
-	drop_structs                     map[u32]bool
-	drop_requirements                map[string]map[u64]bool
-	drop_at_fn_exit                  map[string][]OwnershipDropEntry
-	drop_at_returns                  map[string][]OwnershipDropEntry
-	drop_at_return_nodes             map[string][]OwnershipDropEntry
-	sum_return_local_sources         map[string][]OwnershipDropEntry
-	sum_value_transfer_sources       map[int]string
-	sum_move_reads                   map[int]bool
-	sum_outer_store_local_sources    map[string][]OwnershipDropEntry
-	sum_local_heap_sources           map[string][]OwnershipDropEntry
-	sum_promoted_local_bindings      map[string]bool
-	drop_at_propagations             map[string][]OwnershipDropEntry
-	drop_at_loop_controls            map[string][]OwnershipDropEntry
-	drop_at_loop_iterations          map[string][]OwnershipDropEntry
-	drop_at_scope_exit               map[string][]OwnershipDropEntry
-	drop_return_counts               map[string]int
-	drop_propagation_counts          map[string]int
-	drop_loop_control_counts         map[string]int
-	drop_loop_iteration_counts       map[string]int
-	drop_scope_counts                map[string]int
-	drop_type_names                  map[u32]bool
-	value_receiver_methods           map[string]bool
-	owned_globals                    flat.TypeTextBindings
-	array_lengths                    map[string]int
-	ownership_fn_value_vars          map[string]string
-	cur_fn                           string
-	frames                           []OwnershipFrame
-	branch_groups                    []OwnershipBranchGroup
-	pending_value_branch_groups      []OwnershipBranchGroup
-	pending_loop_label               string
-	deferred_aggregate_consumption   map[int]int
-	index_move_reads                 map[int]bool
-	owned_sum_drop_reads             map[int]bool
-	receiver_alias_clone_reads       map[int]bool
-	borrowed_projection_actions      map[int]OwnershipBorrowedProjectionAction
-	pointer_index_aliases            map[string]string
-	borrowed_storage_clone_reads     map[int]bool
-	guard_move_reads                 map[int]bool
-	skip_drop_before_assign          map[int]bool
-	scope_frames                     []OwnershipScopeFrame
-	suppressed_checks                int
-	path_active                      bool
+	// ownership_fn_param_mut_base holds the entries of ownership_fn_param_mut that an
+	// observation state reads from the state it observes, instead of copying one list
+	// per function on every observation. Observations are discarded, never merged.
+	ownership_fn_param_mut_base    &OwnershipState = unsafe { nil }
+	ownership_fn_param_descs       map[string][]OwnershipParamDescendant
+	ownership_fn_param_desc_count  int
+	owned_structs                  map[u32]bool
+	copy_structs                   map[u32]bool
+	drop_structs                   map[u32]bool
+	drop_requirements              map[string]map[u64]bool
+	drop_at_fn_exit                map[string][]OwnershipDropEntry
+	drop_at_returns                map[string][]OwnershipDropEntry
+	drop_at_return_nodes           map[string][]OwnershipDropEntry
+	sum_return_local_sources       map[string][]OwnershipDropEntry
+	sum_value_transfer_sources     map[int]string
+	sum_move_reads                 map[int]bool
+	sum_outer_store_local_sources  map[string][]OwnershipDropEntry
+	sum_local_heap_sources         map[string][]OwnershipDropEntry
+	sum_promoted_local_bindings    map[string]bool
+	drop_at_propagations           map[string][]OwnershipDropEntry
+	drop_at_loop_controls          map[string][]OwnershipDropEntry
+	drop_at_loop_iterations        map[string][]OwnershipDropEntry
+	drop_at_scope_exit             map[string][]OwnershipDropEntry
+	drop_return_counts             map[string]int
+	drop_propagation_counts        map[string]int
+	drop_loop_control_counts       map[string]int
+	drop_loop_iteration_counts     map[string]int
+	drop_scope_counts              map[string]int
+	drop_type_names                map[u32]bool
+	value_receiver_methods         map[string]bool
+	owned_globals                  flat.TypeTextBindings
+	array_lengths                  map[string]int
+	ownership_fn_value_vars        map[string]string
+	cur_fn                         string
+	frames                         []OwnershipFrame
+	branch_groups                  []OwnershipBranchGroup
+	pending_value_branch_groups    []OwnershipBranchGroup
+	pending_loop_label             string
+	deferred_aggregate_consumption map[int]int
+	index_move_reads               map[int]bool
+	owned_sum_drop_reads           map[int]bool
+	receiver_alias_clone_reads     map[int]bool
+	borrowed_projection_actions    map[int]OwnershipBorrowedProjectionAction
+	pointer_index_aliases          map[string]string
+	borrowed_storage_clone_reads   map[int]bool
+	guard_move_reads               map[int]bool
+	skip_drop_before_assign        map[int]bool
+	scope_frames                   []OwnershipScopeFrame
+	suppressed_checks              int
+	path_active                    bool
 	// library_body_depth counts the function bodies being checked inside a standard library
 	// function, which keeps V's value semantics (see ownership_file_keeps_value_semantics).
 	library_body_depth int
@@ -453,6 +457,12 @@ fn ownership_clone_bool_lists(src map[string][]bool) map[string][]bool {
 }
 
 fn ownership_clone_state_for_parallel(src &OwnershipState) &OwnershipState {
+	return ownership_clone_state_sharing(src, false)
+}
+
+// ownership_clone_state_sharing copies `src` for a parallel worker, or, with `observe`,
+// for an observation that only reads the per-function parameter table of `src`.
+fn ownership_clone_state_sharing(src &OwnershipState, observe bool) &OwnershipState {
 	return &OwnershipState{
 		owned_vars:                       map[string]flat.NodeId{}
 		owned_var_types:                  flat.TypeTextBindings{}
@@ -469,7 +479,16 @@ fn ownership_clone_state_for_parallel(src &OwnershipState) &OwnershipState {
 		ownership_fn_return_fn_values:    src.ownership_fn_return_fn_values.clone()
 		ownership_fn_literal_ret_types:   map[string]Type{}
 		ownership_fn_literal_param_types: map[string][]Type{}
-		ownership_fn_param_mut:           ownership_clone_bool_lists(src.ownership_fn_param_mut)
+		ownership_fn_param_mut:           if observe {
+			map[string][]bool{}
+		} else {
+			ownership_clone_bool_lists(src.ownership_fn_param_mut)
+		}
+		ownership_fn_param_mut_base:      if observe {
+			src
+		} else {
+			src.ownership_fn_param_mut_base
+		}
 		ownership_fn_param_descs:         ownership_clone_param_descs(src.ownership_fn_param_descs)
 		ownership_fn_param_desc_count:    src.ownership_fn_param_desc_count
 		owned_structs:                    src.owned_structs.clone()
@@ -574,7 +593,7 @@ fn ownership_clone_branch_groups(groups []OwnershipBranchGroup) []OwnershipBranc
 // Ownership observation may resolve a chained call and recheck its receiver. Retain the
 // complete current context while isolating every mutable payload from speculative effects.
 fn ownership_clone_state_for_observation(src &OwnershipState) &OwnershipState {
-	mut result := ownership_clone_state_for_parallel(src)
+	mut result := ownership_clone_state_sharing(src, true)
 	result.owned_vars = src.owned_vars.clone()
 	result.owned_var_types = src.owned_var_types.clone()
 	result.moved_vars = src.moved_vars.clone()
@@ -7516,7 +7535,8 @@ fn (mut tc TypeChecker) ownership_check_expr(id flat.NodeId) {
 		// again by the enclosing call. If this identifier is still inside the
 		// exact enclosing expression that recorded its move, this is the same AST
 		// use being revisited, not a second source-level use.
-		if tc.ownership_move_site_contains(moved.info.move_pos, id) {
+		if (moved.name == name && moved.info.is_fn_call && moved.info.move_pos == id)
+			|| tc.ownership_move_site_contains(moved.info.move_pos, id) {
 			return
 		}
 		tc.ownership_report_moved(moved.name, moved.info, id)
@@ -7874,6 +7894,9 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 		}
 	}
 	rhs_name := tc.ownership_expr_ident_name(tc.ownership_sum_wrapped_value(rhs_id, lhs_type))
+	if lhs_name == rhs_name && unalias_type(lhs_type) is Pointer {
+		return
+	}
 	if lhs_name != rhs_name || !tc.sum_escape_has_pointer_variant(lhs_type) {
 		tc.ownership_release_borrower(lhs_name)
 	}
@@ -7898,7 +7921,10 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 		}
 		return
 	}
-	if tc.ownership_alias_borrower(lhs_name, rhs_name, assign_id) {
+	pointer_projection := rhs_name.contains_any('.[') && unalias_type(lhs_type) is Pointer
+		&& !lhs_name.contains_any('.[') && tc.name_has_local_binding(lhs_name)
+		&& !tc.ident_is_global_binding(lhs_name) && unalias_type(tc.resolve_type(rhs_id)) is Pointer
+	if tc.ownership_alias_storage(lhs_name, rhs_name, assign_id, pointer_projection) {
 		return
 	}
 	if tc.ownership_mark_borrow_from_call_return(lhs_name, rhs_id, assign_id) {
@@ -7971,6 +7997,12 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 	}
 	lhs_owned := tc.ownership_type_is_owned(lhs_type)
 	if rhs_name.len > 0 {
+		if returned_value_is_scalar_copy(lhs_type) {
+			// A read of a scalar copies its value even when the source is borrowed.
+			st.owned_vars.delete(lhs_name)
+			st.owned_var_types.delete(lhs_name)
+			return
+		}
 		tc.ownership_reject_global_move(rhs_name, assign_id, lhs_name, false)
 		if rhs_name in st.owned_vars {
 			descendants := tc.ownership_owned_descendant_names(rhs_name)
@@ -9261,6 +9293,10 @@ fn (mut tc TypeChecker) ownership_mark_storage_from_expr_with_mode(target_name s
 }
 
 fn (mut tc TypeChecker) ownership_alias_borrower(lhs_name string, rhs_name string, pos flat.NodeId) bool {
+	return tc.ownership_alias_storage(lhs_name, rhs_name, pos, false)
+}
+
+fn (mut tc TypeChecker) ownership_alias_storage(lhs_name string, rhs_name string, pos flat.NodeId, pointer_projection bool) bool {
 	if lhs_name == '' || rhs_name == '' {
 		return false
 	}
@@ -9276,6 +9312,14 @@ fn (mut tc TypeChecker) ownership_alias_borrower(lhs_name string, rhs_name strin
 		for borrow in borrows {
 			if borrow.borrower == rhs_name {
 				has_direct_alias = true
+			} else if pointer_projection && ownership_storage_key_is_descendant(rhs_name, borrow.borrower) {
+				// A projected pointer can inherit loans from several branches.
+				has_direct_alias = true
+				aliases << OwnershipBorrowerSnapshot{
+					var_name: var_name + rhs_name[borrow.borrower.len..]
+					borrow:   BorrowInfo{ borrower: rhs_name, pos: borrow.pos }
+				}
+				continue
 			} else if ownership_storage_key_is_descendant(borrow.borrower, rhs_name) {
 				projected := tc.returned_receiver_projection_type(source_type, borrow.borrower[rhs_name.len..]) or { continue }
 				if !tc.sum_escape_has_pointer_variant(projected) { continue }
@@ -10613,11 +10657,24 @@ fn (mut tc TypeChecker) ownership_call_param_is_mut(fn_name string, param_idx in
 	if param_idx < 0 {
 		return false
 	}
-	params := tc.ownership_state().ownership_fn_param_mut[fn_name] or { return false }
+	params := tc.ownership_state().fn_param_mut(fn_name) or { return false }
 	if param_idx >= params.len {
 		return false
 	}
 	return params[param_idx]
+}
+
+// fn_param_mut returns the parameter mutability flags of `fn_name` that this state or one
+// that it observes registered.
+fn (st &OwnershipState) fn_param_mut(fn_name string) ?[]bool {
+	mut state := unsafe { st }
+	for !isnil(state) {
+		if params := state.ownership_fn_param_mut[fn_name] {
+			return params
+		}
+		state = state.ownership_fn_param_mut_base
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
@@ -10666,6 +10723,14 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 				direct_name
 			} else {
 				tc.ownership_borrowed_name(expr_id)
+			}
+		}
+		// A reference to caller storage does not transfer ownership of its fields.
+		if name.len > 0 && tc.current_fn_can_return_borrowed_mut_receiver(name) {
+			return_type := unalias_type(tc.fn_context.return_type)
+			payload := contextual_payload_type(return_type) or { return_type }
+			if unalias_type(payload) is Pointer {
+				continue
 			}
 		}
 		if fn_value := tc.ownership_fn_value_name_from_expr(expr_id) {
@@ -10923,10 +10988,12 @@ fn (mut tc TypeChecker) ownership_consume_expr(expr_id flat.NodeId, target strin
 	if tc.ownership_effects_disabled() {
 		return
 	}
-	if unwrap_pointer(tc.resolve_type(expr_id)) != tc.resolve_type(expr_id) {
+	typ := tc.resolve_type(expr_id)
+	if unwrap_pointer(typ) != typ {
 		return
 	}
-	if tc.ownership_consume_array_element_method_result(expr_id, target, at) {
+	if tc.ownership_consume_array_element_method_result(expr_id, target, at)
+		|| returned_value_is_scalar_copy(typ) {
 		return
 	}
 	// A consumer of retained storage receives an independent clone. If cloning is not
@@ -11117,7 +11184,7 @@ fn (mut tc TypeChecker) ownership_mark_from_return_param_descendant(target_name 
 			return true
 		}
 		if arg_name.len == 0 {
-			return tc.ownership_mark_storage_from_expr(target_name, arg_id, tc.resolve_type(arg_id), pos)
+			return tc.ownership_mark_from_return_param_source_expr(target_name, arg_id, fn_name, pos)
 		}
 		if arg_name in tc.ownership_state().owned_vars {
 			tc.ownership_mark_owned(target_name, tc.ownership_type_for_name(arg_name, tc.resolve_type(arg_id)), pos)
@@ -11230,9 +11297,15 @@ fn (mut tc TypeChecker) ownership_mark_from_return_param_source_expr(target_name
 	if tc.ownership_mark_from_call(target_name, id, pos) {
 		return true
 	}
+	typ := tc.resolve_type(id)
+	// A returned literal passed by value has already transferred its fields into
+	// the call argument. The result owns the aggregate as a whole.
+	node := tc.a.node(id)
 	if tc.ownership_expr_creates_owned_value(id) || tc.ownership_expr_is_owned_clone_call(id)
-		|| tc.ownership_type_is_owned(tc.resolve_type(id)) {
-		tc.ownership_mark_owned(target_name, tc.resolve_type(id), pos)
+		|| tc.ownership_type_is_owned(typ)
+		|| (node.kind in [.struct_init, .assoc, .array_literal, .array_init, .map_init]
+			&& tc.ownership_type_requires_destruction(typ)) {
+		tc.ownership_mark_owned(target_name, typ, pos)
 		return true
 	}
 	return false
@@ -13836,6 +13909,12 @@ pub fn (tc &TypeChecker) ownership_drop_entries_at_loop_iteration(fn_name string
 
 // ownership_drop_entries_at_scope_exit returns destructors for locals declared
 // in one lexical block and still owned at its normal exit.
+// records_scope_drops reports whether the checker records destructor slots for lexical
+// scopes, which the C backend consumes in order for each block it emits.
+pub fn (tc &TypeChecker) records_scope_drops() bool {
+	return tc.ownership != unsafe { nil }
+}
+
 pub fn (tc &TypeChecker) ownership_drop_entries_at_scope_exit(fn_name string, index int) []OwnershipDropEntry {
 	if tc.ownership == unsafe { nil } {
 		return []OwnershipDropEntry{}
@@ -14016,12 +14095,17 @@ fn (tc &TypeChecker) ownership_string_builtin_keeps_receiver(recv_id flat.NodeId
 }
 
 fn (tc &TypeChecker) ownership_fn_declared_in_builtin(fn_name string) bool {
+	return tc.ownership_fn_declared_in_stdlib_module(fn_name, 'builtin')
+}
+
+fn (tc &TypeChecker) ownership_fn_declared_in_stdlib_module(fn_name string, module_path string) bool {
 	file := tc.fn_type_files[fn_name] or { return false }
-	normalized := file.replace('\\', '/')
-	return normalized.starts_with('vlib/builtin/')
-		|| normalized.contains('/vlib/builtin/')
-		|| (normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
-			&& normalized.all_after_last('/').starts_with('builtin_'))
+	// The header name can omit the parent modules. Use the source recorded
+	// when the driver loaded the declaration.
+	source := tc.a.cached_header_sources[file] or { file }
+	normalized := source.replace('\\', '/')
+	return normalized.starts_with('vlib/${module_path}/')
+		|| normalized.contains('/vlib/${module_path}/')
 }
 
 fn (tc &TypeChecker) ownership_builtin_string_arg_escapes(fn_name string, param_idx int, typ Type) bool {
@@ -14054,16 +14138,13 @@ fn (tc &TypeChecker) ownership_standard_string_arg_is_borrowed(fn_name string, p
 		standard_module = 'strconv'
 	} else if fn_name in ['strings.Builder.write_string', 'strings.Builder.write_string2'] {
 		standard_module = 'strings'
+	} else if fn_name == 'utf8.validate_str' {
+		standard_module = 'encoding/utf8'
 	}
 	if standard_module == '' {
 		return false
 	}
-	file := tc.fn_type_files[fn_name] or { return false }
-	normalized := file.replace('\\', '/')
-	return normalized.starts_with('vlib/${standard_module}/')
-		|| normalized.contains('/vlib/${standard_module}/')
-		|| (normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
-			&& normalized.all_after_last('/').starts_with('${standard_module}_'))
+	return tc.ownership_fn_declared_in_stdlib_module(fn_name, standard_module)
 }
 
 // type_name_text resolves the indexed source type spelling.

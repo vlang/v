@@ -6,18 +6,19 @@ fn test_builder_interpolation_codegen_and_runtime() {
 	defer { os.rmdir_all(dir) or {} }
 	source := os.join_path(dir, 'main.v')
 	os.cp(os.join_path(@VMODROOT, 'vlib/v/compiler_tests/testdata/builder_interpolation.vv'), source)!
-	output := os.join_path(dir, 'main.c')
-	generated := os.exec([@VEXE, '-new-compiler', '-nocache', '-o', output, source])
-	assert generated.exit_code == 0, generated.output
-	code := os.read_file(output)!
+	binary := os.join_path(dir, 'program')
+	normal := os.exec([@VEXE, '-nocache', '-b', 'c', '-o', binary, 'run', source])
+	assert normal.exit_code == 0, normal.output
+	assert normal.output.trim_space() == 'ok', normal.output
+	code := os.read_file(binary + '.c')!
 	line := code.all_after('void append_line(').all_after('void append_line(').all_before('\n}')
 	assert line.contains('v3_i64_buf('), line
 	assert line.contains('v3_builder_parts_alias('), line
 	assert !line.contains('int__str('), line
 	assert code.contains('v3_f64_exp_buf(')
 	assert code.contains('v3_numeric_pad_buf(')
-	for flags in [[]string{}, ['-gc', 'none'], ['-prod'], ['-autofree']] {
-		mut args := [@VEXE, '-new-compiler', '-nocache']
+	for flags in [['-gc', 'none'], ['-prod'], ['-autofree']] {
+		mut args := [@VEXE, '-nocache']
 		args << flags
 		$if tinyc {
 			if '-prod' in flags {

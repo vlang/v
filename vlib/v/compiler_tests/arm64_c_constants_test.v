@@ -74,3 +74,39 @@ fn main() {
 		assert run.output.trim_space() == 'native sync constants', run.output
 	}
 }
+
+fn test_arm64_c_pointer_sentinels_and_arithmetic_constants() {
+	$if macos && arm64 {
+		root := os.join_path(os.vtmp_dir(), 'arm64_pointer_constants_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		source := os.join_path(root, 'main.c.v')
+		output := os.join_path(root, 'main')
+		os.write_file(source, '#define POINTER_SENTINEL ((void*)-42)
+#define FLOAT_CONSTANT 3.125
+#define UNSIGNED_CONSTANT 18446744073709551615ULL
+fn main() {
+	assert voidptr(C.SIG_ERR) == voidptr(-1)
+	assert voidptr(C.SIG_DFL) == voidptr(0)
+	assert voidptr(C.SIG_IGN) == voidptr(1)
+	assert voidptr(C.POINTER_SENTINEL) == voidptr(-42)
+	assert f64(C.FLOAT_CONSTANT) == 3.125
+	assert u64(C.UNSIGNED_CONSTANT) == u64(18446744073709551615)
+	println("pointer and arithmetic constants")
+}
+')!
+		compiled := cmdexec.run(@VEXE, ['-b', 'arm64', '-o', output, source])
+		assert compiled.exit_code == 0, compiled.output
+		run := cmdexec.run(output, []string{})
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'pointer and arithmetic constants', run.output
+		for address in ['(&puts)', '"text"'] {
+			os.write_file(source, '#define RELOCATED_POINTER ${address}
+fn main() { println(u64(C.RELOCATED_POINTER)) }
+')!
+			unresolved := cmdexec.run(@VEXE, ['-b', 'arm64', '-o', output, source])
+			assert unresolved.exit_code == 1, unresolved.output
+			assert unresolved.output.contains('cannot resolve C constant `C.RELOCATED_POINTER`'), unresolved.output
+		}
+	}
+}

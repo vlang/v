@@ -3,6 +3,7 @@ module types
 import os
 import strconv
 import strings
+import time
 import v.flat
 import v.gen.c.naming
 import v.token
@@ -5829,8 +5830,11 @@ mut:
 	// enum_decls_complete is false when the qualified spelling of an enum was not
 	// interned yet: the scan that enum_decls replaces interns each one it passes.
 	enum_decls_complete bool
-	// decl_assign_names holds every identifier that a `decl_assign` declares.
-	decl_assign_names map[string]bool
+	// decl_assign_bloom is a filter of every identifier that a `decl_assign`
+	// among `nodes_len` nodes declares: no `decl_assign` declares a name that it
+	// excludes. Its storage is in `bloom_scope` when that is set.
+	decl_assign_bloom &ConstSelectorBloom = unsafe { nil }
+	bloom_scope       voidptr
 	// struct_decls maps the name, and the name qualified by the module declared
 	// before it, of each top-level `struct_decl` to those declarations, in
 	// top_level_idx order (see source_struct_field_decls).
@@ -5859,6 +5863,13 @@ struct CheckStructDeclRef {
 
 // new_check_decl_indexes builds the declaration indexes of the current AST.
 fn (tc &TypeChecker) new_check_decl_indexes() &CheckDeclIndexes {
+	return tc.new_check_decl_indexes_opt(true)
+}
+
+// new_check_decl_indexes_opt is new_check_decl_indexes; without `scan_nodes`,
+// it leaves out the index that reads every node (see
+// prepare_check_indexes_parallel).
+fn (tc &TypeChecker) new_check_decl_indexes_opt(scan_nodes bool) &CheckDeclIndexes {
 	mut indexes := &CheckDeclIndexes{
 		live:                true
 		top_level_len:       tc.top_level_idx.len
@@ -5954,16 +5965,14 @@ fn (tc &TypeChecker) new_check_decl_indexes() &CheckDeclIndexes {
 			names: names
 		}
 	}
-	for i in 0 .. tc.a.nodes.len {
-		node := tc.a.node(flat.NodeId(i))
-		if node.kind != .decl_assign {
-			continue
-		}
-		for child_idx := 0; child_idx < node.children_count; child_idx += 2 {
-			lhs := tc.a.node(tc.a.child(node, child_idx))
-			if lhs.kind == .ident && lhs.value !in indexes.decl_assign_names {
-				indexes.decl_assign_names[lhs.value] = true
-			}
+	if scan_nodes {
+		mask := decl_assign_bloom_mask(tc.a.nodes.len)
+		mut bits := []u64{len: int((mask + 1) >> 6)}
+		tc.scan_check_index_range(0, tc.a.nodes.len, mut bits, mask)
+		indexes.decl_assign_bloom = &ConstSelectorBloom{
+			count: tc.a.nodes.len
+			mask:  mask
+			bits:  bits
 		}
 	}
 	return indexes
@@ -5996,7 +6005,11 @@ fn (mut tc TypeChecker) retire_check_decl_indexes() {
 	mut indexes := tc.check_decl_indexes
 	if !isnil(indexes) {
 		indexes.live = false
+		indexes.decl_assign_bloom = unsafe { nil }
+		check_worker_scope_free(indexes.bloom_scope)
+		indexes.bloom_scope = unsafe { nil }
 	}
+	tc.release_prepared_check_inputs()
 	tc.check_decl_indexes = unsafe { nil }
 	tc.source_type_keyword_memo = unsafe { nil }
 }
@@ -9954,7 +9967,7 @@ fn (tc &TypeChecker) future_local_decl_id(name string, use_id flat.NodeId) ?flat
 	// Only an identifier that some `decl_assign` declares can be found below.
 	indexes := tc.check_decl_indexes
 	if !isnil(indexes) && indexes.live && indexes.nodes_len == tc.a.nodes.len
-		&& name !in indexes.decl_assign_names {
+		&& indexes.decl_assign_bloom.excludes(name, indexes.nodes_len) {
 		return none
 	}
 	fn_id := flat.NodeId(tc.fn_context.node_id)
@@ -14295,6 +14308,15 @@ fn (tc &TypeChecker) memo_interface_metadata_name(name_id u32) u32 {
 // memo_index_method_receivers records, for every method that an interface
 // requires, the last components of the receivers of the keys that declare it.
 fn (tc &TypeChecker) memo_index_method_receivers(mut memo InterfaceImplMemo) {
+	tc.memo_index_required_methods(mut memo)
+	tc.memo_index_method_receiver_keys(mut memo)
+	memo.method_keys_ready = true
+}
+
+// memo_index_required_methods records the methods that an interface requires.
+// A method that is missing here is only never proven absent
+// (memo_proves_no_receiver_method).
+fn (tc &TypeChecker) memo_index_required_methods(mut memo InterfaceImplMemo) {
 	for iface_name, _ in tc.interface_names {
 		for method in tc.interface_abstract_method_names(iface_name) {
 			// A key is split at its last dot: a dotted name is never indexed, and
@@ -14309,6 +14331,12 @@ fn (tc &TypeChecker) memo_index_method_receivers(mut memo InterfaceImplMemo) {
 			}
 		}
 	}
+}
+
+// memo_index_method_receiver_keys records the receivers of the keys of the
+// signature tables that declare a required method. It reads the keys of
+// those tables and writes `memo` alone.
+fn (tc &TypeChecker) memo_index_method_receiver_keys(mut memo InterfaceImplMemo) {
 	for key, _ in tc.fn_param_types {
 		memo.index_method_receiver_key(key)
 	}
@@ -14318,7 +14346,6 @@ fn (tc &TypeChecker) memo_index_method_receivers(mut memo InterfaceImplMemo) {
 	for key, _ in tc.receiver_method_suffix_index {
 		memo.index_method_receiver_key(key)
 	}
-	memo.method_keys_ready = true
 }
 
 // required_method_bit spreads method names over the bits of
@@ -15708,9 +15735,12 @@ pub fn (tc &TypeChecker) end_interface_impl_queries(opened bool) {
 }
 
 pub fn (mut tc TypeChecker) prepare_interface_query_indexes() {
+	mut step_sw := time.new_stopwatch()
 	tc.prepare_interface_requirement_indexes()
+	tc.timing_step(mut step_sw, 'if requirements')
 	tc.interface_impl_indexes = map[u32]&InterfaceImplIndex{}
 	tc.interface_impl_candidates_at_index = tc.interface_impl_candidate_names()
+	tc.timing_step(mut step_sw, 'if candidates')
 	iface_names := tc.interface_names.keys()
 	if !tc.prepare_interface_impl_indexes_parallel(iface_names) {
 		tc.interface_impl_memo = &InterfaceImplMemo{}
@@ -15727,6 +15757,8 @@ pub fn (mut tc TypeChecker) prepare_interface_query_indexes() {
 		}
 		tc.interface_impl_memo = unsafe { nil }
 	}
+	tc.release_collected_interface_memo()
+	tc.timing_step(mut step_sw, 'if impls')
 	// The immutable transform indexes above preserve the pre-monomorphization
 	// order. Do not leave the same lists in the mutable query cache: generic
 	// materialization can add implementers before cgen queries it again.
@@ -16266,26 +16298,28 @@ fn (tc &TypeChecker) struct_field_type_inner(struct_name_id u32, field_name stri
 	}
 	fields := tc.structs[lookup_id] or { []StructField{} }
 	// The struct's own fields shadow promoted/embedded ones regardless of
-	// declaration order, so scan all direct fields before any embed.
-	for field in fields {
-		if field.name == field_name {
+	// declaration order, so scan all direct fields before any embed. Index the
+	// fields instead of copying each into a loop variable: structs such as the
+	// compiler's own have hundreds of fields, and this scan runs for each lookup.
+	for i in 0 .. fields.len {
+		if fields[i].name == field_name {
 			if is_generic {
-				return tc.substitute_generic_type(field.typ, generic_args, tc.struct_generic_params[base_name] or {
+				return tc.substitute_generic_type(fields[i].typ, generic_args, tc.struct_generic_params[base_name] or {
 					[]u32{}
 				})
 			}
-			return field.typ
+			return fields[i].typ
 		}
 	}
 	mut marked := false
 	embeds_indexed := tc.struct_embed_receivers.contains(lookup_id)
-	for field in fields {
+	for i in 0 .. fields.len {
+		if embeds_indexed && !fields[i].is_embed {
+			continue
+		}
+		field := fields[i]
 		mut embedded_type := field.typ
-		if embeds_indexed {
-			if !field.is_embed {
-				continue
-			}
-		} else {
+		if !embeds_indexed {
 			embedded_type = embedded_field_type(field) or { continue }
 		}
 		embedded_type = if is_generic {

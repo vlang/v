@@ -13,8 +13,14 @@ fn record_push_message(mut context &PushCallbackContext, msg &websocket.Message)
 	}
 }
 
-fn callback_pusher(mut sc websocket.ServerClient) {
-	time.sleep(200 * time.millisecond)
+fn callback_pusher(mut sc websocket.ServerClient, connected chan bool) {
+	select {
+		_ := <-connected {
+		}
+		3 * time.second {
+			return
+		}
+	}
 	for i in 0 .. 5 {
 		sc.client.write_string('event ${i}') or { return }
 	}
@@ -22,8 +28,9 @@ fn callback_pusher(mut sc websocket.ServerClient) {
 
 fn test_push_and_reply_with_void_and_reference_callbacks() ! {
 	mut server := websocket.new_server(.ip, 30019, '')
-	server.on_attached(fn (mut sc websocket.ServerClient) {
-		spawn callback_pusher(mut sc)
+	connected := chan bool{cap: 1}
+	server.on_attached(fn [connected] (mut sc websocket.ServerClient) {
+		spawn callback_pusher(mut sc, connected)
 	})
 	server.on_message(fn (mut ws websocket.Client, msg &websocket.Message) {
 		ws.write_string(msg.payload.bytestr()) or { panic(err) }
@@ -45,6 +52,7 @@ fn test_push_and_reply_with_void_and_reference_callbacks() ! {
 	client.connect()!
 	defer { client.close(1000, 'done') or {} }
 	spawn client.listen()
+	connected <- true
 	for i in 0 .. 5 {
 		select {
 			message := <-context.messages {

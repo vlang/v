@@ -1,25 +1,14 @@
 import os
-
-const builtin_const_collision_vexe = @VEXE
-const builtin_const_collision_tests_dir = os.dir(@FILE)
-const builtin_const_collision_v3_dir = os.dir(builtin_const_collision_tests_dir)
-const builtin_const_collision_vlib_dir = os.dir(builtin_const_collision_v3_dir)
-const builtin_const_collision_v3_src = os.join_path(builtin_const_collision_v3_dir, 'v.v')
-
-fn builtin_const_collision_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_builtin_const_collision_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([builtin_const_collision_vexe, '-gc', 'none', '-path',
-			'${builtin_const_collision_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${builtin_const_collision_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn test_builtin_const_macros_do_not_collide_with_locals() {
-	v3_bin := builtin_const_collision_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_builtin_const_collision_input_${os.getpid()}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_builtin_const_collision_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_builtin_const_collision_input')
+	src := bin + '.v'
 	os.write_file(src, "fn make_degree() map[string]int {
 	mut degree := map[string]int{}
 	degree['A'] = 1
@@ -41,10 +30,7 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_builtin_const_collision_input_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '-W', '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, '-W', src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 

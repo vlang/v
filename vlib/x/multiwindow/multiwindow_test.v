@@ -1903,7 +1903,7 @@ fn test_appkit_prototype_header_is_c_only_and_shared_with_implementation() {
 	render_header_prototypes := header_prototypes.filter(it in render_prototypes)
 
 	assert header.contains('int v_multiwindow_appkit_is_main_thread(void);')
-	assert header.contains('VMultiwindowNativePrimitive v_multiwindow_appkit_create_window(void *device_ptr, const char *title, int width, int height, int min_width, int min_height, int resizable, int visible, int high_dpi, int borderless, int fullscreen, int *out_width, int *out_height, int *out_framebuffer_width, int *out_framebuffer_height);')
+	assert header.contains('VMultiwindowNativePrimitive v_multiwindow_appkit_create_window(void *device_ptr, const char *title, int width, int height, int min_width, int min_height, int flags, int *out_width, int *out_height, int *out_framebuffer_width, int *out_framebuffer_height);')
 	assert header.contains('int v_multiwindow_appkit_resize_window(void *state_ptr, int width, int height, int *out_width, int *out_height, int *out_framebuffer_width, int *out_framebuffer_height);')
 	assert header.contains('VMultiwindowNativePrimitive v_multiwindow_appkit_begin_frame(void *state_ptr, void *device_ptr);')
 	assert header.contains('VMultiwindowNativePrimitive v_multiwindow_appkit_end_frame(void *state_ptr, void *drawable_ptr);')

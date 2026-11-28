@@ -11,14 +11,30 @@ import net.mbedtls
 import io
 import time
 
-// A finite `accept_timeout` doubles as the server's TLS handshake budget. With
-// `-cc tcc`, mbedtls needs 0.6-1 s for this RSA-4096 handshake even before the
-// parallel test load, so tests that are not about handshake timeouts need slack.
+// A finite `accept_timeout` doubles as the server's TLS handshake budget.
+// Allow time for handshakes under concurrent test load.
 const tls_handshake_budget = 10 * time.second
 
-const server_tls_cert = '-----BEGIN CERTIFICATE-----\nMIIEOTCCAyECFG64Q2g46jZb3kRbDOJWX/BwjSp6MA0GCSqGSIb3DQEBCwUAMEUx\nCzAJBgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRl\ncm5ldCBXaWRnaXRzIFB0eSBMdGQwIBcNMjMwODAyMTcyOTQyWhgPMjA1MDEyMTcx\nNzI5NDJaMGsxCzAJBgNVBAYTAlVTMRMwEQYDVQQIDApDYWxpZm9ybmlhMRQwEgYD\nVQQHDAtMb3MgQW5nZWxlczEdMBsGA1UECgwUQ2F0YWx5c3QgRGV2ZWxvcG1lbnQx\nEjAQBgNVBAMMCWxvY2FsaG9zdDCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoC\nggIBALqAI4fqUi+QBVWcsXglouLdOML5+w0+1hSR1KdO0Q5XPdQAs/yYWJ+KUkDw\nG++rfy9DUPq7FNRBVurXQkcAtn6gXdllGUSjwUiDo/N4mMOyS/2sufBuaeww7jVi\nrppH+zwP1tUnjRd6khl6bi1Ian9VSzr3Iy9CkXIg1GU4CPXkOydLeoQfepXxWoK1\nOUNwT3VKC/stAfY3j/NIIeiJYkyuRGFCkxn/BUjN+AsXiTugRcYKEFHdIPkOuCXp\nYbhf+lLsczpxCs3rdZG9b/N6mEDCzXTmeHkmsjdPTf+1k5DZZvKzVBBrgdxCgBb7\n5RwjF5v9WmnIc33wWgfJC6FaUzj9NYxYUbPHD+jTz0rJB/jj4u/xJlM/e5NRmXdW\n70pOMKXtWjRSolLOFIPKLY1qs3KMTAZxKKWPDDF7WlMJxMRt7nnnks5yw43Nog4C\njDLk1ZgETnPpLgo3jbmJdIv+OHKTJrBlVvDq7VTyixCoS5G8KoOmyQJhaXG6NwE2\niVhH5JIKgzgCfetfDsnjxqJ/qtrFXPa8FF2TsomD0NK/GZmIcs+9OeVB75Jn5uhF\nfLHScpiTbuu5w3P/LI/MqihLRB6RRNnRzPH8fIg5bYC9b770ta/8GcFRuYE8t+UR\nGtqXJoIKixbDlqV54kal8FQzYzhETf9+NM6Kb/lKEfG/pslvAgMBAAEwDQYJKoZI\nhvcNAQELBQADggEBALI3uNiNO0QE1brA3QYFK+d9ZroB72NrJ0UNkzYHDg2Fc6xg\n4aVVfaxY08+TmKc0JlMOW+pUxeCW/+UBSngdQiR9EE9xm0k0XIrAsy9RXxRvEtPu\nM1VI2h7ayp1Y2BrnQinevTSgtqLRyS1VbOFRl1FiyVvinw2I0KsDdAMNevAPXcOa\nQ8pUgUq6f56DkhocQaj+hxD/uV8HryNxuoSXnPhvfTN3z4YRGzsaWevJ9EYJliOM\n+XugcqfFJ+W7/QCEcAHCL+Bw6OydG5NFORr3p57PXjjcL/uKmxPBrWg2Bz6uT4uR\nMhj0zttiFHLAt9jGfyk6W57UNUja1e1ggftJJhs=\n-----END CERTIFICATE-----\n'
+// The RSA-2048 fixture keeps signing fast. Its issuer is absent from the trust store.
+const server_tls_cert = $embed_file('../testdata/localhost_test_cert.pem').to_string()
 
-const server_tls_key = '-----BEGIN RSA PRIVATE KEY-----\n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\n-----END RSA PRIVATE KEY-----\n'
+const server_tls_key = $embed_file('../testdata/localhost_test_key.pem').to_string()
+
+// A real 165-byte TLS 1.2 ClientHello captured from V's own mbedtls client.
+// The exact bytes (random/session id) are irrelevant; the server only needs a
+// structurally valid first flight to start the handshake and then block
+// waiting for the client's ClientKeyExchange, which never arrives.
+const stalled_tls_client_hello = [u8(0x16), 0x03, 0x03, 0x00, 0xa0, 0x01, 0x00, 0x00, 0x9c, 0x03,
+	0x03, 0x6a, 0x3d, 0x34, 0x4c, 0x8f, 0x46, 0x64, 0xd8, 0xe9, 0x2d, 0x46, 0x16, 0xd3, 0xf2, 0x87,
+	0xe4, 0xee, 0xc5, 0x57, 0x6c, 0x8e, 0xd7, 0x36, 0x19, 0x3b, 0x35, 0x7a, 0x01, 0x03, 0xde, 0x6e,
+	0x64, 0x00, 0x00, 0x24, 0xc0, 0x2c, 0xc0, 0x2b, 0xc0, 0x30, 0xc0, 0x2f, 0xc0, 0x24, 0xc0, 0x23,
+	0xc0, 0x28, 0xc0, 0x27, 0xc0, 0x0a, 0xc0, 0x09, 0xc0, 0x14, 0xc0, 0x13, 0x00, 0x9d, 0x00, 0x9c,
+	0x00, 0x3d, 0x00, 0x3c, 0x00, 0x35, 0x00, 0x2f, 0x01, 0x00, 0x00, 0x4f, 0x00, 0x0a, 0x00, 0x08,
+	0x00, 0x06, 0x00, 0x1d, 0x00, 0x17, 0x00, 0x18, 0x00, 0x0b, 0x00, 0x02, 0x01, 0x00, 0x00, 0x0d,
+	0x00, 0x1a, 0x00, 0x18, 0x08, 0x04, 0x08, 0x05, 0x08, 0x06, 0x04, 0x01, 0x05, 0x01, 0x02, 0x01,
+	0x04, 0x03, 0x05, 0x03, 0x02, 0x03, 0x02, 0x02, 0x06, 0x01, 0x06, 0x03, 0x00, 0x23, 0x00, 0x00,
+	0x00, 0x10, 0x00, 0x0e, 0x00, 0x0c, 0x02, 0x68, 0x32, 0x08, 0x68, 0x74, 0x74, 0x70, 0x2f, 0x31,
+	0x2e, 0x31, 0x00, 0x17, 0x00, 0x00, 0xff, 0x01, 0x00, 0x01, 0x00]
 
 struct EchoHandler {
 mut:
@@ -124,9 +140,6 @@ fn test_server_tls_round_trip() {
 		srv.close()
 		t.wait()
 	}
-	// Give the listener a beat to come up.
-	time.sleep(50 * time.millisecond)
-
 	resp := http.fetch(
 		url:      'https://127.0.0.1:${port}/hello'
 		validate: false
@@ -311,8 +324,6 @@ fn test_default_fetch_rejects_the_untrusted_server_certificate() {
 		srv.close()
 		t.wait()
 	}
-	time.sleep(50 * time.millisecond)
-
 	// One attempt: a rejected certificate is an error, not a reason to retry the handshake.
 	if resp := http.fetch(
 		url:         'https://127.0.0.1:${port}/hello'
@@ -525,22 +536,6 @@ fn test_server_tls_close_under_handshake_flood() {
 		assert false, 'pick_port: ${err}'
 		return
 	}
-	// A real 165-byte TLS 1.2 ClientHello captured from V's own mbedtls client.
-	// The exact bytes (random/session id) are irrelevant; the server only needs a
-	// structurally valid first flight to start the handshake and then block
-	// waiting for the client's ClientKeyExchange, which never arrives.
-	client_hello := [u8(0x16), 0x03, 0x03, 0x00, 0xa0, 0x01, 0x00, 0x00, 0x9c, 0x03, 0x03, 0x6a,
-		0x3d, 0x34, 0x4c, 0x8f, 0x46, 0x64, 0xd8, 0xe9, 0x2d, 0x46, 0x16, 0xd3, 0xf2, 0x87, 0xe4,
-		0xee, 0xc5, 0x57, 0x6c, 0x8e, 0xd7, 0x36, 0x19, 0x3b, 0x35, 0x7a, 0x01, 0x03, 0xde, 0x6e,
-		0x64, 0x00, 0x00, 0x24, 0xc0, 0x2c, 0xc0, 0x2b, 0xc0, 0x30, 0xc0, 0x2f, 0xc0, 0x24, 0xc0,
-		0x23, 0xc0, 0x28, 0xc0, 0x27, 0xc0, 0x0a, 0xc0, 0x09, 0xc0, 0x14, 0xc0, 0x13, 0x00, 0x9d,
-		0x00, 0x9c, 0x00, 0x3d, 0x00, 0x3c, 0x00, 0x35, 0x00, 0x2f, 0x01, 0x00, 0x00, 0x4f, 0x00,
-		0x0a, 0x00, 0x08, 0x00, 0x06, 0x00, 0x1d, 0x00, 0x17, 0x00, 0x18, 0x00, 0x0b, 0x00, 0x02,
-		0x01, 0x00, 0x00, 0x0d, 0x00, 0x1a, 0x00, 0x18, 0x08, 0x04, 0x08, 0x05, 0x08, 0x06, 0x04,
-		0x01, 0x05, 0x01, 0x02, 0x01, 0x04, 0x03, 0x05, 0x03, 0x02, 0x03, 0x02, 0x02, 0x06, 0x01,
-		0x06, 0x03, 0x00, 0x23, 0x00, 0x00, 0x00, 0x10, 0x00, 0x0e, 0x00, 0x0c, 0x02, 0x68, 0x32,
-		0x08, 0x68, 0x74, 0x74, 0x70, 0x2f, 0x31, 0x2e, 0x31, 0x00, 0x17, 0x00, 0x00, 0xff, 0x01,
-		0x00, 0x01, 0x00]
 	mut srv := &http.Server{
 		addr:                   '127.0.0.1:${port}'
 		cert:                   server_tls_cert
@@ -567,7 +562,7 @@ fn test_server_tls_close_under_handshake_flood() {
 	mut clients := []&net.TcpConn{}
 	for _ in 0 .. 4 {
 		mut c := net.dial_tcp('127.0.0.1:${port}') or { continue }
-		c.write(client_hello) or {}
+		c.write(stalled_tls_client_hello) or {}
 		clients << c
 	}
 	defer {
@@ -733,6 +728,25 @@ fn test_server_tls_close_interrupts_idle_h2() {
 	assert srv.status() == .closed
 }
 
+fn wait_for_tls_h2_ping_ack(mut client mbedtls.SSLConn, expected []u8) ! {
+	client.set_read_timeout(2 * time.second)
+	mut header_bytes := []u8{len: http.h2_frame_header_len}
+	for _ in 0 .. 8 {
+		io.read_full(mut client, mut header_bytes)!
+		header := http.h2_parse_frame_header(header_bytes)!
+		if header.length > 16_384 {
+			return error('unexpected HTTP/2 frame size: ${header.length}')
+		}
+		mut payload := []u8{len: int(header.length)}
+		io.read_full(mut client, mut payload)!
+		frame := http.h2_parse_frame(header, payload)!
+		if frame is http.H2PingFrame && frame.ack && frame.data == expected {
+			return
+		}
+	}
+	return error('server did not acknowledge the ping after the incomplete HTTP/2 request')
+}
+
 fn test_server_tls_close_interrupts_incomplete_h2_request() {
 	$if use_openssl ? {
 		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
@@ -794,6 +808,8 @@ fn test_server_tls_close_interrupts_incomplete_h2_request() {
 		end_headers: true
 		end_stream:  false
 	}).encode()
+	probe := 'shutdown'.bytes()
+	out << http.H2Frame(http.H2PingFrame{ data: probe }).encode()
 	written := client.write(out) or {
 		srv.close()
 		t.wait()
@@ -801,7 +817,13 @@ fn test_server_tls_close_interrupts_incomplete_h2_request() {
 		return
 	}
 	assert written == out.len
-	time.sleep(100 * time.millisecond)
+	// The ack confirms the server processed the preceding HEADERS.
+	wait_for_tls_h2_ping_ack(mut client, probe) or {
+		srv.close()
+		t.wait()
+		assert false, err.msg()
+		return
+	}
 
 	sw := time.new_stopwatch()
 	srv.close()
@@ -815,31 +837,14 @@ fn test_server_tls_parallel_handshakes() {
 		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
 		return
 	}
-	$if macos {
-		eprintln('skipping: macOS mbedTLS rejects the silent TCP probes')
-		return
-	}
 	port := pick_port() or {
 		assert false, 'pick_port: ${err}'
 		return
 	}
-	// Prove handshakes run in parallel on the worker threads, not serially on the
-	// accept thread. The discriminator is placed at the HANDSHAKE layer, not at the
-	// request handler: a barrier inside the handler only proves two *handlers*
-	// overlapped, which a serial-accept-then-queue design also produces (the accept
-	// thread can complete two handshakes one after another and hand both completed
-	// connections to workers that then park together). Counting overlapping handlers
-	// would therefore miss exactly the regression we care about.
-	//
-	// Instead, occupy `stall` workers with raw TCP connections that complete the TCP
-	// connect but never send a ClientHello, so each one wedges a worker *inside*
-	// complete_handshake (blocked reading the handshake). Then fire `live` real HTTPS
-	// clients. If handshakes run per-worker in parallel, the remaining free workers
-	// service the live clients concurrently and they succeed. If the implementation
-	// regresses to handshaking serially on the accept thread, the very first stalled
-	// connection wedges that thread mid-handshake and no later connection — stalled or
-	// live — is ever accepted/serviced, so every live fetch fails. worker_num must be
-	// >= stall + live so a free worker exists for each live client.
+	// Occupy `stall` workers with clients that start a handshake and stop after
+	// ClientHello. Each server record confirms a handshake has started. A serial
+	// accept loop would have to finish the first handshake before starting the next.
+	// Leave one free worker per live client so their full handshakes can complete.
 	worker_num := 4
 	stall := 2
 	live := 2
@@ -864,35 +869,32 @@ fn test_server_tls_parallel_handshakes() {
 		srv.close()
 		t.wait()
 	}
-	// Wedge `stall` workers mid-handshake with silent TCP connections.
 	mut stalled := []&net.TcpConn{}
+	defer {
+		for mut c in stalled {
+			c.close() or {}
+		}
+	}
 	for _ in 0 .. stall {
-		c := net.dial_tcp('127.0.0.1:${port}') or {
+		mut c := net.dial_tcp('127.0.0.1:${port}') or {
 			assert false, 'stall dial failed: ${err}'
 			return
 		}
 		stalled << c
+		c.set_read_timeout(tls_handshake_budget / 2)
+		c.write(stalled_tls_client_hello) or {
+			assert false, 'could not send ClientHello: ${err}'
+			return
+		}
+		mut content_type := []u8{len: 1}
+		io.read_full(mut c, mut content_type) or {
+			assert false, 'server did not start a stalled TLS handshake: ${err}'
+			return
+		}
+		assert content_type[0] == 0x16, 'expected a TLS handshake record, got ${content_type[0]}'
 	}
-	// Give the accept loop time to hand each stalled connection to a worker (and, in
-	// a regressed serial-accept design, to become wedged on the first one) before the
-	// live clients connect.
-	time.sleep(500 * time.millisecond)
-	// Fire live clients while the stalled sockets occupy workers. With parallel
-	// per-worker handshakes, at least one free worker services a live client in
-	// well under a second. A transient TLS client-side handshake error is not, by
-	// itself, proof that the accept thread regressed to serial handshaking; the
-	// discriminator is that no live request can complete while the accept thread is
-	// wedged inside a stalled handshake.
-	//
-	// The discriminator is time-bounded on purpose: a serial-accept regression does
-	// eventually service the live clients — but only after the stalled handshakes hit
-	// their budget (handshake_timeout == accept_timeout == 10s here, x2 stalled), so
-	// without a bound the test would merely run slower, not fail. The bound is on the
-	// WAIT itself (a select deadline below), not the client: http.fetch cannot bound
-	// this for us because Request.ssl_do dials and completes the TLS handshake before
-	// req.read_timeout applies (and retries on socket errors), so a read_timeout would
-	// not cap a regressed handshake. The select makes the regression fail promptly at
-	// ~6s; a real parallel handshake completes in well under a second.
+	// Give live clients less time than the stalled handshakes' 10s budget.
+	// The fetch read timeout starts after the TLS handshake, so bound the result wait.
 	live_budget := 6 * time.second
 	results := chan string{cap: live}
 	sw := time.new_stopwatch()
@@ -922,9 +924,7 @@ fn test_server_tls_parallel_handshakes() {
 			results <- resp.body
 		}()
 	}
-	// Collect live results within a single `live_budget`, bounding the wait so a
-	// serialized-handshake regression fails at ~6s instead of hanging on the
-	// client's own handshake timeout.
+	// Collect all live results under one deadline.
 	mut ok := 0
 	mut received := 0
 	mut failures := []string{}
@@ -948,11 +948,6 @@ fn test_server_tls_parallel_handshakes() {
 		}
 	}
 	assert ok > 0, 'expected at least one live handshake to complete within ${live_budget} while ${stall} workers were mid-handshake; got ${ok}/${live}, failures: ${failures} - handshakes appear serialized on the accept thread, not parallel'
-	// Release the stalled sockets; srv.close() in the defer also force-closes any the
-	// worker is still blocked on via the idle tracker.
-	for mut c in stalled {
-		c.close() or {}
-	}
 }
 
 fn test_server_tls_h2_negotiation() {
@@ -985,8 +980,6 @@ fn test_server_tls_h2_negotiation() {
 		srv.close()
 		t.wait()
 	}
-	time.sleep(50 * time.millisecond)
-
 	// Client opts into HTTP/2; server must select `h2` via ALPN and serve the
 	// request through its HTTP/2 driver.
 	resp := http.fetch(
@@ -1056,8 +1049,6 @@ fn test_server_tls_sets_remote_addr() {
 		srv.close()
 		t.wait()
 	}
-	time.sleep(50 * time.millisecond)
-
 	mut spoofed := http.new_header()
 	spoofed.add_custom('remote-addr', '6.6.6.6') or {
 		assert false, 'add_custom: ${err}'

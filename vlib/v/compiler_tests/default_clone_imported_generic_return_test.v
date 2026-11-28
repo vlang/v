@@ -6,11 +6,16 @@ fn imported_stats_fixture_vexe() string {
 }
 
 fn write_imported_stats_fixture(root string, marker string) {
-	os.mkdir_all(os.join_path(root, 'model')) or { panic(err) }
+	write_imported_stats_model(root, 'model', marker)
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'imported_stats_return' }") or {
 		panic(err)
 	}
-	os.write_file(os.join_path(root, 'model', 'model.v'), 'module model
+}
+
+fn write_imported_stats_model(root string, name string, marker string) {
+	dir := os.join_path(root, name)
+	os.mkdir_all(dir) or { panic(err) }
+	os.write_file(os.join_path(dir, '${name}.v'), 'module ${name}
 
 pub struct Stats ${marker} {
 pub mut:
@@ -32,6 +37,14 @@ pub fn (sink &^a Sink[T]) stats[^a]() &^a Stats {
 }
 ') or { panic(err) }
 }
+
+const imported_stats_named_cast_fixture = 'struct Box[T] { value T }
+fn main() {
+ owner := Box[int]{value: 42}
+ copied := Box[int](owner)
+ assert copied.value == 42
+}
+'
 
 fn test_default_clone_preserves_imported_generic_borrowed_return_type() {
 	root := os.join_path(os.vtmp_dir(), 'imported_stats_clone_${os.getpid()}')
@@ -59,56 +72,46 @@ fn main() {
  copied.bytes[0] = 9
  assert owner.stats().bytes[0] == 2
  assert copied.bytes[0] == 9
+ check_named_generic_type_cast()
 }
-')!
+
+' + imported_stats_named_cast_fixture.replace('fn main()', 'fn check_named_generic_type_cast()'))!
 	for mode in ['-no-parallel', ''] {
-		check := os.execute('${os.quoted_path(compiler)} -new-compiler -no-memory-limit -nocache -gc none -ownership ${mode} -check ${os.quoted_path(source)}')
+		check := os.execute('${os.quoted_path(compiler)} -no-memory-limit -nocache -gc none -ownership ${mode} -check ${os.quoted_path(source)}')
 		assert check.exit_code == 0, '${mode}: ${check.output}'
 		output := os.join_path(root, 'program_${if mode.len > 0 { 'serial' } else { 'parallel' }}')
-		compile := os.execute('${os.quoted_path(compiler)} -new-compiler -no-memory-limit -nocache -gc none -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+		compile := os.execute('${os.quoted_path(compiler)} -no-memory-limit -nocache -gc none -ownership -cc clang ${mode} -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
 		assert compile.exit_code == 0, '${mode}: ${compile.output}'
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0, '${mode}: ${run.output}'
 	}
 }
 
-fn test_imported_generic_borrowed_return_rejects_unknown_method() {
-	root := os.join_path(os.vtmp_dir(), 'imported_stats_unknown_${os.getpid()}')
-	write_imported_stats_fixture(root, 'implements IClone')
+fn test_imported_generic_borrowed_return_rejects_missing_method_and_clone() {
+	root := os.join_path(os.vtmp_dir(), 'imported_stats_rejections_${os.getpid()}')
 	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	compiler := imported_stats_fixture_vexe()
-	os.write_file(source, 'import model
-fn invalid[T](sink &model.Sink[T]) int { return sink.stats().missing_method() }
-fn main() { owner := model.new_sink(7); _ = invalid(&owner) }
-')!
-	for mode in ['-no-parallel', ''] {
-		check := os.execute('${os.quoted_path(compiler)} -new-compiler -no-memory-limit -nocache -gc none -ownership ${mode} -check ${os.quoted_path(source)}')
-		assert check.exit_code != 0, '${mode}: ${check.output}'
-		assert check.output.contains('unknown method or field:'), check.output
-		assert check.output.contains('.missing_method`'), check.output
-	}
-}
-
-fn test_default_clone_does_not_use_marker_from_same_named_caller_type() {
-	root := os.join_path(os.vtmp_dir(), 'imported_stats_marker_${os.getpid()}')
 	write_imported_stats_fixture(root, '')
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
+	write_imported_stats_model(root, 'marked_model', 'implements IClone')
 	compiler := imported_stats_fixture_vexe()
-	os.write_file(source, 'import model
+	os.write_file(os.join_path(root, 'main.v'), 'import model
 struct Stats implements IClone { value int }
 fn invalid[T](sink &model.Sink[T]) int {
  copied := sink.stats().clone()
  return copied.value
 }
-fn main() { _ = Stats{}; owner := model.new_sink(7); _ = invalid(&owner) }
+fn main() { _ = Stats{}; owner := model.new_sink(7); _ = invalid(&owner); check_missing_method() }
 ')!
-	for mode in ['-no-parallel', ''] {
-		check := os.execute('${os.quoted_path(compiler)} -new-compiler -no-memory-limit -nocache -gc none -ownership ${mode} -check ${os.quoted_path(source)}')
+	os.write_file(os.join_path(root, 'missing_method.v'), 'import marked_model
+fn invalid_missing_method[T](sink &marked_model.Sink[T]) int { return sink.stats().missing_method() }
+fn check_missing_method() { owner := marked_model.new_sink(7); _ = invalid_missing_method(&owner) }
+')!
+	for mode in [['-no-parallel'], []string{}] {
+		check := os.exec([compiler, '-no-memory-limit', '-nocache', '-gc', 'none', '-ownership',
+			...mode, '-check', root])
 		assert check.exit_code != 0, '${mode}: ${check.output}'
-		assert check.output.contains('unknown method or field:'), check.output
-		assert check.output.contains('.clone`'), check.output
+		diagnostics := check.output.split_into_lines().filter(it.contains('error: unknown method or field:'))
+		assert diagnostics.any(it.contains('main.v:') && it.contains('.clone`')), '${mode}: ${check.output}'
+		assert diagnostics.any(it.contains('missing_method.v:') && it.contains('.missing_method`')), '${mode}: ${check.output}'
 	}
 }
 
@@ -117,24 +120,16 @@ fn test_named_generic_type_cast_retains_cast_behavior() {
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'struct Box[T] { value T }
-fn main() {
- owner := Box[int]{value: 42}
- copied := Box[int](owner)
- assert copied.value == 42
-}
-')!
-	for ownership in ['', '-ownership'] {
-		compiler := if ownership.len > 0 { imported_stats_fixture_vexe() } else { @VEXE }
-		for mode in ['-no-parallel', ''] {
-			flags := '-new-compiler -no-memory-limit -nocache -gc none ${ownership} ${mode}'
-			check := os.execute('${os.quoted_path(compiler)} ${flags} -check ${os.quoted_path(source)}')
-			assert check.exit_code == 0, '${flags}: ${check.output}'
-			output := os.join_path(root, 'program_${ownership.len}_${mode.len}')
-			compile := os.execute('${os.quoted_path(compiler)} ${flags} -cc clang -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
-			assert compile.exit_code == 0, '${flags}: ${compile.output}'
-			run := os.execute(os.quoted_path(output))
-			assert run.exit_code == 0, '${flags}: ${run.output}'
-		}
+	compiler := @VEXE
+	os.write_file(source, imported_stats_named_cast_fixture)!
+	for mode in ['-no-parallel', ''] {
+		flags := '-no-memory-limit -nocache -gc none ${mode}'
+		check := os.execute('${os.quoted_path(compiler)} ${flags} -check ${os.quoted_path(source)}')
+		assert check.exit_code == 0, '${flags}: ${check.output}'
+		output := os.join_path(root, 'program_${mode.len}')
+		compile := os.execute('${os.quoted_path(compiler)} ${flags} -cc clang -o ${os.quoted_path(output)} ${os.quoted_path(source)}')
+		assert compile.exit_code == 0, '${flags}: ${compile.output}'
+		run := os.execute(os.quoted_path(output))
+		assert run.exit_code == 0, '${flags}: ${run.output}'
 	}
 }

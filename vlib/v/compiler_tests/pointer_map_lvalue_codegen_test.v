@@ -1,26 +1,12 @@
 import os
-
-const pointer_map_lvalue_vexe = @VEXE
-const pointer_map_lvalue_tests_dir = os.dir(@FILE)
-const pointer_map_lvalue_v3_dir = os.dir(pointer_map_lvalue_tests_dir)
-const pointer_map_lvalue_vlib_dir = os.dir(pointer_map_lvalue_v3_dir)
-const pointer_map_lvalue_v3_src = os.join_path(pointer_map_lvalue_v3_dir, 'v.v')
+import v.tempname
 
 fn test_pointer_map_index_is_preserved_in_multi_return_lvalue() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_pointer_map_lvalue_${os.getpid()}')
-	src := os.join_path(os.temp_dir(), 'v3_pointer_map_lvalue_${os.getpid()}.v')
-	bin := os.join_path(os.temp_dir(), 'v3_pointer_map_lvalue_program_${os.getpid()}')
-	defer {
-		os.rm(v3_bin) or {}
-		os.rm(src) or {}
-		os.rm(bin) or {}
-		os.rm(bin + '.c') or {}
-	}
-	build :=
-		os.exec([pointer_map_lvalue_vexe, '-gc', 'none', '-prealloc', '-path',
-			'${pointer_map_lvalue_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${pointer_map_lvalue_v3_src}'])
-	assert build.exit_code == 0, build.output
+	root := os.join_path(os.vtmp_dir(), 'v3_pointer_map_lvalue_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_pointer_map_lvalue.v')
+	bin := os.join_path(root, 'v3_pointer_map_lvalue_program')
 
 	os.write_file(src, "fn pair() ([]int, int) {
 	return [7], 9
@@ -113,8 +99,7 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, '-nocache', '-no-parallel', '-keepc', '-b', 'c', '${src}', '-o',
-		bin])
+	compile := os.exec([@VEXE, '-nocache', '-no-parallel', '-keepc', '-b', 'c', src, '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output

@@ -1,6 +1,23 @@
 import os
 
-const qvexe = os.quoted_path(@VEXE)
+const c2v_name = 'c2v' + $if windows { '.exe' } $else { '' }
+
+fn testsuite_begin() {
+	// The installed C2V fixture is a copy of this executable.
+	if os.file_name(os.executable()) != c2v_name {
+		return
+	}
+	out := os.getenv('C2V_ARGS_OUT')
+	if out == '' {
+		eprintln('missing C2V_ARGS_OUT')
+		exit(1)
+	}
+	os.write_file(out, os.args[1..].join('\n')) or {
+		eprintln(err)
+		exit(2)
+	}
+	exit(0)
+}
 
 fn test_translate_legacy_wrapper_flag_uses_wrapper_mode() {
 	check_translate_wrapper(false)!
@@ -18,9 +35,13 @@ fn check_translate_wrapper(build_missing_binary bool) ! {
 		os.rmdir_all(test_dir) or {}
 	}
 	vmodules_dir := os.join_path(test_dir, 'vmodules')
-	compile_fake_c2v(vmodules_dir)!
+	c2v_dir := os.join_path(vmodules_dir, 'c2v')
+	os.mkdir_all(c2v_dir)!
+	c2v_bin := os.join_path(c2v_dir, c2v_name)
 	if build_missing_binary {
-		os.rm(os.join_path(vmodules_dir, 'c2v', 'c2v' + exe_suffix()))!
+		os.write_file(os.join_path(c2v_dir, 'fake_c2v.v'), fake_c2v_source)!
+	} else {
+		os.cp(os.executable(), c2v_bin)!
 	}
 	sample_path := os.join_path(test_dir, 'usersapi.c')
 	args_out := os.join_path(test_dir, 'c2v_args.txt')
@@ -43,29 +64,26 @@ fn check_translate_wrapper(build_missing_binary bool) ! {
 	exit_code := process.code
 	process.close()
 	assert exit_code == 0, 'stdout:\n${stdout}\nstderr:\n${stderr}'
+	assert stdout.contains('Compiling c2v ...') == build_missing_binary, stdout
+	assert os.is_file(c2v_bin)
 	args := os.read_file(args_out)!.split_into_lines()
 	assert args == ['wrapper', sample_path], args.str()
 }
 
-fn compile_fake_c2v(vmodules_dir string) ! {
-	c2v_dir := os.join_path(vmodules_dir, 'c2v')
-	os.mkdir_all(c2v_dir)!
-	fake_c2v_path := os.join_path(c2v_dir, 'fake_c2v.v')
-	c2v_bin := os.join_path(c2v_dir, 'c2v' + exe_suffix())
-	fake_c2v_source :=
-		['import os', '', 'fn main() {', "\tout := os.getenv('C2V_ARGS_OUT')", "\tif out == '' {",
-			"\t\teprintln('missing C2V_ARGS_OUT')", '\t\texit(1)', '\t}',
-			"\tos.write_file(out, os.args[1..].join('\\n')) or {", '\t\teprintln(err)', '\t\texit(2)',
-			'\t}', '}'].join('\n') +
-			'\n'
-	os.write_file(fake_c2v_path, fake_c2v_source)!
-	res := os.exec([@VEXE, '-o', c2v_bin, fake_c2v_path])
-	assert res.exit_code == 0, res.output
-}
+const fake_c2v_source = "import os
 
-fn exe_suffix() string {
-	return if os.user_os() == 'windows' { '.exe' } else { '' }
+fn main() {
+	out := os.getenv('C2V_ARGS_OUT')
+	if out == '' {
+		eprintln('missing C2V_ARGS_OUT')
+		exit(1)
+	}
+	os.write_file(out, os.args[1..].join('\\n')) or {
+		eprintln(err)
+		exit(2)
+	}
 }
+"
 
 fn restore_env(name string, value string) {
 	if value == '' {

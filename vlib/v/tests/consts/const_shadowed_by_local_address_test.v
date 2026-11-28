@@ -86,8 +86,8 @@ fn test_the_address_of_a_local_that_shadows_a_const() {
 	os.write_file(source, shadowed_const_program)!
 	// An ordinary program: the shadowing locals give warnings, and a test file
 	// lowers its consts in its own way.
-	build := cmdexec.run_with_timeout(@VEXE, ['-new-compiler', '-no-retry-compilation', '-nocache',
-		'-gc', 'none', '-o', program, source], 120_000)
+	build := cmdexec.run_with_timeout(@VEXE, ['-no-retry-compilation', '-nocache', '-gc', 'none',
+		'-o', program, source], 120_000)
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run_with_timeout(program, []string{}, 10_000)
 	assert run.exit_code == 0, run.output

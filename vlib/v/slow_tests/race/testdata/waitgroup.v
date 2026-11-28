@@ -117,24 +117,28 @@ fn test_race_wait_group_as_mutex() {
 // Incorrect usage: Add is too late.
 fn test_race_wait_group_wrong_wait() {
 	c := chan bool{cap: 2}
+	start := chan bool{cap: 2}
 	mut x := &Cell[int]{}
 	_ = x.v
 	mut wg := sync.new_waitgroup()
-	spawn fn [mut x, mut wg, c] () {
+	spawn fn [mut x, mut wg, c, start] () {
+		_ := <-start
 		wg.add(1)
-		time.sleep(0)
 		x.v = 1
 		wg.done()
 		c <- true
 	}()
-	spawn fn [mut x, mut wg, c] () {
+	spawn fn [mut x, mut wg, c, start] () {
+		_ := <-start
 		wg.add(1)
-		time.sleep(0)
 		x.v = 2
 		wg.done()
 		c <- true
 	}()
+	// Both adds must be too late. The buffered sends do not order the two writes to x.
 	wg.wait()
+	start <- true
+	start <- true
 	_ = <-c
 	_ = <-c
 }

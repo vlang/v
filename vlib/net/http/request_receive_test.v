@@ -289,13 +289,13 @@ fn test_download_preview_stays_bounded_for_large_brotli_body() ! {
 		eprintln('skipping large Brotli preview test; libbrotli is not available')
 		return
 	}
-	body := []u8{len: 32 * 1024 * 1024}
-	compressed := brotli.compress(body)!
+	// A pre-encoded 32 MiB zero body keeps the test focused on decoding the preview.
+	compressed := $embed_file('testdata/response_preview_32m_zeros.br').to_string()
 	assert compressed.len < 65536
-	wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: br\r\nContent-Length: ${compressed.len}\r\n\r\n${compressed.bytestr()}'
+	wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: br\r\nContent-Length: ${compressed.len}\r\n\r\n${compressed}'
 	resp := parse_received_response(wire, ReceivedResponseInfo{
 		stop_copying_limit: 65536
 	})!
 	assert resp.body.len == 65536
-	assert resp.body.bytes() == body[..65536]
+	assert resp.body.bytes() == []u8{len: 65536}
 }

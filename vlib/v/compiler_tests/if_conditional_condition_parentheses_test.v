@@ -21,7 +21,7 @@ fn main() {
 	// TinyCC cannot build -prod binaries; use host GCC for TinyCC lanes.
 	prod_cc := if @CCOMPILER in ['tcc', 'tinyc'] { 'gcc' } else { @CCOMPILER }
 	for mode in ['-no-parallel', ''] {
-		result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -no-memory-limit -nocache -prod -cc ${prod_cc} ${mode} run ${os.quoted_path(source)}')
+		result := os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache -prod -cc ${prod_cc} ${mode} run ${os.quoted_path(source)}')
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 	}
 	os.write_file(source, 'fn choose(enabled bool) bool {
@@ -30,7 +30,7 @@ fn main() {
 }
 fn main() { assert choose(true) }
 ')!
-	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -prod -check ${os.quoted_path(source)}')
+	result := os.execute('${os.quoted_path(@VEXE)} -nocache -prod -check ${os.quoted_path(source)}')
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('unnecessary `()` in `if` condition'), result.output
 	os.write_file(source, 'fn choose(enabled bool) bool {
@@ -39,7 +39,7 @@ fn main() { assert choose(true) }
 }
 fn main() { assert choose(true) }
 ')!
-	nested := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -prod -check ${os.quoted_path(source)}')
+	nested := os.execute('${os.quoted_path(@VEXE)} -nocache -prod -check ${os.quoted_path(source)}')
 	assert nested.exit_code != 0, nested.output
 	assert nested.output.contains('cannot start with a parenthesized `if` expression'), nested.output
 }

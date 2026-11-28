@@ -1,19 +1,21 @@
+import encoding.binary
 import os
-
-const vexe = @VEXE
 
 const panic_message = 'encoding.binary: index out of range'
 
-const helper_source = "import os
-import encoding.binary
+const bounds_probe = '--vtest-binary-bounds'
 
-fn main() {
-	name := os.args[1]
-	n := os.args[2].int()
-	o := os.args[3].int()
+fn testsuite_begin() {
+	if os.args.len == 5 && os.args[1] == bounds_probe {
+		probe_bounds(os.args[2], os.args[3].int(), os.args[4].int())
+		exit(0)
+	}
+}
+
+fn probe_bounds(name string, n int, o int) u64 {
 	mut parent := []u8{len: 16, init: u8(0xa0 + index)}
 	mut b := if n < 0 { []u8{} } else { unsafe { parent[..n] } }
-	value := match name {
+	return match name {
 		'big_endian_u16' { u64(binary.big_endian_u16(b)) }
 		'big_endian_u16_at' { u64(binary.big_endian_u16_at(b, o)) }
 		'big_endian_u16_end' { u64(binary.big_endian_u16_end(b)) }
@@ -126,9 +128,7 @@ fn main() {
 		}
 		else { panic('unknown case ' + name) }
 	}
-	println('ok \${value}')
 }
-"
 
 struct Form {
 	name string
@@ -159,21 +159,8 @@ fn forms() []Form {
 	return res
 }
 
-fn run_case(exe string, name string, n int, o int) os.Result {
-	return os.exec([exe, name, n.str(), o.str()])
-}
-
 fn test_out_of_range_access_panics_and_exact_fit_works() {
-	dir := os.join_path(os.vtmp_dir(), 'binary_bounds_test_${os.getpid()}')
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	src := os.join_path(dir, 'helper.v')
-	exe := os.join_path(dir, 'helper' + $if windows { '.exe' } $else { '' })
-	os.write_file(src, helper_source) or { panic(err) }
-	compile := os.exec([vexe, '-o', exe, src])
-	assert compile.exit_code == 0, compile.output
+	exe := os.executable()
 	for form in forms() {
 		mut bad := [][]int{}
 		if form.name.ends_with('_at') {
@@ -187,12 +174,11 @@ fn test_out_of_range_access_panics_and_exact_fit_works() {
 			bad << [-1, 0]
 		}
 		for c in bad {
-			res := run_case(exe, form.name, c[0], c[1])
+			res := os.exec([exe, bounds_probe, form.name, c[0].str(), c[1].str()])
 			assert res.exit_code != 0, '${form.name} n=${c[0]} o=${c[1]} did not panic: ${res.output}'
 			assert res.output.contains(panic_message), '${form.name} n=${c[0]} o=${c[1]}: ${res.output}'
 		}
-		res := run_case(exe, form.name, form.size, 0)
-		assert res.exit_code == 0, '${form.name} exact fit: ${res.output}'
-		assert res.output.starts_with('ok '), res.output
+		// An exact fit must succeed. Only the panic cases need a child process.
+		probe_bounds(form.name, form.size, 0)
 	}
 }

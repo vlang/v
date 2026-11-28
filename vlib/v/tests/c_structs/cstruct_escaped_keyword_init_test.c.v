@@ -57,7 +57,7 @@ fn test_sibling_c_embed_does_not_enable_plain_v_field_escape() {
 	path := os.join_path(os.vtmp_dir(), 'v3_sibling_c_keyword_${os.getpid()}.c.v')
 	defer { os.rm(path) or {} }
 	os.write_file(path, '#include "@VEXEROOT/vlib/v/tests/testdata/c_escaped_fields.h"\n@[typedef]\nstruct C.EscapedFieldRecord {\npub mut:\n type u32\n}\nstruct VPart {\nmut:\n type string\n}\nstruct Wrapper {\n VPart\n C.EscapedFieldRecord\n}\nfn main() { _ := Wrapper{ @type: "text" } }\n')!
-	result := os.exec([@VEXE, '-new-compiler', '-check', path])
+	result := os.exec([@VEXE, '-check', path])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('expected `u32`, not `string`'), result.output
 }

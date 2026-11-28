@@ -146,23 +146,6 @@ fn test_check_mode_selected_specialized_comptime_branch_reports_shadow() {
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 }
 
-fn test_selected_specialized_shadow_clears_macos_fallback() {
-	$if !macos {
-		return
-	}
-	os.rmdir_all(tmp_root) or {}
-	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
-	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if T is int {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[int](1))\n}\n')
-	fallback_file := os.join_path(tmp_root, 'fallback')
-	out := os.join_path(tmp_root, 'fallback_app')
-	res := os.exec(['env', 'V_C_ERROR_BUG_REPORT_DISABLED=1', 'V_MACOS_V3_NO_FALLBACK=',
-		'V_MACOS_V3_FALLBACK_FILE=' + '${fallback_file}', vexe, '-enable-globals', '-o', '${out}',
-		app_dir])
-	assert res.exit_code != 0, res.output
-	assert res.output.contains('variable `counter` shadows a global variable'), res.output
-	assert !os.exists(fallback_file), 'authoritative shadow errors must disable the compatibility fallback'
-}
-
 fn test_unselected_specialized_comptime_branch_does_not_report_shadow() {
 	os.rmdir_all(tmp_root) or {}
 	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
@@ -369,6 +352,20 @@ fn test_dependency_shadow_alone_still_builds() {
 	res := compile_app(sibling_modules_dir)
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('shadows a global variable'), res.output
+}
+
+// A dependency may name a local like a module global of the project, and the local
+// keeps its own value: `point` here is not the `__global point` of `state`.
+fn test_dependency_local_named_like_project_module_global_keeps_its_value() {
+	os.rmdir_all(tmp_root) or {}
+	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
+	write_file(os.join_path(app_dir, 'state', 'state.v'), '@[has_globals]\nmodule state\n\npub struct Point {\npub:\n\tx u64\n}\n\n__global point Point\n\npub fn x() u64 {\n\treturn point.x\n}\n')
+	write_file(os.join_path(sibling_modules_dir, 'shadowdep', 'shadowdep.v'), "module shadowdep\n\npub fn compute(text string) string {\n\tpoint := text.len - 2\n\treturn text[..point] + '.' + text[point..] + (point + 1).str()\n}\n")
+	write_file(os.join_path(app_dir, 'main.v'), "module main\n\nimport shadowdep\nimport state\n\nfn main() {\n\tprintln(state.x())\n\tprintln(shadowdep.compute('12345'))\n}\n")
+	os.setenv('VMODULES', sibling_modules_dir, true)
+	res := os.exec([vexe, '-enable-globals', 'run', app_dir])
+	assert res.exit_code == 0, res.output
+	assert res.output.split_into_lines() == ['0', '123.454'], res.output
 }
 
 // The module root inside the project root is the case plain containment gets

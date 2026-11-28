@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'vlib/v/compiler_tests/**'
+      - 'vlib/v/gen/amd64/native_float_literal_test.v'
       - '.github/workflows/master_ci_regressions.yml'
       - '.github/workflows/build_on_ubuntu_25_ci.yml'
       - '.github/workflows/linux_ci.yml'
@@ -24,6 +25,7 @@ on:
       - 'ci/linux_ci_resume_test.sh'
       - 'makev.bat'
       - 'GNUmakefile'
+      - 'cmd/tools/vtest_test.v'
   workflow_dispatch:
 
 concurrency:
@@ -54,6 +56,36 @@ jobs:
         uses: ./.github/actions/setup-v
         with:
           symlink: 'false'
+      - name: Validate fixed-array heap sum defaults with GCC and Clang
+        timeout-minutes: 10
+        run: |
+          ./v fmt -verify vlib/v/tests/sumtypes/heap_sum_default_named_like_reflection_struct_test.v
+          ./v -cc gcc -silent vlib/v/tests/sumtypes/heap_sum_default_named_like_reflection_struct_test.v
+          ./v -cc clang -silent vlib/v/tests/sumtypes/heap_sum_default_named_like_reflection_struct_test.v
+          ./v -cc gcc -silent vlib/json2/tests/legacy_json_edge_cases_test.v
+          ./v -cc clang -silent vlib/json2/tests/legacy_json_edge_cases_test.v
+      # Deliberately inherit the fail-fast setting used by tools_ci. The outer
+      # vtest self-test must still count its passing and failing child files.
+      - name: Run complete nested vtest fixture under outer fail-fast
+        timeout-minutes: 15
+        env:
+          VTEST_FAIL_FAST: '1'
+        run: |
+          ./v fmt -verify cmd/tools/vtest_test.v
+          ./v -cc gcc -silent cmd/tools/vtest_test.v
+          ./v -cc clang -silent cmd/tools/vtest_test.v
+      - name: Verify AMD64 floating-point sign bits in debug and production modes
+        timeout-minutes: 10
+        run: |
+          ./v fmt -verify vlib/v/gen/amd64/native_float_literal_test.v
+          ./v -cc gcc -silent vlib/v/gen/amd64/native_float_literal_test.v
+          ./v -cc clang -silent vlib/v/gen/amd64/native_float_literal_test.v
+      - name: Verify AMD64 floating-point sign bits with musl-gcc
+        timeout-minutes: 10
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq --no-install-recommends install musl-tools
+          ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/gen/amd64/native_float_literal_test.v
       - name: Check Linux task checkpoint and resume behavior
         run: sh ci/linux_ci_resume_test.sh
       - name: Check hosted apt dependencies
@@ -66,7 +98,7 @@ jobs:
 
   windows:
     name: Windows regressions (${{ matrix.cc }})
-    runs-on: windows-2025
+    runs-on: ${{ matrix.cc == 'tcc' && 'windows-2022' || 'windows-2025' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -92,6 +124,32 @@ jobs:
         run: |
           .\makev.bat "-$env:V_CI_CCOMPILER"
           if ($LASTEXITCODE -ne 0) { throw "V bootstrap failed (exit $LASTEXITCODE)" }
+      # Check the original Windows path regression with an actual TCC/V
+      # bootstrap, rather than relying on a makev.bat string contract.
+      - name: Bootstrap TCC in a checkout with punctuation and spaces
+        if: matrix.cc == 'tcc'
+        timeout-minutes: 20
+        shell: pwsh
+        run: |
+          $caseDir = Join-Path $env:RUNNER_TEMP 'path with some $punctuation, and some spaces'
+          git clone --local . "$caseDir"
+          if ($LASTEXITCODE -ne 0) { throw "Failed to clone into space-path fixture" }
+          Push-Location -LiteralPath $caseDir
+          try {
+            # Match paths_ci.yml: its native bootstrap does not set VFLAGS.
+            Remove-Item Env:VFLAGS -ErrorAction SilentlyContinue
+            .\makev.bat -tcc
+            if ($LASTEXITCODE -ne 0) { throw "Space-path TCC bootstrap failed (exit $LASTEXITCODE)" }
+            .\v.exe -prod -cc gcc self
+            if ($LASTEXITCODE -ne 0) { throw "Space-path V self build failed (exit $LASTEXITCODE)" }
+            .\v.exe test vlib/builtin vlib/os
+            if ($LASTEXITCODE -ne 0) { throw "Space-path V tests failed (exit $LASTEXITCODE)" }
+          } finally {
+            Pop-Location
+          }
+      - name: Check Windows TCC bootstrap path argument contract
+        if: matrix.cc == 'tcc'
+        run: python cmd/tools/makev_test.py
       - name: Prepare optimized V compiler
         id: build
         uses: ./.github/actions/setup-v
@@ -101,7 +159,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 5
         run: |
-          .\v.exe -new-compiler -cc $env:V_CI_CCOMPILER -no-retry-compilation vlib/v/compiler_tests/complex_header_identifier_test.v
+          .\v.exe -cc $env:V_CI_CCOMPILER -no-retry-compilation vlib/v/compiler_tests/complex_header_identifier_test.v
           if ($LASTEXITCODE -ne 0) { throw "Complex identifier regression failed (exit $LASTEXITCODE)" }
       - name: Check synthesized entry points and cleanup
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -112,5 +170,5 @@ jobs:
             'vlib/v/compiler_tests/executable_cleanup_test.v'
             'vlib/v/compiler_tests/mixed_lock_codegen_test.v'
           )
-          .\v.exe -new-compiler -cc $env:V_CI_CCOMPILER -no-retry-compilation test @tests
+          .\v.exe -cc $env:V_CI_CCOMPILER -no-retry-compilation test @tests
           if ($LASTEXITCODE -ne 0) { throw "Entry point regressions failed (exit $LASTEXITCODE)" }

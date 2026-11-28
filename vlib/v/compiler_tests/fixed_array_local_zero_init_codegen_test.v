@@ -1,25 +1,12 @@
 import os
-
-const local_fixed_array_vexe = @VEXE
-const local_fixed_array_tests_dir = os.dir(@FILE)
-const local_fixed_array_v3_dir = os.dir(local_fixed_array_tests_dir)
-const local_fixed_array_vlib_dir = os.dir(local_fixed_array_v3_dir)
-const local_fixed_array_v3_src = os.join_path(local_fixed_array_v3_dir, 'v.v')
-
-fn local_fixed_array_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_fixed_array_local_zero_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([local_fixed_array_vexe, '-gc', 'none', '-path',
-			'${local_fixed_array_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${local_fixed_array_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn test_local_fixed_array_zero_init_declarations_use_direct_c_arrays() {
-	v3_bin := local_fixed_array_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_fixed_array_local_zero_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_local_zero_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'v3_fixed_array_local_zero')
+	src := bin + '.v'
 	os.write_file(src, 'module main
 
 type Handle = voidptr
@@ -48,8 +35,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_local_zero_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -79,8 +65,11 @@ fn main() {
 }
 
 fn test_struct_field_rejects_pointer_to_fixed_array_alias() {
-	v3_bin := local_fixed_array_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_fixed_array_struct_field_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_struct_field_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'v3_fixed_array_struct_field')
+	src := bin + '.v'
 	os.write_file(src, 'module main
 
 type Arr = [2]int
@@ -99,8 +88,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_struct_field_${os.getpid()}')
-	compile := os.exec([v3_bin, '-nocache', '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, '-nocache', src, '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot assign to field `arr`: expected `Arr`, not `&Arr`'), compile.output
 

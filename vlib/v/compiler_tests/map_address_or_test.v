@@ -56,7 +56,7 @@ fn main() {
 ')!
 	for ownership in ['', '-ownership -d ownership'] {
 		for mode in ['', '-no-parallel'] {
-			result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache ${ownership} ${mode} run ${os.quoted_path(source)}')
+			result := os.execute('${os.quoted_path(@VEXE)} -nocache ${ownership} ${mode} run ${os.quoted_path(source)}')
 			assert result.exit_code == 0, result.output
 		}
 	}

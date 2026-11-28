@@ -29,7 +29,7 @@ fn main() {
 		environment['VFLAGS'] = ''
 		environment['VOSARGS'] = ''
 		mut compiler := os.new_process(@VEXE)
-		compiler.set_args(['-new-compiler', '-gc', 'none', '-o', output, source])
+		compiler.set_args(['-gc', 'none', '-o', output, source])
 		compiler.set_environment(environment)
 		compiler.set_redirect_stdio()
 		compiler.run()

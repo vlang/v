@@ -19,8 +19,7 @@ fn test_prod_refuses_tinycc_before_any_compiler_runs() {
 		os.rmdir_all(root) or {}
 	}
 	source := os.join_path(root, 'main.v')
-	for args in [['-prod', '-cc', 'tcc'], ['-cc=tinyc', '-prod'],
-		['-old-compiler', '-prod', '-cc', 'tcc']] {
+	for args in [['-prod', '-cc', 'tcc'], ['-cc=tinyc', '-prod']] {
 		result := os.exec([@VEXE, ...args, '-o', os.join_path(root, 'main'), source])
 		assert result.exit_code == 1, '${args}: ${result.output}'
 		assert result.output.contains('tcc is not allowed with -prod'), '${args}: ${result.output}'
@@ -72,7 +71,7 @@ fn test_old_compiler_prod_refuses_a_tinycc_alias() {
 	alias := os.join_path(root, 'cc')
 	os.write_file(alias, '#!/bin/sh\nprintf "tcc version 0.9.27\\n"\n')!
 	os.chmod(alias, 0o700)!
-	result := os.exec([@VEXE, '-old-compiler', '-prod', '-cc', alias, os.join_path(root, 'main.v')])
+	result := os.exec([@VEXE, '-prod', '-cc', alias, os.join_path(root, 'main.v')])
 	assert result.exit_code == 1, result.output
 	assert result.output.contains('tcc is not allowed with -prod'), result.output
 }

@@ -288,7 +288,6 @@ fn test_update_authenticates_real_staging_before_every_upload_or_publication() {
 	assert source.count('name: Checkout the TCC bootstrap bundle for the macOS validator') == 1
 	assert source.count('TCCBIN_BOOTSTRAP_TCC_ROOT=') == 1
 	assert source.count('TCCBIN_BOOTSTRAP_TCC_COMMIT=') == 1
-	assert source.count("V_MACOS_V3_NO_FALLBACK: '1'") == 1
 	assert source.count('thirdparty/tccbin_automation/bootstrap/bootstrap.sh') == 2
 	assert source.count('contract-binding') == 2
 	assert source.count('TCCBIN_VALIDATOR_CLI=') == 2

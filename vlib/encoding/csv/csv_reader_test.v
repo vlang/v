@@ -337,50 +337,47 @@ fn test_random_access_large_cells() {
 }
 
 fn test_coherence() {
+	rows := 1000
+	columns := 1000
+	cell_count := u64(rows * columns)
 	file_path_str := os.join_path(os.temp_dir(), 'test_csv.csv')
 	mut f := os.open_file(file_path_str, 'w')!
-	mut b := strings.new_builder(64536)
-	mut i := u64(0)
-	mut sum := u64(0)
-	for rows in 0 .. 1000 {
-		for col in 0 .. 1000 {
+	// A cell contains at most six digits and one delimiter.
+	mut b := strings.new_builder(rows * columns * 7)
+	mut value := u64(0)
+	for _ in 0 .. rows {
+		for col in 0 .. columns {
 			if col > 0 {
 				b.write_u8(`,`)
 			}
-			b.write_string(i.str())
-			i++
-			sum += i
+			b.write_u_decimal(value)
+			value++
 		}
 		b.write_string('\n')
 	}
 	f.write_string(b.str())!
 	f.close()
 
-	sum -= i
-	// println('sum: ${sum}')
+	// The large file crosses many default read windows. Smaller fixtures
+	// exercise tiny windows and cells that span a window boundary.
+	mut csvr := csv.csv_reader(file_path: file_path_str)!
 
-	// parse the temp file
-	mut csvr := csv.csv_reader(
-		file_path:    file_path_str
-		mem_buf_size: 32
-		end_line_len: csv.endline_cr_len
-	)!
-
-	mut sum1 := u64(0)
+	assert csvr.csv_map.len == rows
+	mut sum := u64(0)
 	for row_index in 0 .. csvr.csv_map.len {
 		row := csvr.get_row(row_index)!
+		assert row.len == columns
 		for x in row {
-			sum1 += u64(x.int())
+			sum += u64(x.int())
 		}
 	}
-	// println('sum: ${sum1}')
 
 	csvr.dispose_csv_reader()
 
 	// remove the temp file
 	os.rm(file_path_str)!
 
-	assert sum == sum1, 'csv coherence test failed'
+	assert sum == cell_count * (cell_count - 1) / 2, 'csv coherence test failed'
 }
 
 // Debug code
@@ -391,22 +388,17 @@ fn main() {
 // Multithreaded tests
 
 fn create_csv(file_path string, size int) !i64 {
-	// create csv file for the test
-	mut csv_txt := 'pippo,count,count1,pera,sempronio,float'
-
 	mut f := os.open_file(file_path, 'w')!
-	f.write_string(csv_txt + '\n')!
-	mut count := i64(0)
-	for i in 0 .. size {
-		tmp := '${rand.int()}, ${i}, 3, "txt1${i}", "txt2${i}", ${f32(rand.u32()) / 1000.0}\n'
-		f.write_string(tmp)!
-		// if i % 1_000_000 == 0 {
-		//	 println(i)
-		// }
-		count += i
+	defer {
+		f.close()
 	}
-	f.close()
-	return count
+	mut b := strings.new_builder(size * 64)
+	b.writeln('pippo,count,count1,pera,sempronio,float')
+	for i in 0 .. size {
+		b.writeln('${rand.int()}, ${i}, 3, "txt1${i}", "txt2${i}", ${f32(rand.u32()) / 1000.0}')
+	}
+	f.write_string(b.str())!
+	return i64(size) * (size - 1) / 2
 }
 
 fn read_lines(id int, csvr csv.RandomAccessReader, mut data [][]csv.CellValue, start_row int, end_row int) {

@@ -186,6 +186,19 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name_id u32) u32 {
 		&& raw_syntax.generic_app_base() in t.tc.interface_names {
 		return interface_type_application(raw_syntax.generic_app_base(), raw_syntax.generic_app_args(), true)
 	}
+	// A bare name in a module that declares a type of that name means that type
+	// (`Any` in toml is the sum `toml.Any`), not a program interface of the name.
+	if t.cur_module !in ['', 'main', 'builtin']
+		&& !flat.source_type_shape(raw_clean_source_id).has(.dotted) {
+		qualified := flat.source_type_id('${t.cur_module}.${flat.source_type_name(raw_clean_source_id)}')
+		if qualified in t.tc.interface_names {
+			return qualified
+		}
+		if t.tc.sum_types.contains(qualified) || qualified in t.tc.structs
+			|| qualified in t.tc.enum_names || t.tc.type_aliases.contains(qualified) {
+			return 0
+		}
+	}
 	if raw_clean_source_id in t.tc.interface_names {
 		return raw_clean_source_id
 	}
@@ -785,6 +798,21 @@ struct InterfaceImplMapping {
 	target_id int
 }
 
+// interface_impl_is_open_generic reports whether the implementer `name_id` is a
+// generic struct or interface named without type arguments.
+fn (t &Transformer) interface_impl_is_open_generic(name_id u32) bool {
+	if flat.source_type_shape(name_id).has(.bracketed) {
+		return false
+	}
+	for candidate_id in [name_id, t.tc.qualify_type_name(name_id)] {
+		if (t.tc.struct_generic_params[candidate_id] or { []u32{} }).len > 0
+			|| (t.tc.interface_generic_params[candidate_id] or { []u32{} }).len > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut t Transformer) interface_conversion_impl_mappings(source_iface_id u32, target_iface_id u32) []InterfaceImplMapping {
 	mut result := []InterfaceImplMapping{}
 	if source_iface_id == u32(0) || target_iface_id == u32(0) || isnil(t.tc) {
@@ -793,6 +821,11 @@ fn (mut t Transformer) interface_conversion_impl_mappings(source_iface_id u32, t
 	source_index := t.interface_impl_index_for_transform(source_iface_id)
 	target_index := t.interface_impl_index_for_transform(target_iface_id)
 	for impl in source_index.names.ids {
+		// A generic struct without its type arguments (`arrays.ReverseIterator`) has
+		// no values to convert, and no C type: only its instances implement interfaces.
+		if t.interface_impl_is_open_generic(impl) {
+			continue
+		}
 		source_id := source_index.ids[impl] or { continue }
 		target_id := target_index.ids[impl] or {
 			// Alias spellings can differ between equivalent interface snapshots.
@@ -974,13 +1007,14 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	fields := t.interface_runtime_field_list(iface_name_id)
 	mut source_id := id
 	mut source_type := t.node_type(id)
-	if t.expr_has_option_unwrap_smartcast(id) {
-		if smartcast := t.find_smartcast_for_expr(id) {
-			unwrapped_type_source_id_2 := t.smartcast_target_type(smartcast)
-			unwrapped_type_source_id_4 := unwrapped_type_source_id_2
-
-			if unwrapped_type_source_id_2 != 0 {
-				source_type = unwrapped_type_source_id_4
+	if smartcast := t.find_smartcast_for_expr(id) {
+		// A sum value narrowed by `is` or `match` lowers to its variant payload
+		// (`s.Cat`), but its node type can still be the declared sum type. Box the
+		// variant, so the `_typ` id, the `_object` type and the copied size match it.
+		if t.expr_has_option_unwrap_smartcast(id) || t.is_sum_type_name(smartcast.sum_type_name) {
+			target_type := t.smartcast_target_type(smartcast)
+			if target_type != 0 {
+				source_type = target_type
 			}
 		}
 	}

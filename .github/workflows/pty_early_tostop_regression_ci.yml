@@ -1,0 +1,66 @@
+name: PTY early TOSTOP regression
+on:
+  pull_request:
+    paths:
+      - vlib/v/tests/compiler_processes/testdata/run_terminal_nix.py
+      - .github/workflows/pty_early_tostop_regression_ci.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pty:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            cc: gcc
+          - os: macos-15
+            cc: clang
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: false
+          symlink: false
+      - name: Build and verify the Python harness
+        run: |
+          ./v self
+          python3 -m py_compile vlib/v/tests/compiler_processes/testdata/run_terminal_nix.py
+      - name: Compare original and corrected native PTY regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset VFLAGS
+          export VEXE="$(pwd)/v"
+          path=vlib/v/tests/compiler_processes/testdata/run_terminal_nix.py
+          logs="$RUNNER_TEMP/pty-regression"
+          mkdir -p "$logs"
+          cp "$path" "$logs/candidate.py"
+          git show 2df2b303bc622429bc81e43582b57d83e8b3ccc8:"$path" > "$logs/original.py"
+          test "$(git hash-object "$logs/original.py")" = 709850ec9f7a7a53f3a4aee1e5aed91c8e4d11db
+          trap 'cp "$logs/candidate.py" "$path"' EXIT
+          for role in original candidate; do
+            cp "$logs/$role.py" "$path"
+            failures=0
+            for attempt in 1 2 3 4 5; do
+              set +e
+              ./v -cc ${{ matrix.cc }} -silent vlib/v/tests/compiler_processes/run_termination_nix_test.c.v > "$logs/$role-$attempt.log" 2>&1
+              rc=$?
+              set -e
+              printf '%s attempt=%s status=%s\n' "$role" "$attempt" "$rc"
+              cat "$logs/$role-$attempt.log"
+              if [ "$rc" -ne 0 ]; then failures=$((failures + 1)); fi
+            done
+            printf '%s failures=%s/5\n' "$role" "$failures"
+            if [ "$role" = candidate ]; then test "$failures" -eq 0; fi
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pty-regression-${{ matrix.os }}
+          path: ${{ runner.temp }}/pty-regression

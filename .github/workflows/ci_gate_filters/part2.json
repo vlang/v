@@ -55,7 +55,7 @@
   },
   {
     "workflow": "macos_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -70,7 +70,7 @@
   },
   {
     "workflow": "macos_gitly_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths-ignore",
     "patterns": [
       "vlib/v/gen/fastc/**",
@@ -106,7 +106,7 @@
   },
   {
     "workflow": "more_extensive_but_slower_tests_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths-ignore",
     "patterns": [
       "**.md",
@@ -137,7 +137,7 @@
   },
   {
     "workflow": "notices_ci.yml",
-    "shard": "master",
+    "shard": "portability",
     "mode": "paths",
     "patterns": [
       "vlib/**",

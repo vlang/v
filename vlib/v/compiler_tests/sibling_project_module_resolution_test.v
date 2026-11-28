@@ -1,4 +1,5 @@
 import os
+import v.tempname
 
 // A module that is neither in vlib nor in a module directory nor beside the importing
 // file can still be a project checked out next to the one being built. The legacy
@@ -6,25 +7,9 @@ import os
 // root, so two sibling checkouts could not build against each other and every import
 // of the neighbour failed with `cannot import module "..." (not found)`.
 
-const sibling_module_vexe = @VEXE
-const sibling_module_tests_dir = os.dir(@FILE)
-const sibling_module_v3_dir = os.dir(sibling_module_tests_dir)
-const sibling_module_vlib_dir = os.dir(sibling_module_v3_dir)
-const sibling_module_v3_src = os.join_path(sibling_module_v3_dir, 'v.v')
-
-fn sibling_module_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_sibling_module_compiler_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build := os.exec([sibling_module_vexe, '-gc', 'none', '-path',
-		'${sibling_module_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, sibling_module_v3_src])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
 // Lay out two projects side by side, each with its own manifest, the way a checkout
 // of a library next to the program that uses it looks on disk.
 fn sibling_module_write_projects(root string, dependency_name string, importer_source string) string {
-	os.rmdir_all(root) or {}
 	dependency_dir := os.join_path(root, dependency_name)
 	os.mkdir_all(dependency_dir) or { panic(err) }
 	os.write_file(os.join_path(dependency_dir, 'v.mod'), "Module {\n\tname: '${dependency_name}'\n\tversion: '0.0.1'\n}\n") or {
@@ -47,8 +32,8 @@ pub fn greeting() string {
 }
 
 fn test_a_module_checked_out_beside_the_project_is_found() {
-	v3_bin := sibling_module_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_sibling_module_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_sibling_module_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
@@ -67,7 +52,7 @@ fn main() {
 	empty_modules := os.join_path(root, 'emptymodules')
 	os.mkdir_all(os.join_path(empty_modules, 'neighbourlib')) or { panic(err) }
 	exe := os.join_path(root, 'app_prog')
-	compile := os.exec([v3_bin, '-nocache', '-path', '${empty_modules}' + '|@vlib|@vmodules',
+	compile := os.exec([@VEXE, '-nocache', '-path', '${empty_modules}' + '|@vlib|@vmodules',
 		importer_dir, '-b', 'c', '-o', exe])
 	assert compile.exit_code == 0, compile.output
 	res := os.exec([exe])
@@ -78,8 +63,8 @@ fn main() {
 // The walk goes all the way up, not one level: a file deep inside the project still
 // reaches a module sitting beside the project root.
 fn test_the_walk_reaches_past_more_than_one_level() {
-	v3_bin := sibling_module_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_sibling_module_deep_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_sibling_module_deep_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
@@ -101,7 +86,7 @@ fn main() {
 }
 ') or { panic(err) }
 	exe := os.join_path(root, 'deep_prog')
-	compile := os.exec([v3_bin, '-nocache', deep_dir, '-b', 'c', '-o', exe])
+	compile := os.exec([@VEXE, '-nocache', deep_dir, '-b', 'c', '-o', exe])
 	assert compile.exit_code == 0, compile.output
 	res := os.exec([exe])
 	assert res.exit_code == 0, res.output
@@ -112,12 +97,11 @@ fn main() {
 // project sits above it in `foo`. Asking only the leaf directory for a manifest finds
 // none, which would make a submodule of a neighbour look like a stranger.
 fn test_a_dotted_submodule_of_a_neighbour_is_found() {
-	v3_bin := sibling_module_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_sibling_module_dotted_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_sibling_module_dotted_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	os.rmdir_all(root) or {}
 	dependency_dir := os.join_path(root, 'neighbourlib')
 	submodule_dir := os.join_path(dependency_dir, 'inner')
 	os.mkdir_all(submodule_dir) or { panic(err) }
@@ -148,7 +132,7 @@ fn main() {
 	empty_modules := os.join_path(root, 'emptymodules')
 	os.mkdir_all(empty_modules) or { panic(err) }
 	exe := os.join_path(root, 'dotted_prog')
-	compile := os.exec([v3_bin, '-nocache', '-path', '${empty_modules}' + '|@vlib|@vmodules',
+	compile := os.exec([@VEXE, '-nocache', '-path', '${empty_modules}' + '|@vlib|@vmodules',
 		importer_dir, '-b', 'c', '-o', exe])
 	assert compile.exit_code == 0, compile.output
 	res := os.exec([exe])
@@ -161,12 +145,11 @@ fn main() {
 // copy sits, before it reaches what is beside the project, so a source file buried
 // in the project still gets the project's own copy.
 fn test_the_projects_own_modules_beat_a_neighbour_of_the_same_name() {
-	v3_bin := sibling_module_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_sibling_module_own_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_sibling_module_own_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	os.rmdir_all(root) or {}
 
 	// A neighbour of the project, carrying the name.
 	neighbour_dir := os.join_path(root, 'shared')
@@ -208,7 +191,7 @@ fn main() {
 	empty_modules := os.join_path(root, 'emptymodules')
 	os.mkdir_all(empty_modules) or { panic(err) }
 	exe := os.join_path(root, 'own_prog')
-	compile := os.exec([v3_bin, '-nocache', '-path', '${empty_modules}' + '|@vlib|@vmodules', src_dir,
+	compile := os.exec([@VEXE, '-nocache', '-path', '${empty_modules}' + '|@vlib|@vmodules', src_dir,
 		'-b', 'c', '-o', exe])
 	assert compile.exit_code == 0, compile.output
 	res := os.exec([exe])
@@ -221,9 +204,8 @@ fn main() {
 // out to the project and its neighbours, as any other file would. The old layout
 // does not survive between the very modules that have to move out of it.
 fn test_a_modules_directory_is_not_a_lookup_root_for_the_files_in_it() {
-	v3_bin := sibling_module_build_v3()
-	root := os.join_path(os.vtmp_dir(), 'v3_modules_not_a_root_${os.getpid()}')
-	os.rmdir_all(root) or {}
+	root := os.join_path(os.vtmp_dir(), 'v3_modules_not_a_root_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
@@ -277,7 +259,7 @@ pub fn value() string {
 	return bar.value()
 }
 ') or { panic(err) }
-	bare := os.exec([v3_bin, '-nocache', '-path', '${empty_modules}' + '|@vlib|@vmodules', project_dir,
+	bare := os.exec([@VEXE, '-nocache', '-path', '${empty_modules}' + '|@vlib|@vmodules', project_dir,
 		'-b', 'c', '-o', exe])
 	assert bare.exit_code == 0, bare.output
 	bare_run := os.exec([exe])
@@ -293,7 +275,7 @@ pub fn value() string {
 	return bar.value()
 }
 ') or { panic(err) }
-	dotted := os.exec([v3_bin, '-nocache', '-path', '${empty_modules}' + '|@vlib|@vmodules',
+	dotted := os.exec([@VEXE, '-nocache', '-path', '${empty_modules}' + '|@vlib|@vmodules',
 		project_dir, '-b', 'c', '-o', exe])
 	assert dotted.exit_code == 0, dotted.output
 	dotted_run := os.exec([exe])

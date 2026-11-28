@@ -70,7 +70,7 @@ fn compile_markused_fixture(name string, main_source string, module_rel string, 
 
 	// The unit runner supplies V3 even when it builds this test with V1.
 	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
-	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE, '-new-compiler'] }
+	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE] }
 	args << ['-o', os.join_path(root, 'program'), source_dir]
 	compile := os.exec(args)
 	assert compile.exit_code == 0, compile.output

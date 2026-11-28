@@ -3,6 +3,14 @@ import v.cmdexec
 
 const vexe = @VEXE
 
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux, and
+	// this file generates Linux C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 fn cross_generate(name string, source string) string {
 	return cross_generate_with('-os cross', name, source)
 }
@@ -198,9 +206,22 @@ fn main() {
 	}
 }
 '
+	// Reuse the warning fixture both here and in the separate active TCC check.
+	inactive := source.replace_once('fn main() {\n', 'fn main() {\n\tinactive_type()\n') +
+		'fn inactive_type() {
+	\$if tinyc {
+		value := MissingTargetType{}
+		println(value)
+	} \$else {
+		println("ok")
+	}
+}
+'
 	c_code := cross_generate_with('-no-retry-compilation -W -cross -cc gcc -gc none',
-		'inactive_diagnostics', source)
-	assert c_code.contains('fallible(')
+		'inactive_variants', inactive)
+	assert c_code.contains('\n\t\tfallible();\n')
+	body := function_body(c_code, 'void inactive_type(void) {')
+	assert body.contains('MissingTargetType'), body
 	dir := os.join_path(os.vtmp_dir(), 'v3_cross_active_warning_${os.getpid()}')
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
@@ -210,13 +231,6 @@ fn main() {
 		'none', '-o', os.join_path(dir, 'out.c'), src])
 	assert active.exit_code != 0, active.output
 	assert active.output.contains('fallible() returns `!int`'), active.output
-}
-
-fn test_cross_output_allows_unavailable_types_in_preserved_branches() {
-	source := 'fn main() {\n\t\$if tinyc {\n\t\tvalue := MissingTargetType{}\n\t\tprintln(value)\n\t} \$else {\n\t\tprintln("ok")\n\t}\n}\n'
-	c_code := cross_generate_with('-no-retry-compilation -W -cross -cc gcc -gc none',
-		'inactive_types', source)
-	assert c_code.contains('MissingTargetType')
 }
 
 fn test_cross_output_keeps_directives_of_every_branch_behind_guards() {
@@ -256,6 +270,11 @@ fn test_cross_is_a_modifier_that_keeps_an_explicit_target() {
 	assert c_code.contains('#define CUSTOM_DEFINE_cross')
 	// The target still selected Windows.
 	assert c_code.contains('_WIN32'), 'the explicit -os windows target was lost'
+
+	// makev.bat builds vc/v_win.c with TinyCC, which lacks the MSVC headers.
+	// The target C preprocessor must select them. See #29146.
+	guard_error := msvc_only_header_guard_error(c_code)
+	assert guard_error == '', guard_error
 }
 
 // runtime_program prints a value, not a literal, so its C has the full V runtime.
@@ -305,7 +324,74 @@ fn test_windows_msvc_output_balances_atomic_header_guards() {
 	assert depth == 0, '${depth} unterminated #if directives in generated MSVC C'
 }
 
-fn test_cross_output_keeps_the_posix_semaphore_off_apple() {
+fn test_cross_linux_portability() {
+	c_code := cross_generate_with('-cross -os linux', 'linux_portable', "module main
+
+import sync
+import crypto.rand
+import v.diagserver
+import time
+import v.cmdexec
+
+fn portable_semaphore() {
+	mut sem := sync.new_semaphore()
+	sem.post()
+	sem.wait()
+	println(sem.try_wait())
+	println(sem.timed_wait(1))
+	sem.destroy()
+}
+
+fn portable_diagserver() {
+	mut request := diagserver.serve()
+	if request.diagnose_in_grandchild() {
+		return
+	}
+}
+
+fn portable_clock() {
+	println(time.sys_mono_now())
+	println(time.now())
+	println(time.utc())
+}
+
+fn portable_cmdexec_poll() {
+	println(cmdexec.run('true', []string{}).exit_code)
+}
+
+fn main() {
+	assert rand.bytes(1)!.len == 1
+	portable_semaphore()
+	portable_diagserver()
+	portable_clock()
+	portable_cmdexec_poll()
+}
+")
+	// Require each fixture's own call sites even when a sibling also uses a dependency.
+	for name, calls in {
+		'portable_semaphore':    ['sync__new_semaphore()', 'sync__Semaphore__post(',
+			'sync__Semaphore__wait(', 'sync__Semaphore__try_wait(', 'sync__Semaphore__timed_wait(',
+			'sync__Semaphore__destroy(']
+		'portable_diagserver':   ['diagserver__serve()', 'diagserver__Request__diagnose_in_grandchild(']
+		'portable_clock':        ['time__sys_mono_now()', 'time__now()', 'time__utc()']
+		'portable_cmdexec_poll': ['cmdexec__run(']
+	} {
+		body := function_body(c_code, 'void ${name}(void) {')
+		for call in calls {
+			assert body.contains(call), '${name}: missing ${call}'
+		}
+	}
+	entry := function_body(c_code, 'int main(int argc, char** argv) {')
+	assert entry.contains('crypto__rand__bytes(1)'), entry
+
+	assert_portable_semaphore_guards(c_code)
+	assert_portable_entropy_guards(c_code)
+	assert_portable_diagserver_guards(c_code)
+	assert_portable_apple_clock(c_code)
+	assert_portable_poll_header(c_code)
+}
+
+fn assert_portable_semaphore_guards(c_code string) {
 	// A snapshot generated on Linux is compiled on macOS to bootstrap v1, and the
 	// `sync` file it bakes in is the POSIX one. Apple has no `sem_timedwait` symbol
 	// at all, and the rest of its unnamed POSIX semaphore API is a stub: `sem_init`
@@ -313,7 +399,6 @@ fn test_cross_output_keeps_the_posix_semaphore_off_apple() {
 	// each of these calls has to stay behind a guard that is false on Apple, or the
 	// snapshot either fails to compile there, or panics with `Bad file descriptor`
 	// on the first semaphore it waits on.
-	c_code := cross_generate_with('-cross -os linux', 'semaphore', 'module main\n\nimport sync\n\nfn main() {\n\tmut sem := sync.new_semaphore()\n\tsem.post()\n\tsem.wait()\n\tprintln(sem.try_wait())\n\tprintln(sem.timed_wait(1))\n\tsem.destroy()\n}\n')
 	for call in ['sem_init(', 'sem_post(', 'sem_wait(', 'sem_trywait(', 'sem_timedwait(', 'sem_destroy('] {
 		assert c_code.contains(call), '`${call}` is missing from the snapshot'
 		mut searched := c_code
@@ -331,12 +416,11 @@ fn test_cross_output_keeps_the_posix_semaphore_off_apple() {
 	}
 }
 
-fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_where_unavailable() {
+fn assert_portable_entropy_guards(c_code string) {
 	// The portable snapshot is generated on Linux, so it bakes in rand_linux.c.v.
 	// It is then compiled on macOS or OpenBSD to bootstrap v1, where SYS_getrandom
 	// does not exist. Keep both implementations in the snapshot and let the target
 	// C preprocessor select getentropy on those hosts.
-	c_code := cross_generate_with('-cross -os linux', 'crypto_rand', 'module main\n\nimport crypto.rand\n\nfn main() {\n\tassert rand.bytes(1)!.len == 1\n}\n')
 	body := function_body(c_code, '__v_int internal__getrandom(__v_int bytes_needed, void* buffer) {')
 	getentropy_at := body.index('getentropy(') or {
 		assert false, 'the Apple entropy implementation is missing from the snapshot: ${body}'
@@ -365,12 +449,11 @@ fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_where_unavaila
 	assert !c_code.contains('static inline long v_crypto_getrandom(void* buf, size_t n) {')
 }
 
-fn test_cross_output_keeps_the_linux_calls_of_the_diagnostics_server_behind_linux_guards() {
-	// The snapshot bakes in diagserver_linux.c.v too, and is compiled on macOS,
+fn assert_portable_diagserver_guards(c_code string) {
+	// The snapshot bakes in diagserver_nix.c.v too, and is compiled on macOS,
 	// which has neither memfd_create nor prctl. Each of these calls has to stay
 	// behind a guard that holds on Linux alone, or the snapshot does not compile
 	// there.
-	c_code := cross_generate_with('-cross -os linux', 'diagserver', 'module main\n\nimport v.diagserver\n\nfn main() {\n\tmut request := diagserver.serve()\n\tif request.diagnose_in_grandchild() {\n\t\treturn\n\t}\n}\n')
 	for call in ['SYS_memfd_create', 'prctl('] {
 		assert c_code.contains(call), '`${call}` is missing from the snapshot'
 		mut from := 0
@@ -384,14 +467,13 @@ fn test_cross_output_keeps_the_linux_calls_of_the_diagnostics_server_behind_linu
 	}
 }
 
-fn test_cross_output_keeps_a_working_clock_on_apple() {
+fn assert_portable_apple_clock(c_code string) {
 	// `time` splits per platform too, so a snapshot generated on Linux bakes the
 	// stand-ins from time_linux.c.v, while the preprocessor still takes the
 	// `__APPLE__` branch of the shared code when it is compiled on macOS. Those
 	// stand-ins used to return zero, which left the bootstrapped compiler with a
 	// clock that never advanced: `v` divided by its own elapsed parse time and
 	// died with `division by zero`. They have to answer with real POSIX time.
-	c_code := cross_generate_with('-cross -os linux', 'clock', 'module main\n\nimport time\n\nfn main() {\n\tprintln(time.sys_mono_now())\n\tprintln(time.now())\n\tprintln(time.utc())\n}\n')
 	mono := function_body(c_code, 'u64 time__sys_mono_now_darwin(void) {')
 	assert mono.contains('clock_gettime'), 'the snapshot cannot read a monotonic clock on Apple: ${mono}'
 	now := function_body(c_code, 'time__Time time__darwin_now(void) {')
@@ -400,13 +482,12 @@ fn test_cross_output_keeps_a_working_clock_on_apple() {
 	assert utc.contains('time__linux_utc()'), 'the snapshot cannot read UTC on Apple: ${utc}'
 }
 
-fn test_cross_output_lets_the_target_libc_pick_the_poll_header() {
+fn assert_portable_poll_header(c_code string) {
 	// The portable snapshot is generated on glibc Linux and later compiled on musl
 	// too. musl warns about <sys/poll.h>, which fails consumers building with
 	// `-Werror`, while the linuxroot sysroot ships only <sys/poll.h>. A `$if musl ?`
 	// check is folded for the generating host, so the target C preprocessor has to
 	// pick the header from the libc it actually compiles against.
-	c_code := cross_generate_with('-cross -os linux', 'cmdexec_poll', "module main\n\nimport v.cmdexec\n\nfn main() {\n\tprintln(cmdexec.run('true', []string{}).exit_code)\n}\n")
 	// @VMODROOT expands to a native root (with backslashes on Windows), while
 	// the remaining path in the V source uses forward slashes. Check that exact
 	// emitted path rather than changing how the source directive is spelled.
@@ -424,20 +505,6 @@ fn test_glibc_hello_world_declares_the_array_constructors_it_calls() {
 			assert c_code.contains('\narray ${ctor}('), '`${ctor}` is called but never declared'
 		}
 	}
-}
-
-fn test_cross_windows_output_guards_the_msvc_only_headers() {
-	// `vc/v_win.c` is generated with `-cross -os windows -cc msvc` and then built
-	// by makev.bat with the bundled TinyCC, which ships neither <intrin.h> nor
-	// <dbghelp.h> on Windows. Deciding that at generation time baked both into
-	// every Windows snapshot, so the bootstrap died on
-	// `include file 'intrin.h' not found` before compiling a line of V. The
-	// snapshot is compiled by a different C compiler than the one it was generated
-	// for, so the choice belongs to the C preprocessor. See #29146.
-	c_code := cross_generate_with('-cross -os windows -cc msvc', 'msvc_headers',
-		"module main\n\nfn main() {\n\tprintln('ok')\n}\n")
-	guard_error := msvc_only_header_guard_error(c_code)
-	assert guard_error == '', guard_error
 }
 
 // msvc_only_header_guard_error checks every include, accepting only explicit positive
@@ -496,7 +563,7 @@ fn test_msvc_only_header_guard_assertion_accepts_active_positive_branches() {
 	}
 }
 
-fn test_cross_windows_output_includes_the_same_headers_for_every_c_compiler() {
+fn test_cross_windows_snapshot_is_c_compiler_independent() {
 	// A snapshot's header set is a promise about the C compiler that will compile
 	// it, and that compiler is picked at build time, not generation time: the same
 	// `vc/v_win.c` gets built by tcc, clang and gcc (makev.bat), and the bundled
@@ -505,8 +572,19 @@ fn test_cross_windows_output_includes_the_same_headers_for_every_c_compiler() {
 	// `if g.ccompiler == 'msvc'` made the msvc spelling the only buildable one.
 	mut reference := []string{}
 	for ccompiler in ['msvc', 'gcc', 'clang', 'tcc'] {
-		c_code := cross_generate_with('-cross -os windows -cc ${ccompiler}', 'headers_${ccompiler}',
-			'module main\n\nimport crypto.rand\n\nfn main() {\n\tmut buffer := []u8{len: 1}\n\tcrypto.rand.read(mut buffer) or {}\n}\n')
+		// Generate one cache-free snapshot per C compiler for the headers and literals.
+		c_code := cross_generate_with('-nocache -cross -os windows -cc ${ccompiler}', 'windows_snapshot_${ccompiler}', 'module main
+
+import crypto.rand
+
+fn message() string { return "snapshot literal" }
+
+fn main() {
+	mut buffer := []u8{len: 1}
+	crypto.rand.read(mut buffer) or {}
+	println(message())
+}
+')
 		windows_index := c_code.index('#include <windows.h>') or {
 			assert false, '-cc ${ccompiler}: the Windows base header is missing'
 			return
@@ -518,6 +596,13 @@ fn test_cross_windows_output_includes_the_same_headers_for_every_c_compiler() {
 		assert windows_index < bcrypt_index, '-cc ${ccompiler}: ${c_code.all_before('typedef signed char i8;')}'
 		guard_error := msvc_only_header_guard_error(c_code)
 		assert guard_error == '', '-cc ${ccompiler}: ${guard_error}'
+		assert c_code.contains('#define _SL(id, s, n) static const string id = {(u8*)s, n, 1}')
+		definitions := c_code.split_into_lines().filter(it.starts_with('_SL(_str_'))
+		assert definitions.len > 0, '-cc ${ccompiler}: missing literal table'
+		assert definitions.any(it.ends_with(', "snapshot literal", 16);')), '-cc ${ccompiler}: missing snapshot literal'
+		for definition in definitions {
+			assert !definition.contains(' = _S('), '-cc ${ccompiler}: ${definition}'
+		}
 		includes := c_code.split_into_lines().filter(it.trim_space().starts_with('#include'))
 			.map(it.trim_space())
 		if reference.len == 0 {
@@ -527,23 +612,6 @@ fn test_cross_windows_output_includes_the_same_headers_for_every_c_compiler() {
 		only_here := includes.filter(it !in reference)
 		only_there := reference.filter(it !in includes)
 		assert only_here.len == 0 && only_there.len == 0, '-cc ${ccompiler} emits ${only_here} but the msvc spelling emits ${only_there} instead'
-	}
-}
-
-fn test_cross_windows_literal_initializers_are_c_compiler_independent() {
-	for ccompiler in ['msvc', 'gcc', 'clang', 'tcc'] {
-		code := cross_generate_with('-nocache -cross -os windows -cc ${ccompiler}',
-			'literals_${ccompiler}', 'module main
-fn message() string { return "snapshot literal" }
-fn main() { println(message()) }
-')
-		assert code.contains('#define _SL(id, s, n) static const string id = {(u8*)s, n, 1}')
-		definitions := code.split_into_lines().filter(it.starts_with('_SL(_str_'))
-		assert definitions.len > 0, '-cc ${ccompiler}: missing literal table'
-		assert definitions.any(it.ends_with(', "snapshot literal", 16);')), '-cc ${ccompiler}: missing snapshot literal'
-		for definition in definitions {
-			assert !definition.contains(' = _S('), '-cc ${ccompiler}: ${definition}'
-		}
 	}
 }
 

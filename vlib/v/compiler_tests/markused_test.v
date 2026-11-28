@@ -1,18 +1,24 @@
 import os
 import strings
+import v.cmdexec
 import v.flat
 import v.gen.c as cgen
 import v.markused
 import v.parser
 import v.pref
+import v.tempname
 import v.transform
 import v.types
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
+const markused_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_markused_fixtures_${tempname.unique_token()}')
+
+fn testsuite_begin() {
+	os.mkdir_all(markused_fixture_dir) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(markused_fixture_dir) or {}
+}
 
 // parse_checked_source reads parse checked source input for v3 tests.
 fn parse_checked_source(name string, source string) (&flat.FlatAst, &types.TypeChecker) {
@@ -20,7 +26,7 @@ fn parse_checked_source(name string, source string) (&flat.FlatAst, &types.TypeC
 }
 
 fn parse_checked_source_with_unknown_calls(name string, source string, diagnose_unknown_calls bool) (&flat.FlatAst, &types.TypeChecker) {
-	src := os.join_path(os.temp_dir(), 'v3_markused_${name}.v')
+	src := os.join_path(markused_fixture_dir, 'v3_markused_${name}.v')
 	os.write_file(src, source) or { panic(err) }
 	prefs := pref.new_preferences()
 	mut p := parser.Parser.new(prefs)
@@ -41,7 +47,7 @@ fn parse_checked_source_with_unknown_calls(name string, source string, diagnose_
 }
 
 fn parse_checked_project(name string, files map[string]string, main_file string) (&flat.FlatAst, &types.TypeChecker) {
-	root := os.join_path(os.temp_dir(), 'v3_markused_${name}')
+	root := os.join_path(markused_fixture_dir, 'v3_markused_${name}')
 	os.rmdir_all(root) or {}
 	for rel, source in files {
 		path := os.join_path(root, rel)
@@ -79,7 +85,7 @@ fn parse_checked_project(name string, files map[string]string, main_file string)
 }
 
 fn parse_checked_project_in_order(name string, rels []string, sources []string) (&flat.FlatAst, &types.TypeChecker) {
-	root := os.join_path(os.temp_dir(), 'v3_markused_${name}')
+	root := os.join_path(markused_fixture_dir, 'v3_markused_${name}')
 	os.rmdir_all(root) or {}
 	mut paths := []string{}
 	for i, rel in rels {
@@ -367,14 +373,10 @@ fn main() {
 	assert uses_generics
 }
 
-// build_v3_bin builds v3 bin data for v3 tests.
-fn build_v3_bin(name string) string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_${name}')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn run_markused_compiler(args []string) os.Result {
+	return cmdexec.run_in_merged_with_env(@VEXE, args, '', {
+		'VFLAGS': ''
+	})
 }
 
 // test_map_literals_seed_new_map_runtime_helper validates this v3 regression case.
@@ -409,7 +411,7 @@ fn main() {
 // test_prepared_markused_scans_runtime_helpers_after_semantic_check validates
 // that declaration preparation never captures incomplete semantic results.
 fn test_prepared_markused_scans_runtime_helpers_after_semantic_check() {
-	src := os.join_path(os.temp_dir(), 'v3_markused_prepared_runtime_helpers.v')
+	src := os.join_path(markused_fixture_dir, 'v3_markused_prepared_runtime_helpers.v')
 	os.write_file(src, '
 fn maybe_map() ?map[string]int {
 	return none
@@ -439,7 +441,7 @@ fn main() {
 }
 
 fn test_prepared_markused_combines_exact_and_lowered_dependencies() {
-	src := os.join_path(os.temp_dir(), 'v3_markused_prepared_exact_edges.v')
+	src := os.join_path(markused_fixture_dir, 'v3_markused_prepared_exact_edges.v')
 	os.write_file(src, '
 fn direct_target() {}
 fn callback_target() {}
@@ -574,13 +576,11 @@ fn main() {
 }
 
 fn test_nested_dynamic_array_drops_unresolved_default_call() {
-	v3_bin := build_v3_bin('nested_dynamic_array_default_${os.getpid()}')
-	source := os.join_path(os.temp_dir(), 'v3_markused_nested_dynamic_default_${os.getpid()}.c.v')
-	bin := os.join_path(os.temp_dir(), 'v3_markused_nested_dynamic_default_${os.getpid()}')
+	source := os.join_path(markused_fixture_dir, 'v3_markused_nested_dynamic_default_${os.getpid()}.c.v')
+	bin := os.join_path(markused_fixture_dir, 'v3_markused_nested_dynamic_default_${os.getpid()}')
 	defer {
 		os.rm(source) or {}
 		os.rm(bin) or {}
-		os.rm(v3_bin) or {}
 	}
 	os.write_file(source, '
 fn C.v3_markused_missing_default_symbol() int
@@ -600,7 +600,7 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-	compiled := os.exec([v3_bin, '-o', bin, source])
+	compiled := run_markused_compiler(['-o', bin, source])
 	assert compiled.exit_code == 0, compiled.output
 	ran := os.exec([bin])
 	assert ran.exit_code == 0, ran.output
@@ -622,7 +622,7 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-	defaults_compiled := os.exec([v3_bin, '-o', bin, source])
+	defaults_compiled := run_markused_compiler(['-o', bin, source])
 	assert defaults_compiled.exit_code == 0, defaults_compiled.output
 	defaults_ran := os.exec([bin])
 	assert defaults_ran.exit_code == 0, defaults_ran.output
@@ -868,41 +868,71 @@ pub fn make() int { return 9 }
 	}
 }
 
+fn run_markused_default_batch(name string, declarations string, binding string, cases map[string]string) {
+	root := os.join_path(markused_fixture_dir, name)
+	defer { os.rmdir_all(root) or {} }
+	literals := cases.keys()
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for i, literal in literals {
+		module_name := 'fixture_${i}'
+		dir := os.join_path(root, module_name)
+		os.mkdir_all(dir) or { panic(err) }
+		imports << 'import ${module_name}'
+		calls << "\t\t'${i}' { ${module_name}.exercise() }"
+		program := 'module ${module_name}\n\n${declarations}pub fn exercise() {\n\t${binding} := ${literal}\n\tassert ${cases[literal]} == 7\n\tprintln("ok ${i}")\n}\n'
+		os.write_file(os.join_path(dir, 'case.v'), program) or { panic(err) }
+	}
+	os.write_file(os.join_path(root, 'main.v'), "module main\n\n${imports.join('\n')}\n\nfn main() {\n\tmatch arguments()[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n") or {
+		panic(err)
+	}
+	bin := os.join_path(root, 'prog')
+	compiled := run_markused_compiler(['-gc', 'none', '-o', bin, root])
+	assert compiled.exit_code == 0, compiled.output
+	for i, literal in literals {
+		ran := os.exec([bin, i.str()])
+		assert ran.exit_code == 0, '${literal}: ${ran.output}'
+		assert ran.output.trim_space() == 'ok ${i}', '${literal}: ${ran.output}'
+	}
+}
+
 fn test_generic_omitted_field_defaults_compile_and_run() {
-	v3_bin := build_v3_bin('generic_omitted_defaults_${os.getpid()}')
-	source := os.join_path(os.temp_dir(), 'v3_markused_generic_defaults_${os.getpid()}.c.v')
-	bin := os.join_path(os.temp_dir(), 'v3_markused_generic_defaults_run_${os.getpid()}')
+	source := os.join_path(markused_fixture_dir, 'v3_markused_generic_defaults_${os.getpid()}.c.v')
+	bin := os.join_path(markused_fixture_dir, 'v3_markused_generic_defaults_run_${os.getpid()}')
 	defer {
 		os.rm(source) or {}
 		os.rm(bin) or {}
-		os.rm(v3_bin) or {}
 	}
-	cases := {
-		'Outer[Inner]{}':                   'value.inner.value'
-		'Outer[Outer[Inner]]{}':            'value.inner.inner.value'
-		'[]Outer[Inner]{len: 1}':           'value[0].inner.value'
-		'ExplicitWrapper[Inner]{}':         'value.outer.inner.value'
-		'[]ExplicitWrapper[Inner]{len: 1}': 'value[0].outer.inner.value'
-		'OuterAlias{}':                     'value.inner.value'
-		'[]OuterAlias{len: 1}':             'value[0].inner.value'
-		'Outer[InnerAlias]{}':              'value.inner.value'
-		'Outer[[2]Inner]{}':                'value.inner[1].value'
-	}
-	for literal, element in cases {
-		os.write_file(source, '
+	declarations := '
 fn default_value() int { return 7 }
 struct Inner { value int = default_value() }
 type InnerAlias = Inner
 struct Outer[T] { inner T }
 struct ExplicitWrapper[T] { outer Outer[T] = Outer[T]{} }
 type OuterAlias = Outer[Inner]
-fn main() {
+'
+	run_markused_default_batch('generic_default_batch', declarations, 'value', {
+		'Outer[Inner]{}':         'value.inner.value'
+		'Outer[Outer[Inner]]{}':  'value.inner.inner.value'
+		'[]Outer[Inner]{len: 1}': 'value[0].inner.value'
+		'OuterAlias{}':           'value.inner.value'
+		'[]OuterAlias{len: 1}':   'value[0].inner.value'
+		'Outer[InnerAlias]{}':    'value.inner.value'
+		'Outer[[2]Inner]{}':      'value.inner[1].value'
+	})
+	// Exercise explicit generic field defaults in main.
+	cases := {
+		'ExplicitWrapper[Inner]{}':         'value.outer.inner.value'
+		'[]ExplicitWrapper[Inner]{len: 1}': 'value[0].outer.inner.value'
+	}
+	for literal, element in cases {
+		os.write_file(source, declarations + 'fn main() {
 	value := ${literal}
 	assert ${element} == 7
 	println("ok")
 }
 ') or { panic(err) }
-		compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
+		compiled := run_markused_compiler(['-gc', 'none', '-o', bin, source])
 		assert compiled.exit_code == 0, '${literal}: ${compiled.output}'
 		ran := os.exec([bin])
 		assert ran.exit_code == 0, ran.output
@@ -928,7 +958,7 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-	compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
+	compiled := run_markused_compiler(['-gc', 'none', '-o', bin, source])
 	assert compiled.exit_code == 0, compiled.output
 	ran := os.exec([bin])
 	assert ran.exit_code == 0, ran.output
@@ -936,13 +966,11 @@ fn main() {
 }
 
 fn test_imported_generic_omitted_defaults_compile_and_run() {
-	v3_bin := build_v3_bin('imported_generic_omitted_defaults_${os.getpid()}')
-	root := os.join_path(os.temp_dir(), 'v3_markused_imported_generic_defaults_${os.getpid()}')
+	root := os.join_path(markused_fixture_dir, 'v3_markused_imported_generic_defaults_${os.getpid()}')
 	bin := root + '_run'
 	defer {
 		os.rmdir_all(root) or {}
 		os.rm(bin) or {}
-		os.rm(v3_bin) or {}
 	}
 	os.mkdir_all(os.join_path(root, 'worker')) or { panic(err) }
 	os.mkdir_all(os.join_path(root, 'leaf')) or { panic(err) }
@@ -981,7 +1009,7 @@ pub struct Mixed[T] { pub: inner T local Inner }
 module leaf
 pub fn make() int { return 9 }
 ') or { panic(err) }
-	compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, root])
+	compiled := run_markused_compiler(['-gc', 'none', '-o', bin, root])
 	assert compiled.exit_code == 0, compiled.output
 	ran := os.exec([bin])
 	assert ran.exit_code == 0, ran.output
@@ -1068,13 +1096,11 @@ fn make() int { return 9 }
 }
 
 fn test_array_initializers_link_without_unused_defaults() {
-	v3_bin := build_v3_bin('unused_array_defaults_${os.getpid()}')
-	source := os.join_path(os.temp_dir(), 'v3_markused_unused_array_defaults_${os.getpid()}.c.v')
-	bin := os.join_path(os.temp_dir(), 'v3_markused_unused_array_defaults_run_${os.getpid()}')
+	source := os.join_path(markused_fixture_dir, 'v3_markused_unused_array_defaults_${os.getpid()}.c.v')
+	bin := os.join_path(markused_fixture_dir, 'v3_markused_unused_array_defaults_run_${os.getpid()}')
 	defer {
 		os.rm(source) or {}
 		os.rm(bin) or {}
-		os.rm(v3_bin) or {}
 	}
 	os.write_file(source, '
 fn C.v3_markused_unused_array_default_symbol() int
@@ -1109,7 +1135,7 @@ fn main() {
 	println("ok")
 }
 ') or { panic(err) }
-	compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
+	compiled := run_markused_compiler(['-gc', 'none', '-o', bin, source])
 	assert compiled.exit_code == 0, compiled.output
 	ran := os.exec([bin])
 	assert ran.exit_code == 0, ran.output
@@ -1117,27 +1143,7 @@ fn main() {
 }
 
 fn test_alias_value_defaults_compile_and_run() {
-	v3_bin := build_v3_bin('alias_array_defaults_${os.getpid()}')
-	source := os.join_path(os.temp_dir(), 'v3_markused_alias_array_defaults_${os.getpid()}.v')
-	bin := os.join_path(os.temp_dir(), 'v3_markused_alias_array_defaults_run_${os.getpid()}')
-	defer {
-		os.rm(source) or {}
-		os.rm(bin) or {}
-		os.rm(v3_bin) or {}
-	}
-	cases := {
-		'FixedAlias{}':           'values[1].value'
-		'Rows{len: 1}':           'values[0].value'
-		'[]Alias{len: 1}':        'values[0].value'
-		'[2]Alias{}':             'values[1].value'
-		'[][2]Alias{len: 1}':     'values[0][1].value'
-		'Wrapper{}':              'values.box.value'
-		'FixedWrapper{}':         'values.boxes[1].value'
-		'[]FixedAlias{len: 1}':   'values[0][1].value'
-		'[]GenericAlias{len: 1}': 'values[0].value'
-	}
-	for literal, element in cases {
-		os.write_file(source, '
+	declarations := '
 fn default_value() int { return 7 }
 struct Box { value int = default_value() }
 type FirstAlias = Box
@@ -1148,18 +1154,18 @@ type Rows = []Box
 struct FixedWrapper { boxes FixedAlias }
 struct GenericBox[T] { value int = default_value() item T }
 type GenericAlias = GenericBox[int]
-fn main() {
-	values := ${literal}
-	assert ${element} == 7
-	println("ok")
-}
-') or { panic(err) }
-		compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
-		assert compiled.exit_code == 0, '${literal}: ${compiled.output}'
-		ran := os.exec([bin])
-		assert ran.exit_code == 0, ran.output
-		assert ran.output.trim_space() == 'ok', ran.output
-	}
+'
+	run_markused_default_batch('alias_default_batch', declarations, 'values', {
+		'FixedAlias{}':           'values[1].value'
+		'[2]Alias{}':             'values[1].value'
+		'[][2]Alias{len: 1}':     'values[0][1].value'
+		'FixedWrapper{}':         'values.boxes[1].value'
+		'[]FixedAlias{len: 1}':   'values[0][1].value'
+		'Rows{len: 1}':           'values[0].value'
+		'[]Alias{len: 1}':        'values[0].value'
+		'Wrapper{}':              'values.box.value'
+		'[]GenericAlias{len: 1}': 'values[0].value'
+	})
 }
 
 // test_string_interpolation_seeds_string_plus_and_formatter_helpers
@@ -2100,10 +2106,8 @@ fn test_top_level_fn_value_roots_helper() {
 }
 
 fn test_top_level_fn_value_compile_keeps_helper() {
-	v3_bin := build_v3_bin('top_level_fn_value_test')
-
-	src := os.join_path(os.temp_dir(), 'v3_markused_top_level_fn_value_input.v')
-	bin := os.join_path(os.temp_dir(), 'v3_markused_top_level_fn_value_input')
+	src := os.join_path(markused_fixture_dir, 'v3_markused_top_level_fn_value_input.v')
+	bin := os.join_path(markused_fixture_dir, 'v3_markused_top_level_fn_value_input')
 	os.write_file(src, '
 fn helper() int {
 	return 41
@@ -2114,7 +2118,7 @@ println(f() + 1)
 ') or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, '-b', 'c', '-o', bin, '${src}'])
+	compile := run_markused_compiler(['-b', 'c', '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -2586,10 +2590,8 @@ fn main() {
 
 // test_map_literal_compile_keeps_new_map_runtime_helper validates this v3 regression case.
 fn test_map_literal_compile_keeps_new_map_runtime_helper() {
-	v3_bin := build_v3_bin('map_literal_test')
-
-	src := os.join_path(os.temp_dir(), 'v3_markused_map_literal_input.v')
-	bin := os.join_path(os.temp_dir(), 'v3_markused_map_literal_input')
+	src := os.join_path(markused_fixture_dir, 'v3_markused_map_literal_input.v')
+	bin := os.join_path(markused_fixture_dir, 'v3_markused_map_literal_input')
 	os.write_file(src, '
 fn make_map() map[string]int {
 	return map[string]int{}
@@ -2601,16 +2603,14 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, '-o', bin, '${src}'])
+	compile := run_markused_compiler(['-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
 // test_optional_map_or_compile_keeps_new_map_runtime_helper validates this v3 regression case.
 fn test_optional_map_or_compile_keeps_new_map_runtime_helper() {
-	v3_bin := build_v3_bin('option_map_or_test')
-
-	src := os.join_path(os.temp_dir(), 'v3_markused_option_map_or_input.v')
-	bin := os.join_path(os.temp_dir(), 'v3_markused_option_map_or_input')
+	src := os.join_path(markused_fixture_dir, 'v3_markused_option_map_or_input.v')
+	bin := os.join_path(markused_fixture_dir, 'v3_markused_option_map_or_input')
 	os.write_file(src, '
 fn maybe_map() ?map[string]int {
 	return none
@@ -2623,16 +2623,14 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, '-o', bin, '${src}'])
+	compile := run_markused_compiler(['-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
 // test_return_local_address_compile_keeps_memdup_runtime_helper validates this v3 regression case.
 fn test_return_local_address_compile_keeps_memdup_runtime_helper() {
-	v3_bin := build_v3_bin('return_local_address_test')
-
-	src := os.join_path(os.temp_dir(), 'v3_markused_return_local_address_input.v')
-	bin := os.join_path(os.temp_dir(), 'v3_markused_return_local_address_input')
+	src := os.join_path(markused_fixture_dir, 'v3_markused_return_local_address_input.v')
+	bin := os.join_path(markused_fixture_dir, 'v3_markused_return_local_address_input')
 	os.write_file(src, '
 struct Box {
 	x int
@@ -2651,31 +2649,27 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, '-o', bin, '${src}'])
+	compile := run_markused_compiler(['-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
 // test_print_bool_compile_keeps_formatter_runtime_helper validates this v3 regression case.
 fn test_print_bool_compile_keeps_formatter_runtime_helper() {
-	v3_bin := build_v3_bin('print_bool_test')
-
-	src := os.join_path(os.temp_dir(), 'v3_markused_print_bool_input.v')
-	bin := os.join_path(os.temp_dir(), 'v3_markused_print_bool_input')
+	src := os.join_path(markused_fixture_dir, 'v3_markused_print_bool_input.v')
+	bin := os.join_path(markused_fixture_dir, 'v3_markused_print_bool_input')
 	os.write_file(src, '
 fn main() {
 	println(true)
 }
 ') or { panic(err) }
-	compile := os.exec([v3_bin, '-o', bin, '${src}'])
+	compile := run_markused_compiler(['-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
 // test_print_signed_width_compile_keeps_str_runtime_helpers validates this v3 regression case.
 fn test_print_signed_width_compile_keeps_str_runtime_helpers() {
-	v3_bin := build_v3_bin('print_signed_width_test')
-
-	src := os.join_path(os.temp_dir(), 'v3_markused_print_signed_width_input.v')
-	bin := os.join_path(os.temp_dir(), 'v3_markused_print_signed_width_input')
+	src := os.join_path(markused_fixture_dir, 'v3_markused_print_signed_width_input.v')
+	bin := os.join_path(markused_fixture_dir, 'v3_markused_print_signed_width_input')
 	os.write_file(src, "
 fn main() {
 	println(i8(-5))
@@ -2687,7 +2681,7 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, '-o', bin, '${src}'])
+	compile := run_markused_compiler(['-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('implicit declaration'), compile.output
 	run := os.exec([bin])
@@ -2697,10 +2691,8 @@ fn main() {
 
 // test_string_plus_compile_keeps_plus_runtime_helper validates this v3 regression case.
 fn test_string_plus_compile_keeps_plus_runtime_helper() {
-	v3_bin := build_v3_bin('string_plus_test')
-
-	src := os.join_path(os.temp_dir(), 'v3_markused_string_plus_input.v')
-	bin := os.join_path(os.temp_dir(), 'v3_markused_string_plus_input')
+	src := os.join_path(markused_fixture_dir, 'v3_markused_string_plus_input.v')
+	bin := os.join_path(markused_fixture_dir, 'v3_markused_string_plus_input')
 	os.write_file(src, '
 fn main() {
 	flag := true
@@ -2711,6 +2703,6 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.exec([v3_bin, '-o', bin, '${src}'])
+	compile := run_markused_compiler(['-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }

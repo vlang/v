@@ -2,47 +2,9 @@ import os
 
 fn test_orm_inline_insert_requires_a_variable() {
 	root := os.join_path(os.vtmp_dir(), 'orm_inline_insert_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, "import db.sqlite
-struct Product {
-	id int @[primary; sql: serial]
-	name string
-}
-fn main() {
-	mut db := sqlite.connect(':memory:')!
-	sql db { create table Product }!
-	sql db { insert Product{name: 'b'} into Product }!
-}
-")!
-	for mode in ['', '-no-parallel'] {
-		for check_mode in ['-check', '-o'] {
-			mut args := [@VEXE, '-new-compiler', '-nocache']
-			if mode != '' {
-				args << mode
-			}
-			args << check_mode
-			if check_mode == '-o' {
-				args << os.join_path(root, 'main.c')
-			}
-			args << source
-			result := os.exec(args)
-			assert result.exit_code != 0, result.output
-			assert result.output.contains('ORM insert requires a variable'), result.output
-		}
-	}
-	variable_source := os.read_file(source)!
-	os.write_file(source, variable_source.replace("sql db { insert Product{name: 'b'} into Product }!", "product := Product{name: 'b'}\n\tsql db { insert product into Product }!\n\trows := sql db { select from Product }!\n\tassert rows.len == 1\n\tassert rows[0].name == 'b'"))!
-	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-gc', 'none', 'run', source])
-	assert result.exit_code == 0, result.output
-}
-
-fn test_orm_inline_insert_with_a_module_named_into_requires_a_variable() {
-	root := os.join_path(os.vtmp_dir(), 'orm_inline_imported_insert_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'into'))!
 	defer { os.rmdir_all(root) or {} }
-	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'orm_inline_imported_insert' }\n")!
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'orm_inline_insert' }\n")!
 	os.write_file(os.join_path(root, 'into', 'product.v'), 'module into
 pub struct Product {
  pub:
@@ -50,33 +12,67 @@ pub struct Product {
  name string
 }
 ')!
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, "import db.sqlite
-import into
+	os.write_file(os.join_path(root, 'main.v'), 'import imported_case
+
 fn main() {
- mut db := sqlite.connect(':memory:')!
- sql db { create table into.Product }!
- sql db { insert into.Product{name: 'b'} into into.Product }!
+	insert_local()!
+	imported_case.insert_imported()!
 }
-")!
-	for mode in ['', '-no-parallel'] {
-		for check_mode in ['-check', '-o'] {
-			mut args := [@VEXE, '-new-compiler', '-nocache']
-			if mode != '' {
-				args << mode
-			}
-			args << check_mode
-			if check_mode == '-o' {
-				args << os.join_path(root, 'main.c')
-			}
-			args << source
-			result := os.exec(args)
+')!
+	fixtures := {
+		'local_insert.v':                  "import db.sqlite
+struct Product {
+	id int @[primary; sql: serial]
+	name string
+}
+fn insert_local() ! {
+	mut db := sqlite.connect(':memory:')!
+	sql db { create table Product }!
+	sql db { insert Product{name: 'b'} into Product }!
+}
+"
+		'imported_case/imported_insert.v': "module imported_case
+
+import db.sqlite
+import into
+pub fn insert_imported() ! {
+	mut db := sqlite.connect(':memory:')!
+	sql db { create table into.Product }!
+	sql db { insert into.Product{name: 'b'} into into.Product }!
+}
+"
+	}
+	for name, source in fixtures {
+		path := os.join_path(root, name)
+		os.mkdir_all(os.dir(path))!
+		os.write_file(path, source)!
+	}
+
+	for mode in [[]string{}, ['-no-parallel']] {
+		for output in [['-check'], ['-o', os.join_path(root, 'main.c')]] {
+			result := os.exec([@VEXE, '-nocache', '-nocolor', ...mode, ...output, root])
 			assert result.exit_code != 0, result.output
-			assert result.output.contains('ORM insert requires a variable'), result.output
+			diagnostics := result.output.split_into_lines().filter(it.contains(': error: ORM insert requires a variable'))
+			for name, _ in fixtures {
+				filename := os.file_name(name)
+				assert diagnostics.any(it.contains('${filename}:')), '${name}, flags=${mode} ${output}: ${result.output}'
+			}
 		}
 	}
-	variable_source := os.read_file(source)!
-	os.write_file(source, variable_source.replace("sql db { insert into.Product{name: 'b'} into into.Product }!", "product := into.Product{name: 'b'}\n sql db { insert product into into.Product }!\n rows := sql db { select from into.Product }!\n assert rows.len == 1\n assert rows[0].name == 'b'"))!
-	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-gc', 'none', 'run', source])
+
+	for name, product_type in {
+		'local_insert.v':                  'Product'
+		'imported_case/imported_insert.v': 'into.Product'
+	} {
+		inline_insert := "sql db { insert ${product_type}{name: 'b'} into ${product_type} }!"
+		variable_insert := "product := ${product_type}{name: 'b'}
+	sql db { insert product into ${product_type} }!
+	rows := sql db { select from ${product_type} }!
+	assert rows.len == 1
+	assert rows[0].name == 'b'"
+		os.write_file(os.join_path(root, name), fixtures[name].replace_once(inline_insert,
+			variable_insert))!
+	}
+	result := os.exec([@VEXE, '-nocache', '-gc', 'none', 'run', root])
 	assert result.exit_code == 0, result.output
 }

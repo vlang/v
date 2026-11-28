@@ -1,18 +1,21 @@
 import os
+import v.cmdexec
+import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
+const review_cgen_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_review_cgen_${tempname.unique_token()}')
 
-fn build_v3_review_cgen() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_review_cgen_regressions_test')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn testsuite_begin() {
+	os.mkdir_all(review_cgen_fixture_dir) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(review_cgen_fixture_dir) or {}
+}
+
+fn review_cgen_compile(input string, output string) os.Result {
+	return cmdexec.run_in_merged_with_env(@VEXE, ['-nocache', input, '-b', 'c', '-o', output], '', {
+		'VFLAGS': ''
+	})
 }
 
 fn review_cgen_write_project_file(root string, rel string, src string) {
@@ -21,11 +24,11 @@ fn review_cgen_write_project_file(root string, rel string, src string) {
 	os.write_file(path, src) or { panic(err) }
 }
 
-fn review_cgen_run_good(v3_bin string, name string, src string) string {
-	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+fn review_cgen_run_good(name string, src string) string {
+	good_src := os.join_path(review_cgen_fixture_dir, 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
-	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.exec([v3_bin, '-nocache', '${good_src}', '-b', 'c', '-o', good_bin])
+	good_bin := os.join_path(review_cgen_fixture_dir, 'v3_${name}')
+	compile := review_cgen_compile(good_src, good_bin)
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
 	run := os.exec([good_bin])
@@ -33,8 +36,8 @@ fn review_cgen_run_good(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
-fn review_cgen_run_good_project(v3_bin string, name string, files map[string]string, input string) string {
-	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+fn review_cgen_run_good_project(name string, files map[string]string, input string) string {
+	root := os.join_path(review_cgen_fixture_dir, 'v3_${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
 	}
@@ -43,8 +46,8 @@ fn review_cgen_run_good_project(v3_bin string, name string, files map[string]str
 		review_cgen_write_project_file(root, rel, src)
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
-	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.exec([v3_bin, '-nocache', input_path, '-b', 'c', '-o', good_bin])
+	good_bin := os.join_path(review_cgen_fixture_dir, 'v3_${name}')
+	compile := review_cgen_compile(input_path, good_bin)
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
 	run := os.exec([good_bin])
@@ -52,8 +55,8 @@ fn review_cgen_run_good_project(v3_bin string, name string, files map[string]str
 	return run.output.trim_space()
 }
 
-fn review_cgen_run_bad_project(v3_bin string, name string, files map[string]string, input string, expected string) {
-	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+fn review_cgen_run_bad_project(name string, files map[string]string, input string, expected string) {
+	root := os.join_path(review_cgen_fixture_dir, 'v3_${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
 	}
@@ -62,16 +65,64 @@ fn review_cgen_run_bad_project(v3_bin string, name string, files map[string]stri
 		review_cgen_write_project_file(root, rel, src)
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
-	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	result := os.exec([v3_bin, '-nocache', input_path, '-b', 'c', '-o', bad_bin])
+	bad_bin := os.join_path(review_cgen_fixture_dir, 'v3_${name}')
+	result := review_cgen_compile(input_path, bad_bin)
 	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
 }
 
+struct ReviewCgenCase {
+	name     string
+	source   string
+	expected string
+}
+
+fn review_cgen_run_batch(name string, cases []ReviewCgenCase, files map[string]string) string {
+	root := os.join_path(review_cgen_fixture_dir, 'v3_${name}_project')
+	for rel, src in files {
+		review_cgen_write_project_file(root, rel, src)
+	}
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		imports << 'import ${module_name}'
+		calls << "\t\t'${case.name}' { ${module_name}.exercise() }"
+		source := if case.source.starts_with('module main\n') {
+			case.source.replace_once('module main\n', 'module ${module_name}\n')
+		} else {
+			'module ${module_name}\n\n' + case.source
+		}
+		review_cgen_write_project_file(root, '${module_name}/${case.name}.v', source.replace_once('\nfn main()', '\npub fn exercise()'))
+	}
+	review_cgen_write_project_file(root, 'main.v', "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n")
+	good_bin := os.join_path(review_cgen_fixture_dir, 'v3_${name}')
+	compile := review_cgen_compile(root, good_bin)
+	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
+	for case in cases {
+		run := os.exec([good_bin, case.name])
+		assert run.exit_code == 0, '${case.name}: run failed\n${run.output}'
+		out := run.output.trim_space()
+		assert out == case.expected, '${case.name}: expected `${case.expected}`, got `${out}`'
+	}
+	return good_bin
+}
+
+fn review_cgen_body(c_code string, signature string) string {
+	for line in c_code.split_into_lines() {
+		if line.starts_with(signature) && line.ends_with(' {') {
+			body := c_code.all_after(line + '\n')
+			end := body.index('\n}') or { panic('missing end of generated C function: ${signature}') }
+			return body[..end]
+		}
+	}
+	panic('missing generated C function: ${signature}')
+}
+
 fn test_power_consts_are_initialized_at_runtime() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'power_const_runtime_init', 'const byte_power = u8(2 ** 3)
+	out := review_cgen_run_good('power_const_runtime_init', 'const byte_power = u8(2 ** 3)
 const max_len = 2 ** 3
 const address_power = 3 ** 2
 const float_power = 9.0 ** 0.5
@@ -98,7 +149,7 @@ fn main() {
 }
 ')
 	assert out == '8\n8\n9\n3.0\n8\n4'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_power_const_runtime_init.c')) or {
+	c_code := os.read_file(os.join_path(review_cgen_fixture_dir, 'v3_power_const_runtime_init.c')) or {
 		panic(err)
 	}
 	assert c_code.contains('u8 main__byte_power;'), c_code
@@ -121,9 +172,9 @@ fn main() {
 	assert builtin_max_len_uses > 0, c_code
 }
 
-fn test_struct_const_with_sum_type_uses_portable_runtime_init() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'struct_const_sum_type_runtime_init', 'interface Value {}
+fn test_constant_storage_enum_powers_and_nested_arrays() {
+	good_bin := review_cgen_run_batch('constant_storage_enum_powers_and_nested_arrays', [
+		ReviewCgenCase{'struct_const_sum_type_runtime_init', 'interface Value {}
 
 struct Empty {}
 
@@ -138,472 +189,8 @@ const holder = Holder{
 fn main() {
 	println(holder.value is Empty)
 }
-')
-	assert out == 'true'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_struct_const_sum_type_runtime_init.c')) or {
-		panic(err)
-	}
-	assert c_code.contains('main__Holder main__holder;'), c_code
-	assert c_code.contains('main__holder = (main__Holder){'), c_code
-	assert c_code.contains('._object = (main__Empty*)(memdup('), c_code
-}
-
-fn test_int_literal_receiver_uses_int_literal_method() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'int_literal_receiver', 'fn main() {
-	println(255.hex_full())
-	println(4294967296.hex_full())
-}
-')
-	assert out == '00000000000000ff\n0000000100000000'
-}
-
-fn test_c_int_array_data_argument_uses_abi_buffer() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'c_int_array_data_abi', "#include <stdio.h>
-
-fn main() {
-	mut first := []int{len: 1}
-	mut second := []int{len: 1}
-	C.sscanf(c'4 2', c'%d %d', first.data, second.data)
-	println(int_str(first[0] + second[0]))
-}
-")
-	assert out == '6'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_c_int_array_data_abi.c')) or {
-		panic(err)
-	}
-	assert c_code.contains('int* _cabi_out_values_'), c_code
-	assert c_code.contains('free(_cabi_out_values_'), c_code
-}
-
-fn test_array_power_assign_uses_power_helper() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'array_power_assign', 'struct IntList {
-mut:
-	values []int
-}
-
-fn (list IntList) [] (index int) int {
-	return list.values[index]
-}
-
-fn (mut list IntList) []= (index int, value int) {
-	list.values[index] = value
-}
-
-struct Exponent {
-	value int
-}
-
-fn (a Exponent) ** (b Exponent) Exponent {
-	return Exponent{
-		value: a.value * 10 + b.value
-	}
-}
-
-struct ExponentList {
-mut:
-	values []Exponent
-}
-
-fn (list ExponentList) [] (index int) Exponent {
-	return list.values[index]
-}
-
-fn (mut list ExponentList) []= (index int, value Exponent) {
-	list.values[index] = value
-}
-
-fn main() {
-	mut values := [2, 3]
-	values[0] **= 3
-	println(int_str(values[0]))
-	mut direct := [Exponent{
-		value: 4
-	}]
-	direct[0] **= Exponent{
-		value: 5
-	}
-	println(int_str(direct[0].value))
-	mut list := IntList{
-		values: [3]
-	}
-	list[0] **= 2
-	println(int_str(list.values[0]))
-	mut exponents := ExponentList{
-		values: [Exponent{
-			value: 2
-		}]
-	}
-	exponents[0] **= Exponent{
-		value: 3
-	}
-	println(int_str(exponents.values[0].value))
-}
-')
-	assert out == '8\n45\n9\n23'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_array_power_assign.c')) or { panic(err) }
-	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('array__set(_a0,_i0,&(i64[]){((i64)__v_pow_i64('), c_code
-	assert compact.contains('array__set(_a1,_i1,&(main__Exponent[]){__v3_internal_symbol_op_Exponent__pow(*(main__Exponent*)array_get(*_a1,_i1),'), c_code
-	assert compact.contains('__v3_internal_symbol_op_IntList__op_index_set('), c_code
-	assert compact.contains('__v3_internal_symbol_op_ExponentList__op_index_set('), c_code
-	assert compact.contains('__v3_internal_symbol_op_Exponent__pow('), c_code
-	assert !c_code.contains(' ** '), c_code
-}
-
-fn test_struct_field_power_assign_uses_operator_overload() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'struct_field_power_assign', 'struct Exponent {
-	value int
-}
-
-fn (a Exponent) ** (b Exponent) Exponent {
-	return Exponent{
-		value: a.value * 10 + b.value
-	}
-}
-
-struct Box {
-mut:
-	value Exponent
-}
-
-fn main() {
-	mut box := Box{
-		value: Exponent{
-			value: 2
-		}
-	}
-	box.value **= Exponent{
-		value: 3
-	}
-	println(int_str(box.value.value))
-}
-')
-	assert out == '23'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_struct_field_power_assign.c')) or {
-		panic(err)
-	}
-	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('box.value=__v3_internal_symbol_op_Exponent__pow(box.value,(main__Exponent){.value=3});'), c_code
-}
-
-fn test_mut_parameter_power_assign_uses_scalar_type() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'mut_parameter_power_assign', 'struct Number {
-mut:
-	value int
-}
-
-fn square(mut number Number) {
-	number.value **= 2
-}
-
-fn main() {
-	mut number := Number{
-		value: 3
-	}
-	square(mut number)
-	println(int_str(number.value))
-}
-')
-	assert out == '9'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_mut_parameter_power_assign.c')) or {
-		panic(err)
-	}
-	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('__v_pow_i64('), c_code
-	assert !compact.contains('(i64*)__v_pow_i64('), c_code
-}
-
-fn test_addressed_inferred_array_const_keeps_dynamic_storage() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'addressed_inferred_array_const', 'const vals = [1, 2, 3]
-
-fn array_len(values &[]int) int {
-	return values.len
-}
-
-fn main() {
-	ptr := &vals
-	copy := vals
-	println(int_str(array_len(ptr) + unsafe { ptr[0] } + copy[2]))
-}
-')
-	assert out == '7'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_addressed_inferred_array_const.c')) or {
-		panic(err)
-	}
-	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('Arraymain__vals;'), c_code
-	assert compact.contains('main__vals=new_array_from_c_array(3,3,sizeof(i64),'), c_code
-	assert !compact.contains('i64main__vals[3]'), c_code
-}
-
-fn test_numbered_string_identifiers_do_not_collide_with_literal_symbols() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'numbered_string_identifier_collision', 'struct Named {
-	_str_2 string
-}
-
-fn main() {
-	_str_1 := "local"
-	value := Named{
-		_str_2: "field"
-	}
-	println(_str_1 + ":" + value._str_2)
-}
-')
-	assert out == 'local:field'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_numbered_string_identifier_collision.c')) or {
-		panic(err)
-	}
-	assert c_code.contains('string v__str_1 = '), c_code
-	assert c_code.contains('.v__str_2 = '), c_code
-	assert c_code.contains('value.v__str_2'), c_code
-}
-
-fn test_module_qualified_free_call_is_not_rewritten_to_array_intrinsic() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good_project(v3_bin, 'module_qualified_free_call', {
-		'v.mod':  'Module { name: "module_qualified_free_call" }\n'
-		'main.v': 'module main
-
-import m
-
-fn main() {
-	values := [2, 3]
-	println(int_str(m.free(values)))
-}
-'
-		'm/m.v':  'module m
-
-pub fn free(values []int) int {
-	return values[0] + values.len
-}
-'
-	}, 'main.v')
-	assert out == '4'
-}
-
-fn test_imported_enum_method_call_uses_declaration_symbol() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good_project(v3_bin, 'imported_enum_method_call', {
-		'v.mod':         'Module { name: "imported_enum_method_call" }\n'
-		'token/token.v': "module token\n\npub enum Kind {\n\tword\n}\n\npub fn (kind Kind) str() string {\n\treturn 'word'\n}\n"
-		'ast/ast.v':     'module ast\n\nimport token\n\npub fn render(kind token.Kind) string {\n\treturn kind.str()\n}\n'
-		'main.v':        'module main\n\nimport ast\nimport token\n\nfn main() {\n\tprintln(ast.render(token.Kind.word))\n}\n'
-	}, 'main.v')
-	assert out == 'word'
-}
-
-fn test_selectively_imported_free_call_is_not_rewritten_to_array_intrinsic() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good_project(v3_bin, 'selective_import_free_call', {
-		'v.mod':  'Module { name: "selective_import_free_call" }\n'
-		'main.v': 'module main
-
-import m { free }
-
-fn main() {
-	values := [3, 4]
-	println(int_str(free(values)))
-}
-'
-		'm/m.v':  'module m
-
-pub fn free(values []int) int {
-	return values[0] + values.len
-}
-'
-	}, 'main.v')
-	assert out == '5'
-}
-
-fn test_sum_container_variant_import_alias_collision_uses_exact_tag() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good_project(v3_bin, 'sum_container_variant_alias_collision', {
-		'v.mod':            'Module { name: "sum_container_variant_alias_collision" }\n'
-		'other/value.v':    'module other\n\npub struct Value {\npub:\n\tn int\n}\n'
-		'sub/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\tn int\n}\n'
-		'main.v':           'module main\n\nimport other\nimport sub.tast\n\ntype Mixed = map[string]other.Value | map[string]tast.Value\n\nfn score(value Mixed) int {\n\tif value is map[string]tast.Value {\n\t\titems := value as map[string]tast.Value\n\t\treturn items["x"].n\n\t}\n\treturn -1\n}\n\nfn main() {\n\tvalue := Mixed(map[string]tast.Value{\n\t\t"x": tast.Value{\n\t\t\tn: 71\n\t\t}\n\t})\n\tprintln(int_str(score(value)))\n}\n'
-	}, 'main.v')
-	assert out == '71'
-}
-
-fn test_sum_name_import_alias_collision_uses_exact_sum() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good_project(v3_bin, 'sum_name_import_alias_collision', {
-		'v.mod':         'Module { name: "sum_name_import_alias_collision" }\n'
-		'a/tast/tast.v': 'module tast\n\npub struct Target {}\npub struct Second {}\npub type Value = Target | Second\n'
-		'b/tast/tast.v': 'module tast\n\npub struct First {}\npub struct Target {\npub:\n\tn int\n}\npub type Value = First | Target\n'
-		'main.v':        'module main\n\nimport a.tast as other_tast\nimport b.tast\n\nfn score(value tast.Value) int {\n\tif value is tast.Target {\n\t\ttarget := value as tast.Target\n\t\treturn target.n\n\t}\n\treturn -1\n}\n\nfn main() {\n\t_ := other_tast.Value(other_tast.Target{})\n\tvalue := tast.Value(tast.Target{\n\t\tn: 79\n\t})\n\tprintln(int_str(score(value)))\n}\n'
-	}, 'main.v')
-	assert out == '79'
-}
-
-fn test_user_defined_free_method_is_preserved() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'user_defined_free_method', 'struct Handle {
-mut:
-	freed bool
-}
-
-fn (mut h Handle) free() {
-	h.freed = true
-	println("freed")
-}
-
-fn main() {
-	mut h := Handle{}
-	h.free()
-}
-')
-	assert out == 'freed'
-}
-
-fn test_pointer_receiver_on_pointer_parameter_passes_parameter_directly() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'pointer_receiver_on_pointer_param', 'struct S {
-	n int
-}
-
-fn (s &S) value_plus(delta int) int {
-	return s.n + delta
-}
-
-fn use_pointer_param(s &S) int {
-	return s.value_plus(5)
-}
-
-fn main() {
-	s := S{
-		n: 37
-	}
-	println(int_str(use_pointer_param(&s)))
-}
-')
-	assert out == '42'
-}
-
-fn test_mut_receiver_return_self_pointer_uses_receiver_pointer() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'mut_receiver_return_self_pointer', 'struct Command {
-mut:
-	args []string
-}
-
-fn (mut cmd Command) arg(arg string) &Command {
-	cmd.args << arg
-	return &cmd
-}
-
-fn (mut cmd Command) count() int {
-	return cmd.args.len
-}
-
-fn main() {
-	mut cmd := Command{}
-	println(int_str(cmd.arg("a").arg("b").count()))
-}
-')
-	assert out == '2'
-}
-
-fn test_pointer_value_compatibility_keeps_qualified_struct_names() {
-	v3_bin := build_v3_review_cgen()
-	files := {
-		'v.mod': 'Module { name: "pointer_value_qualified_names" }\n'
-		'a/a.v': 'module a
-
-pub struct Foo {
-pub:
-	value int
-}
-
-pub fn make() &Foo {
-	return &Foo{
-		value: 7
-	}
-}
-'
-		'b/b.v': 'module b
-
-pub struct Foo {
-pub:
-	value int
-}
-'
-	}
-	mut return_files := files.clone()
-	return_files['main.v'] = 'module main
-
-import a
-import b
-
-fn f() b.Foo {
-	return a.make()
-}
-
-fn main() {}
-'
-	review_cgen_run_bad_project(v3_bin, 'bad_pointer_value_cross_module_return', return_files, 'main.v', 'cannot use `&a.Foo` as type `b.Foo` in return argument')
-	mut field_files := files.clone()
-	field_files['main.v'] = 'module main
-
-import a
-import b
-
-struct Holder {
-	item b.Foo
-}
-
-fn make_holder() Holder {
-	return Holder{
-		item: a.make()
-	}
-	}
-
-fn main() {}
-'
-	review_cgen_run_bad_project(v3_bin, 'bad_pointer_value_cross_module_field', field_files, 'main.v', 'cannot assign to field `item`: expected `b.Foo`, not `&a.Foo`')
-}
-
-fn test_optional_single_letter_struct_keeps_concrete_payload_type() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'optional_single_letter_struct', 'struct T {
-	value int
-}
-
-fn maybe_t(ok bool) ?T {
-	if !ok {
-		return none
-	}
-	return T{
-		value: 7
-	}
-}
-
-fn result_t() !T {
-	return T{
-		value: 8
-	}
-}
-
-fn main() {
-	a := maybe_t(true) or { T{} }
-	b := result_t() or { T{} }
-	println(int_str(a.value + b.value))
-}
-')
-	assert out == '15'
-}
-
-fn test_enum_power_initializers_are_folded() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'enum_power_initializers', 'const helper_base = 3
+', 'true'},
+		ReviewCgenCase{'enum_power_initializers', 'const helper_base = 3
 
 enum Power {
 	direct = 2 ** 3
@@ -637,13 +224,20 @@ fn main() {
 	println(u64(BackedFlagPower.direct))
 	println(u64(BackedFlagPower.next))
 }
-')
-	assert out == '8\n9\n10\n4\n8\n32\n16\n32'
+', '8\n9\n10\n4\n8\n32\n16\n32'},
+		ReviewCgenCase{'addressed_inferred_array_const', 'const vals = [1, 2, 3]
+
+fn array_len(values &[]int) int {
+	return values.len
 }
 
-fn test_zero_and_new_preserve_nested_array_type_arguments() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'nested_array_zero_new', 'struct NewDefaults {
+fn main() {
+	ptr := &vals
+	copy := vals
+	println(int_str(array_len(ptr) + unsafe { ptr[0] } + copy[2]))
+}
+', '7'},
+		ReviewCgenCase{'nested_array_zero_new', 'struct NewDefaults {
 mut:
 	values []int
 	lookup map[string]int
@@ -725,13 +319,279 @@ fn main() {
 	println(int_str(defaults.lookup["answer"]))
 	println(int_str(defaults.count))
 }
-')
-	assert out == '0\n0\n0\n2\n3\n1\n0\n0\n0\n0\n17\n11\n12\n13\n14\n15\n16'
+', '0\n0\n0\n2\n3\n1\n0\n0\n0\n0\n17\n11\n12\n13\n14\n15\n16'},
+	], map[string]string{})
+	c_code := os.read_file(good_bin + '.c') or { panic(err) }
+	assert c_code.contains('fixture_0__Holder fixture_0__holder;'), c_code
+	assert c_code.contains('fixture_0__holder = (fixture_0__Holder){'), c_code
+	assert c_code.contains('._object = (fixture_0__Empty*)(memdup('), c_code
+	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert compact.contains('Arrayfixture_2__vals;'), c_code
+	assert compact.contains('fixture_2__vals=new_array_from_c_array(3,3,sizeof(i64),'), c_code
+	assert !compact.contains('i64fixture_2__vals[3]'), c_code
 }
 
-fn test_zero_and_new_preserve_direct_map_and_generic_type_arguments() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'direct_map_generic_zero_new', 'struct Box[T] {
+fn test_literal_enum_pointer_and_mut_receivers() {
+	review_cgen_run_batch('literal_enum_pointer_and_mut_receivers', [
+		ReviewCgenCase{'int_literal_receiver', 'fn main() {
+	println(255.hex_full())
+	println(4294967296.hex_full())
+}
+', '00000000000000ff\n0000000100000000'},
+		ReviewCgenCase{'imported_enum_method_call', 'module main\n\nimport ast\nimport token\n\nfn main() {\n\tprintln(ast.render(token.Kind.word))\n}\n', 'word'},
+		ReviewCgenCase{'pointer_receiver_on_pointer_param', 'struct S {
+	n int
+}
+
+fn (s &S) value_plus(delta int) int {
+	return s.n + delta
+}
+
+fn use_pointer_param(s &S) int {
+	return s.value_plus(5)
+}
+
+fn main() {
+	s := S{
+		n: 37
+	}
+	println(int_str(use_pointer_param(&s)))
+}
+', '42'},
+		ReviewCgenCase{'mut_receiver_return_self_pointer', 'struct Command {
+mut:
+	args []string
+}
+
+fn (mut cmd Command) arg(arg string) &Command {
+	cmd.args << arg
+	return &cmd
+}
+
+fn (mut cmd Command) count() int {
+	return cmd.args.len
+}
+
+fn main() {
+	mut cmd := Command{}
+	println(int_str(cmd.arg("a").arg("b").count()))
+}
+', '2'},
+	], {
+		'v.mod':         'Module { name: "literal_and_imported_enum_method_calls" }\n'
+		'token/token.v': "module token\n\npub enum Kind {\n\tword\n}\n\npub fn (kind Kind) str() string {\n\treturn 'word'\n}\n"
+		'ast/ast.v':     'module ast\n\nimport token\n\npub fn render(kind token.Kind) string {\n\treturn kind.str()\n}\n'
+	})
+}
+
+fn test_c_output_arguments_and_power_assignments() {
+	good_bin := review_cgen_run_batch('c_output_arguments_and_power_assignments', [
+		ReviewCgenCase{'c_int_array_data_abi', "#include <stdio.h>
+
+fn main() {
+	mut first := []int{len: 1}
+	mut second := []int{len: 1}
+	C.sscanf(c'4 2', c'%d %d', first.data, second.data)
+	println(int_str(first[0] + second[0]))
+}
+", '6'},
+		ReviewCgenCase{'mut_parameter_power_assign', 'struct Number {
+mut:
+	value int
+}
+
+fn square(mut number Number) {
+	number.value **= 2
+}
+
+fn main() {
+	mut number := Number{
+		value: 3
+	}
+	square(mut number)
+	println(int_str(number.value))
+}
+', '9'},
+		ReviewCgenCase{'array_power_assign', 'struct IntList {
+mut:
+	values []int
+}
+
+fn (list IntList) [] (index int) int {
+	return list.values[index]
+}
+
+fn (mut list IntList) []= (index int, value int) {
+	list.values[index] = value
+}
+
+struct Exponent {
+	value int
+}
+
+fn (a Exponent) ** (b Exponent) Exponent {
+	return Exponent{
+		value: a.value * 10 + b.value
+	}
+}
+
+struct ExponentList {
+mut:
+	values []Exponent
+}
+
+fn (list ExponentList) [] (index int) Exponent {
+	return list.values[index]
+}
+
+fn (mut list ExponentList) []= (index int, value Exponent) {
+	list.values[index] = value
+}
+
+fn main() {
+	mut values := [2, 3]
+	values[0] **= 3
+	println(int_str(values[0]))
+	mut direct := [Exponent{
+		value: 4
+	}]
+	direct[0] **= Exponent{
+		value: 5
+	}
+	println(int_str(direct[0].value))
+	mut list := IntList{
+		values: [3]
+	}
+	list[0] **= 2
+	println(int_str(list.values[0]))
+	mut exponents := ExponentList{
+		values: [Exponent{
+			value: 2
+		}]
+	}
+	exponents[0] **= Exponent{
+		value: 3
+	}
+	println(int_str(exponents.values[0].value))
+}
+', '8\n45\n9\n23'},
+		ReviewCgenCase{'struct_field_power_assign', 'struct Exponent {
+	value int
+}
+
+fn (a Exponent) ** (b Exponent) Exponent {
+	return Exponent{
+		value: a.value * 10 + b.value
+	}
+}
+
+struct Box {
+mut:
+	value Exponent
+}
+
+fn main() {
+	mut box := Box{
+		value: Exponent{
+			value: 2
+		}
+	}
+	box.value **= Exponent{
+		value: 3
+	}
+	println(int_str(box.value.value))
+}
+', '23'},
+	], map[string]string{})
+	c_code := os.read_file(good_bin + '.c') or { panic(err) }
+	abi_body := review_cgen_body(c_code, 'void fixture_0__exercise(')
+	assert abi_body.contains('int* _cabi_out_values_'), abi_body
+	assert abi_body.contains('free(_cabi_out_values_'), abi_body
+	square_body := review_cgen_body(c_code, 'void fixture_1__square(')
+	compact := square_body.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert compact.contains('__v_pow_i64('), square_body
+	assert !compact.contains('(i64*)__v_pow_i64('), square_body
+	array_body := review_cgen_body(c_code, 'void fixture_2__exercise(')
+	array_compact := array_body.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert array_compact.contains('array__set(_a0,_i0,&(i64[]){((i64)__v_pow_i64('), array_body
+	assert array_compact.contains('array__set(_a1,_i1,&(fixture_2__Exponent[]){__v3_internal_symbol_op_fixture_2__Exponent__pow(*(fixture_2__Exponent*)array_get(*_a1,_i1),'), array_body
+	assert array_compact.contains('__v3_internal_symbol_op_fixture_2__IntList__op_index_set('), array_body
+	assert array_compact.contains('__v3_internal_symbol_op_fixture_2__ExponentList__op_index_set('), array_body
+	assert array_compact.contains('__v3_internal_symbol_op_fixture_2__Exponent__pow('), array_body
+	assert !c_code.contains(' ** '), c_code
+	field_body := review_cgen_body(c_code, 'void fixture_3__exercise(')
+	field_compact := field_body.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert field_compact.contains('box.value=__v3_internal_symbol_op_fixture_3__Exponent__pow(box.value,(fixture_3__Exponent){.value=3});'), field_body
+}
+
+fn test_numbered_identifiers_and_free_calls() {
+	good_bin := review_cgen_run_batch('numbered_identifiers_and_free_calls', [
+		ReviewCgenCase{'numbered_string_identifier_collision', 'struct Named {
+	_str_2 string
+}
+
+fn main() {
+	_str_1 := "local"
+	value := Named{
+		_str_2: "field"
+	}
+	println(_str_1 + ":" + value._str_2)
+}
+', 'local:field'},
+		ReviewCgenCase{'user_defined_free_method', 'struct Handle {
+mut:
+	freed bool
+}
+
+fn (mut h Handle) free() {
+	h.freed = true
+	println("freed")
+}
+
+fn main() {
+	mut h := Handle{}
+	h.free()
+}
+', 'freed'},
+		ReviewCgenCase{'module_qualified_free_call', 'module main
+
+import m
+
+fn main() {
+	values := [2, 3]
+	println(int_str(m.free(values)))
+}
+', '4'},
+		ReviewCgenCase{'selective_import_free_call', 'module main
+
+import m { free }
+
+fn main() {
+	values := [3, 4]
+	println(int_str(free(values)))
+}
+', '5'},
+	], {
+		'v.mod': 'Module { name: "imported_free_calls" }\n'
+		'm/m.v': 'module m
+
+pub fn free(values []int) int {
+	return values[0] + values.len
+}
+'
+	})
+	c_code := os.read_file(good_bin + '.c') or { panic(err) }
+	body := review_cgen_body(c_code, 'void fixture_0__exercise(')
+	assert body.contains('string v__str_1 = '), body
+	assert body.contains('.v__str_2 = '), body
+	assert body.contains('value.v__str_2'), body
+}
+
+fn test_sum_type_aliases_and_generic_new_defaults() {
+	review_cgen_run_batch('sum_type_aliases_and_generic_new_defaults', [
+		ReviewCgenCase{'sum_container_variant_alias_collision', 'module main\n\nimport other\nimport sub.tast\n\ntype Mixed = map[string]other.Value | map[string]tast.Value\n\nfn score(value Mixed) int {\n\tif value is map[string]tast.Value {\n\t\titems := value as map[string]tast.Value\n\t\treturn items["x"].n\n\t}\n\treturn -1\n}\n\nfn main() {\n\tvalue := Mixed(map[string]tast.Value{\n\t\t"x": tast.Value{\n\t\t\tn: 71\n\t\t}\n\t})\n\tprintln(int_str(score(value)))\n}\n', '71'},
+		ReviewCgenCase{'sum_name_import_alias_collision', 'module main\n\nimport a.tast as other_tast\nimport b.tast\n\nfn score(value tast.Value) int {\n\tif value is tast.Target {\n\t\ttarget := value as tast.Target\n\t\treturn target.n\n\t}\n\treturn -1\n}\n\nfn main() {\n\t_ := other_tast.Value(other_tast.Target{})\n\tvalue := tast.Value(tast.Target{\n\t\tn: 79\n\t})\n\tprintln(int_str(score(value)))\n}\n', '79'},
+		ReviewCgenCase{'direct_map_generic_zero_new', 'struct Box[T] {
 mut:
 	value T
 }
@@ -744,13 +604,8 @@ fn main() {
 	println(int_str(values["answer"]))
 	println(int_str(box.value))
 }
-')
-	assert out == '19\n20'
-}
-
-fn test_generic_new_default_initialization_stays_in_expression_scope() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'generic_new_expression_scope', "fn initialized_value() int {
+', '19\n20'},
+		ReviewCgenCase{'generic_new_expression_scope', "fn initialized_value() int {
 	println('initialized')
 	return 1
 }
@@ -776,6 +631,99 @@ fn main() {
 	println(maybe_short_new[NeedsInitialization](false))
 	println(maybe_short_new[NeedsInitialization](true))
 }
-")
-	assert out == 'after false\ninitialized\nfalse\ninitialized\ntrue'
+", 'after false\ninitialized\nfalse\ninitialized\ntrue'},
+	], {
+		'v.mod':            'Module { name: "sum_types_with_colliding_import_aliases" }\n'
+		'other/value.v':    'module other\n\npub struct Value {\npub:\n\tn int\n}\n'
+		'sub/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\tn int\n}\n'
+		'a/tast/tast.v':    'module tast\n\npub struct Target {}\npub struct Second {}\npub type Value = Target | Second\n'
+		'b/tast/tast.v':    'module tast\n\npub struct First {}\npub struct Target {\npub:\n\tn int\n}\npub type Value = First | Target\n'
+	})
+}
+
+fn test_pointer_value_compatibility_keeps_qualified_struct_names() {
+	files := {
+		'v.mod': 'Module { name: "pointer_value_qualified_names" }\n'
+		'a/a.v': 'module a
+
+pub struct Foo {
+pub:
+	value int
+}
+
+pub fn make() &Foo {
+	return &Foo{
+		value: 7
+	}
+}
+'
+		'b/b.v': 'module b
+
+pub struct Foo {
+pub:
+	value int
+}
+'
+	}
+	mut return_files := files.clone()
+	return_files['main.v'] = 'module main
+
+import a
+import b
+
+fn f() b.Foo {
+	return a.make()
+}
+
+fn main() {}
+'
+	review_cgen_run_bad_project('bad_pointer_value_cross_module_return', return_files, 'main.v', 'cannot use `&a.Foo` as type `b.Foo` in return argument')
+	mut field_files := files.clone()
+	field_files['main.v'] = 'module main
+
+import a
+import b
+
+struct Holder {
+	item b.Foo
+}
+
+fn make_holder() Holder {
+	return Holder{
+		item: a.make()
+	}
+	}
+
+fn main() {}
+'
+	review_cgen_run_bad_project('bad_pointer_value_cross_module_field', field_files, 'main.v', 'cannot assign to field `item`: expected `b.Foo`, not `&a.Foo`')
+}
+
+fn test_optional_single_letter_struct_keeps_concrete_payload_type() {
+	out := review_cgen_run_good('optional_single_letter_struct', 'struct T {
+	value int
+}
+
+fn maybe_t(ok bool) ?T {
+	if !ok {
+		return none
+	}
+	return T{
+		value: 7
+	}
+}
+
+fn result_t() !T {
+	return T{
+		value: 8
+	}
+}
+
+fn main() {
+	a := maybe_t(true) or { T{} }
+	b := result_t() or { T{} }
+	println(int_str(a.value + b.value))
+}
+')
+	assert out == '15'
 }

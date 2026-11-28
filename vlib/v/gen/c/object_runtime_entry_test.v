@@ -96,8 +96,8 @@ int main(void) { return CheckExports(); }
 #endif
 ')!
 			object := os.join_path(dir, 'lib.o')
-			compile := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none',
-				'-cc', cc, '-o', object, os.join_path(dir, 'lib.c.v')])
+			compile := os.exec([@VEXE, '-no-retry-compilation', '-gc', 'none', '-cc', cc, '-o',
+				object, os.join_path(dir, 'lib.c.v')])
 			assert compile.exit_code == 0, '${compiler}, has_main=${has_main}: ${compile.output}'
 			host := os.join_path(dir, 'host')
 			mut link_args := [cc, '-o', host, os.join_path(dir, 'host.c'), object, '-lm', '-lpthread']

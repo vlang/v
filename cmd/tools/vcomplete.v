@@ -144,7 +144,6 @@ const auto_complete_commands = [
 	'version',
 	'run',
 	'build',
-	'build-module',
 	'missdoc',
 	'mod',
 ]

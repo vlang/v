@@ -1,10 +1,5 @@
 import os
-
-const wait_header_vexe = @VEXE
-const wait_header_tests_dir = os.dir(@FILE)
-const wait_header_v3_dir = os.dir(wait_header_tests_dir)
-const wait_header_vlib_dir = os.dir(wait_header_v3_dir)
-const wait_header_v3_src = os.join_path(wait_header_v3_dir, 'v.v')
+import v.tempname
 
 struct WaitHeaderProgram {
 	c_code string
@@ -31,11 +26,9 @@ fn wait_header_execute_without_vflags(args []string) os.Result {
 }
 
 fn test_wait_header_execute_preserves_spaced_args_and_vflags() {
-	root := os.join_path(os.vtmp_dir(), 'wait header argv ${os.getpid()}')
-	os.mkdir_all(root)!
-	defer {
-		os.rmdir_all(root) or {}
-	}
+	root := os.join_path(os.vtmp_dir(), 'wait header argv ${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
 	src := os.join_path(root, 'source with spaces.v')
 	out := os.join_path(root, 'program with spaces')
 	os.write_file(src, "import os
@@ -56,8 +49,7 @@ fn main() {
 		}
 	}
 	os.setenv('VFLAGS', 'must not reach child', true)
-	compile := wait_header_execute_without_vflags([wait_header_vexe, '-gc', 'none', '-o', out,
-		src])
+	compile := wait_header_execute_without_vflags([@VEXE, '-gc', 'none', '-o', out, src])
 	assert compile.exit_code == 0, compile.output
 	assert os.getenv('VFLAGS') == 'must not reach child'
 	run := wait_header_execute_without_vflags([wait_header_exe(out), 'argument with spaces'])
@@ -72,31 +64,19 @@ fn main() {
 	}
 }
 
-fn wait_header_build_v3() string {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_wait_header_test_${pid}')
-	if os.is_executable(wait_header_exe(v3_bin)) {
-		return v3_bin
-	}
-	build :=
-		os.exec([wait_header_vexe, '-gc', 'none', '-path',
-			'${wait_header_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${wait_header_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
+fn wait_header_fixture_dir() string {
+	root := os.join_path(os.vtmp_dir(), 'v3_wait_header_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	return root
 }
 
-fn wait_header_compile(v3_bin string, name string, source string) WaitHeaderProgram {
-	pid := os.getpid()
-	src := os.join_path(os.temp_dir(), 'v3_wait_header_${name}_${pid}.v')
-	out := os.join_path(os.temp_dir(), 'v3_wait_header_${name}_${pid}')
+fn wait_header_compile(root string, name string, source string) WaitHeaderProgram {
+	src := os.join_path(root, 'v3_wait_header_${name}.v')
+	out := os.join_path(root, 'v3_wait_header_${name}')
 	os.write_file(src, source) or { panic(err) }
-	os.rm(wait_header_exe(out)) or {}
-	os.rm(out + '.c') or {}
-	compile := wait_header_execute_without_vflags([wait_header_exe(v3_bin), '-b', 'c', '-o', out,
-		src])
+	compile := wait_header_execute_without_vflags([@VEXE, '-b', 'c', '-o', out, src])
 	assert compile.exit_code == 0, compile.output
-	gen_c := wait_header_execute_without_vflags([wait_header_exe(v3_bin), '-b', 'c', '-o', out + '.c',
-		src])
+	gen_c := wait_header_execute_without_vflags([@VEXE, '-b', 'c', '-o', out + '.c', src])
 	assert gen_c.exit_code == 0, gen_c.output
 	return WaitHeaderProgram{
 		c_code: os.read_file(out + '.c') or { panic(err) }
@@ -104,35 +84,41 @@ fn wait_header_compile(v3_bin string, name string, source string) WaitHeaderProg
 	}
 }
 
-fn wait_header_gen_c(v3_bin string, name string, source string) string {
-	return wait_header_gen_c_with_args(v3_bin, name, source, [])
+fn wait_header_gen_c(root string, name string, source string) string {
+	return wait_header_gen_c_with_args(root, name, source, [])
+}
+
+// wait_header_gen_headerless_c generates host C without C include directives, where V
+// writes the prototypes and C type definitions itself. On a Windows host the
+// stack-overflow handler includes the SDK headers by default, so it is disabled there.
+fn wait_header_gen_headerless_c(root string, name string, source string) string {
+	extra_args := $if windows { ['-d', 'no_segfault_handler'] } $else { []string{} }
+	return wait_header_gen_c_with_args(root, name, source, extra_args)
 }
 
 // wait_header_gen_windows_c generates headerless Windows C: without a C include
 // directive, V supplies the SDK types and the prototypes of the program's bindings.
 // Disable the stack-overflow handler, which includes the SDK headers by default.
-fn wait_header_gen_windows_c(v3_bin string, name string, source string) string {
-	return wait_header_gen_c_with_args(v3_bin, name, source, ['-os', 'windows', '-d',
+fn wait_header_gen_windows_c(root string, name string, source string) string {
+	return wait_header_gen_c_with_args(root, name, source, ['-os', 'windows', '-d',
 		'no_segfault_handler'])
 }
 
 // wait_header_gen_windows_sdk_c generates Windows C for MSVC, which includes the
 // Windows SDK headers. Those headers own the CRT and WinAPI declarations.
-fn wait_header_gen_windows_sdk_c(v3_bin string, name string, source string) string {
-	return wait_header_gen_c_with_args(v3_bin, name + '_sdk', source, ['-os', 'windows', '-cc',
-		'msvc'])
+fn wait_header_gen_windows_sdk_c(root string, name string, source string) string {
+	return wait_header_gen_c_with_args(root, name + '_sdk', source, ['-os', 'windows', '-cc', 'msvc'])
 }
 
-fn wait_header_c_path(name string) string {
-	return os.join_path(os.temp_dir(), 'v3_wait_header_${name}_${os.getpid()}.c')
+fn wait_header_c_path(root string, name string) string {
+	return os.join_path(root, 'v3_wait_header_${name}.c')
 }
 
-fn wait_header_gen_c_with_args(v3_bin string, name string, source string, extra_args []string) string {
-	src := os.join_path(os.temp_dir(), 'v3_wait_header_${name}_${os.getpid()}.v')
-	c_path := wait_header_c_path(name)
+fn wait_header_gen_c_with_args(root string, name string, source string, extra_args []string) string {
+	src := os.join_path(root, 'v3_wait_header_${name}.v')
+	c_path := wait_header_c_path(root, name)
 	os.write_file(src, source) or { panic(err) }
-	os.rm(c_path) or {}
-	mut args := [wait_header_exe(v3_bin), '-b', 'c', '-o', c_path]
+	mut args := [@VEXE, '-b', 'c', '-o', c_path]
 	args << extra_args
 	args << src
 	compile := wait_header_execute_without_vflags(args)
@@ -142,10 +128,10 @@ fn wait_header_gen_c_with_args(v3_bin string, name string, source string, extra_
 
 // wait_header_check_windows_c compiles generated Windows C with a MinGW cross compiler,
 // when one is installed, so that a call without a prototype fails the test.
-fn wait_header_check_windows_c(name string) {
+fn wait_header_check_windows_c(root string, name string) {
 	mingw := os.find_abs_path_of_executable('x86_64-w64-mingw32-gcc') or { return }
 	check := wait_header_execute_without_vflags([mingw, '-fsyntax-only',
-		'-Werror=implicit-function-declaration', wait_header_c_path(name)])
+		'-Werror=implicit-function-declaration', wait_header_c_path(root, name)])
 	assert check.exit_code == 0, check.output
 }
 
@@ -180,8 +166,9 @@ fn test_os_import_uses_waitpid_without_headers() {
 	$if windows {
 		return
 	}
-	v3_bin := wait_header_build_v3()
-	with_os := wait_header_compile(v3_bin, 'with_os_execute', "module main
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	with_os := wait_header_compile(root, 'with_os_execute', "module main
 
 import os
 
@@ -351,7 +338,7 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'waitpid-ok\ntrue', run.output
 
-	hello := wait_header_compile(v3_bin, 'hello', "module main
+	hello := wait_header_compile(root, 'hello', "module main
 
 fn main() {
 	println('hello')
@@ -364,8 +351,9 @@ fn test_linux_system_preamble_provides_syscall_constants() {
 	$if !linux {
 		return
 	}
-	v3_bin := wait_header_build_v3()
-	with_rand := wait_header_compile(v3_bin, 'with_crypto_rand', 'module main
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	with_rand := wait_header_compile(root, 'with_crypto_rand', 'module main
 
 import crypto.rand
 
@@ -380,8 +368,9 @@ fn test_user_c_decl_emits_extern_prototype_without_headers() {
 	$if windows {
 		return
 	}
-	v3_bin := wait_header_build_v3()
-	program := wait_header_compile(v3_bin, 'user_c_getppid', 'module main
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	program := wait_header_compile(root, 'user_c_getppid', 'module main
 
 #flag -Werror=implicit-function-declaration
 
@@ -411,7 +400,8 @@ fn main() {
 }
 
 fn test_windows_crt_underscore_c_decls_use_target_headers() {
-	v3_bin := wait_header_build_v3()
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
 	source := 'module main
 
 fn C._wfopen(&u16, &u16) voidptr
@@ -432,7 +422,7 @@ fn main() {
 }
 '
 	names := ['_wfopen', '_wsystem', '_wgetenv', '_waccess', '_wchdir', '_chsize_s']
-	c_code := wait_header_gen_windows_sdk_c(v3_bin, 'windows_crt_underscore_decls', source)
+	c_code := wait_header_gen_windows_sdk_c(root, 'windows_crt_underscore_decls', source)
 	assert c_code.contains('#include <windows.h>'), c_code
 	assert c_code.contains('#include <io.h>'), c_code
 	assert c_code.contains('#include <stdint.h>'), c_code
@@ -444,18 +434,19 @@ fn main() {
 		assert c_code.contains('(void)(' + name + '('), c_code
 	}
 	// Without the CRT headers, the bindings are the only declarations of these functions.
-	headerless := wait_header_gen_windows_c(v3_bin, 'windows_crt_underscore_decls', source)
+	headerless := wait_header_gen_windows_c(root, 'windows_crt_underscore_decls', source)
 	assert !wait_header_has_include_directive(headerless), headerless
 	assert headerless.contains('int _chsize_s(int, u64);'), headerless
 	for name in names {
 		assert wait_header_declares(headerless, name), '${name}\n${headerless}'
 		assert headerless.contains('(void)(' + name + '('), headerless
 	}
-	wait_header_check_windows_c('windows_crt_underscore_decls')
+	wait_header_check_windows_c(root, 'windows_crt_underscore_decls')
 }
 
 fn test_windows_sdk_types_come_from_target_headers() {
-	v3_bin := wait_header_build_v3()
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
 	source := 'module main
 
 @[typedef]
@@ -469,24 +460,25 @@ fn main() {
 	_ = C.CreateHardLinkW(path, path, attrs)
 }
 '
-	c_code := wait_header_gen_windows_sdk_c(v3_bin, 'windows_sdk_type_order', source)
+	c_code := wait_header_gen_windows_sdk_c(root, 'windows_sdk_type_order', source)
 	assert c_code.contains('#include <windows.h>'), c_code
 	assert c_code.contains('SECURITY_ATTRIBUTES* attrs'), c_code
 	assert c_code.contains('CreateHardLinkW(path, path, attrs)'), c_code
 	assert !c_code.contains('typedef struct SECURITY_ATTRIBUTES {'), c_code
 	assert !c_code.contains('typedef struct SECURITY_ATTRIBUTES SECURITY_ATTRIBUTES;'), c_code
 	// Without the SDK headers, V defines the SDK layout once, not the empty view.
-	headerless := wait_header_gen_windows_c(v3_bin, 'windows_sdk_type_order', source)
+	headerless := wait_header_gen_windows_c(root, 'windows_sdk_type_order', source)
 	assert !wait_header_has_include_directive(headerless), headerless
 	assert headerless.count('typedef struct SECURITY_ATTRIBUTES ') == 1, headerless
 	assert headerless.contains('typedef struct SECURITY_ATTRIBUTES { DWORD nLength; void* lpSecurityDescriptor; BOOL bInheritHandle; } SECURITY_ATTRIBUTES;'), headerless
 	assert headerless.contains('int WINAPI CreateHardLinkW(u16*, u16*, SECURITY_ATTRIBUTES*);'), headerless
 	assert headerless.contains('CreateHardLinkW(path, path, attrs)'), headerless
-	wait_header_check_windows_c('windows_sdk_type_order')
+	wait_header_check_windows_c(root, 'windows_sdk_type_order')
 }
 
 fn test_winapi_declarations_come_from_target_headers() {
-	v3_bin := wait_header_build_v3()
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
 	source := 'module main
 
 fn C.GetStdHandle(u32) voidptr
@@ -498,23 +490,24 @@ fn main() {
 	_ = C.CreateFileW(path, 0, 0, voidptr(0), 0, 0, voidptr(0))
 }
 '
-	c_code := wait_header_gen_windows_sdk_c(v3_bin, 'winapi_calling_convention', source)
+	c_code := wait_header_gen_windows_sdk_c(root, 'winapi_calling_convention', source)
 	assert c_code.contains('#include <windows.h>'), c_code
 	assert c_code.contains('GetStdHandle('), c_code
 	assert c_code.contains('CreateFileW(path,'), c_code
 	assert !c_code.contains('void* WINAPI GetStdHandle(u32);'), c_code
 	assert !c_code.contains('void* WINAPI CreateFileW(u16*, u32, u32, void*, u32, u32, void*);'), c_code
 	// Without the SDK headers, the bindings declare the WinAPI calling convention.
-	headerless := wait_header_gen_windows_c(v3_bin, 'winapi_calling_convention', source)
+	headerless := wait_header_gen_windows_c(root, 'winapi_calling_convention', source)
 	assert !wait_header_has_include_directive(headerless), headerless
 	assert headerless.contains('void* WINAPI GetStdHandle(u32);'), headerless
 	assert headerless.contains('void* WINAPI CreateFileW(u16*, u32, u32, void*, u32, u32, void*);'), headerless
 	assert headerless.contains('CreateFileW(path,'), headerless
-	wait_header_check_windows_c('winapi_calling_convention')
+	wait_header_check_windows_c(root, 'winapi_calling_convention')
 }
 
 fn test_unsuffixed_winapi_decls_use_wide_exports() {
-	v3_bin := wait_header_build_v3()
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
 	source := 'module main
 
 fn C.GetModuleFileName(voidptr, &u16, u32) u32
@@ -534,13 +527,13 @@ fn main() {
 		'void* WINAPI CreateFileW(u16*, u32, u32, void*, u32, u32, void*);',
 		'void* WINAPI LoadLibraryW(u16*);',
 		'ptrdiff_t WINAPI DefWindowProcW(void*, u32, size_t, ptrdiff_t);']
-	c_code := wait_header_gen_windows_sdk_c(v3_bin, 'winapi_unsuffixed_wide_exports', source)
+	c_code := wait_header_gen_windows_sdk_c(root, 'winapi_unsuffixed_wide_exports', source)
 	for decl in wide_decls {
 		assert !c_code.contains(decl), c_code
 	}
 	assert c_code.contains('#include <windows.h>'), c_code
 	// Without the SDK headers, the bindings declare the wide exports themselves.
-	headerless := wait_header_gen_windows_c(v3_bin, 'winapi_unsuffixed_wide_exports', source)
+	headerless := wait_header_gen_windows_c(root, 'winapi_unsuffixed_wide_exports', source)
 	assert !wait_header_has_include_directive(headerless), headerless
 	for decl in wide_decls {
 		assert headerless.contains(decl), headerless
@@ -555,11 +548,12 @@ fn main() {
 		assert !code.contains('LoadLibrary('), code
 		assert !code.contains('&DefWindowProc)'), code
 	}
-	wait_header_check_windows_c('winapi_unsuffixed_wide_exports')
+	wait_header_check_windows_c(root, 'winapi_unsuffixed_wide_exports')
 }
 
 fn test_c_fn_value_keeps_its_prototype_in_serial_and_parallel_cgen() {
-	v3_bin := wait_header_build_v3()
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
 	source := 'module main
 
 fn C.V3WaitHeaderCallback(voidptr, u32) C.ptrdiff_t
@@ -581,15 +575,16 @@ fn main() {
 	}
 	for jobs in ['1', '4'] {
 		os.setenv('VJOBS', jobs, true)
-		c_code := wait_header_gen_c(v3_bin, 'c_fn_value_prototype_jobs_${jobs}', source)
+		c_code := wait_header_gen_headerless_c(root, 'c_fn_value_prototype_jobs_${jobs}', source)
 		assert wait_header_declares(c_code, 'V3WaitHeaderCallback'), 'VJOBS=${jobs}\n${c_code}'
 		assert c_code.contains('(void*)(V3WaitHeaderCallback)'), 'VJOBS=${jobs}\n${c_code}'
 	}
 }
 
 fn test_synthesized_c_extern_prototypes_preserve_const_pointer_params() {
-	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_c(v3_bin, 'c_extern_const_pointer_params', 'module main
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	c_code := wait_header_gen_headerless_c(root, 'c_extern_const_pointer_params', 'module main
 
 fn C.SSL_CTX_load_verify_locations(ctx voidptr, const_file &char, const_ca_path &char) int
 
@@ -603,7 +598,8 @@ fn main() {
 }
 
 fn test_windows_sync_structs_use_target_headers() {
-	v3_bin := wait_header_build_v3()
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
 	source := 'module main
 
 @[typedef]
@@ -621,7 +617,7 @@ fn main() {
 	_ := SyncHolder{}
 }
 '
-	c_code := wait_header_gen_windows_sdk_c(v3_bin, 'windows_sync_struct_storage', source)
+	c_code := wait_header_gen_windows_sdk_c(root, 'windows_sync_struct_storage', source)
 	assert c_code.contains('#include <windows.h>'), c_code
 	assert c_code.contains('SRWLOCK rw;'), c_code
 	assert c_code.contains('CONDITION_VARIABLE cv;'), c_code
@@ -630,7 +626,7 @@ fn main() {
 	assert !c_code.contains('typedef struct SRWLOCK SRWLOCK;'), c_code
 	assert !c_code.contains('typedef struct CONDITION_VARIABLE CONDITION_VARIABLE;'), c_code
 	// Without the SDK headers, V defines the pointer-sized SDK storage, not the empty views.
-	headerless := wait_header_gen_windows_c(v3_bin, 'windows_sync_struct_storage', source)
+	headerless := wait_header_gen_windows_c(root, 'windows_sync_struct_storage', source)
 	assert !wait_header_has_include_directive(headerless), headerless
 	assert headerless.contains('SRWLOCK rw;'), headerless
 	assert headerless.contains('CONDITION_VARIABLE cv;'), headerless
@@ -638,12 +634,13 @@ fn main() {
 	assert headerless.count('typedef struct CONDITION_VARIABLE ') == 1, headerless
 	assert headerless.contains('typedef struct SRWLOCK { void* Ptr; } SRWLOCK;'), headerless
 	assert headerless.contains('typedef struct CONDITION_VARIABLE { void* Ptr; } CONDITION_VARIABLE;'), headerless
-	wait_header_check_windows_c('windows_sync_struct_storage')
+	wait_header_check_windows_c(root, 'windows_sync_struct_storage')
 }
 
 fn test_epoll_data_tag_uses_headerless_preamble_definition() {
-	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_c(v3_bin, 'epoll_data_tag_storage', 'module main
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	c_code := wait_header_gen_headerless_c(root, 'epoll_data_tag_storage', 'module main
 
 @[typedef]
 union C.epoll_data {
@@ -669,7 +666,8 @@ fn main() {
 }
 
 fn test_windows_console_records_use_target_headers() {
-	v3_bin := wait_header_build_v3()
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
 	source := 'module main
 
 pub union C.Event {
@@ -759,7 +757,7 @@ fn main() {
 	_ := C.CHAR_INFO{}
 }
 '
-	c_code := wait_header_gen_windows_sdk_c(v3_bin, 'windows_console_records', source)
+	c_code := wait_header_gen_windows_sdk_c(root, 'windows_console_records', source)
 	assert c_code.contains('#include <windows.h>'), c_code
 	assert c_code.contains('(INPUT_RECORD){0}'), c_code
 	assert c_code.contains('(CHAR_INFO){0}'), c_code
@@ -768,22 +766,23 @@ fn main() {
 	assert !c_code.contains('struct KEY_EVENT_RECORD {\n'), c_code
 	// Without the SDK headers, V defines the SDK layouts once. Its uChar keeps the
 	// two-byte WCHAR member, not the program's four-byte `rune` view.
-	headerless := wait_header_gen_windows_c(v3_bin, 'windows_console_records', source)
+	headerless := wait_header_gen_windows_c(root, 'windows_console_records', source)
 	assert !wait_header_has_include_directive(headerless), headerless
 	assert headerless.contains('(INPUT_RECORD){0}'), headerless
 	assert headerless.contains('(CHAR_INFO){0}'), headerless
 	assert headerless.contains('typedef union uChar { u16 UnicodeChar; u8 AsciiChar; } uChar;'), headerless
 	assert headerless.count('typedef struct KEY_EVENT_RECORD {') == 1, headerless
 	assert headerless.count('typedef struct INPUT_RECORD {') == 1, headerless
-	wait_header_check_windows_c('windows_console_records')
+	wait_header_check_windows_c(root, 'windows_console_records')
 }
 
 fn test_time_import_uses_platform_tm_layout_without_headers() {
 	$if windows {
 		return
 	}
-	v3_bin := wait_header_build_v3()
-	program := wait_header_compile(v3_bin, 'time_tm_layout', 'module main
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	program := wait_header_compile(root, 'time_tm_layout', 'module main
 
 import time
 
@@ -805,8 +804,9 @@ fn test_term_import_uses_platform_termios_layout_without_headers() {
 	$if windows {
 		return
 	}
-	v3_bin := wait_header_build_v3()
-	program := wait_header_compile(v3_bin, 'term_termios', 'module main
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	program := wait_header_compile(root, 'term_termios', 'module main
 
 import term
 import term.termios
@@ -835,8 +835,9 @@ fn test_filelock_uses_headerless_fcntl_helpers() {
 	$if windows {
 		return
 	}
-	v3_bin := wait_header_build_v3()
-	program := wait_header_compile(v3_bin, 'filelock_helpers', "module main
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	program := wait_header_compile(root, 'filelock_helpers', "module main
 
 import os
 
@@ -884,8 +885,9 @@ fn test_net_import_keeps_native_socket_headers() {
 	$if windows {
 		return
 	}
-	v3_bin := wait_header_build_v3()
-	program := wait_header_compile(v3_bin, 'net_socket_headers', 'module main
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	program := wait_header_compile(root, 'net_socket_headers', 'module main
 
 import net
 
@@ -926,8 +928,9 @@ fn test_socket_bindings_use_headerless_socket_preamble() {
 	$if windows {
 		return
 	}
-	v3_bin := wait_header_build_v3()
-	program := wait_header_compile(v3_bin, 'socket_preamble', 'module main
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	program := wait_header_compile(root, 'socket_preamble', 'module main
 
 @[typedef]
 struct C.addrinfo {
@@ -1051,8 +1054,9 @@ fn test_same_system_include_under_different_guards_is_kept_in_each_guard() {
 	$if windows {
 		return
 	}
-	v3_bin := wait_header_build_v3()
-	c_code := wait_header_gen_c(v3_bin, 'dup_guarded_include', "module main
+	root := wait_header_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	c_code := wait_header_gen_c(root, 'dup_guarded_include', "module main
 
 #ifdef __linux__
 #include <sys/v3dup_guard.h>

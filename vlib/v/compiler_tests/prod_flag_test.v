@@ -1,23 +1,7 @@
 import os
+import v.tempname
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-const hello_src = os.join_path(tests_dir, 'testdata', 'hello.v')
-const prod_flag_fixture_dir = os.join_path(os.vtmp_dir(), 'v3_prod_flag_${os.getpid()}')
-const v3_bin = os.join_path(prod_flag_fixture_dir, 'v3' + $if windows { '.exe' } $else { '' })
-
-fn testsuite_begin() {
-	os.rmdir_all(prod_flag_fixture_dir) or {}
-	os.mkdir_all(prod_flag_fixture_dir)!
-	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, v3_src])
-	assert build.exit_code == 0, build.output
-}
-
-fn testsuite_end() {
-	os.rmdir_all(prod_flag_fixture_dir) or {}
-}
+const hello_src = os.join_path(os.dir(@FILE), 'testdata', 'hello.v')
 
 fn has_non_runtime_include(c_code string) bool {
 	for line in c_code.split_into_lines() {
@@ -33,8 +17,11 @@ fn has_non_runtime_include(c_code string) bool {
 
 // test_prod_flag_before_input_uses_optimized_c_compile validates this v3 regression case.
 fn test_prod_flag_before_input_uses_optimized_c_compile() {
-	out_bin := os.join_path(os.temp_dir(), 'v3_prod_hello')
-	compile := os.exec([v3_bin, '-prod', '-showcc', '${hello_src}', '-o', out_bin])
+	root := os.join_path(os.vtmp_dir(), 'v3_prod_hello_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	out_bin := os.join_path(root, 'v3_prod_hello')
+	compile := os.exec([@VEXE, '-prod', '-showcc', '${hello_src}', '-o', out_bin])
 	assert compile.exit_code == 0, compile.output
 	plain_std := compile.output.contains('cc -std=gnu11 -O3')
 	feature_std := compile.output.contains('cc -D_GNU_SOURCE -std=gnu11 -O3')
@@ -48,8 +35,11 @@ fn test_prod_flag_before_input_uses_optimized_c_compile() {
 
 // test_c99_flag_uses_c99_c_compile_mode validates this v3 regression case.
 fn test_c99_flag_uses_c99_c_compile_mode() {
-	out_bin := os.join_path(os.temp_dir(), 'v3_c99_hello')
-	compile := os.exec([v3_bin, '-prod', '-c99', '-showcc', '${hello_src}', '-o', out_bin])
+	root := os.join_path(os.vtmp_dir(), 'v3_c99_hello_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	out_bin := os.join_path(root, 'v3_c99_hello')
+	compile := os.exec([@VEXE, '-prod', '-c99', '-showcc', '${hello_src}', '-o', out_bin])
 	assert compile.exit_code == 0, compile.output
 	plain_c99 := compile.output.contains('cc -std=c99 -O3')
 	feature_c99 := compile.output.contains('cc -D_GNU_SOURCE -std=c99 -O3')
@@ -64,11 +54,13 @@ fn test_c99_flag_uses_c99_c_compile_mode() {
 
 // test_c99_flag_emits_linux_feature_macros_in_headerless_preamble validates this v3 regression case.
 fn test_c99_flag_emits_linux_feature_macros_in_headerless_preamble() {
-	out_c := os.join_path(os.temp_dir(), 'v3_c99_feature_macro_hello.c')
-	src := os.join_path(os.temp_dir(), 'v3_c99_feature_macro_hello_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_c99_feature_macro_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	out_c := os.join_path(root, 'v3_c99_feature_macro_hello.c')
+	src := os.join_path(root, 'v3_c99_feature_macro_hello.v')
 	os.write_file(src, "fn main() { message := 'hello world'; println(message) }\n")!
-	defer { os.rm(src) or {} }
-	compile := os.exec([v3_bin, '-c99', '-o', '${out_c}', '${src}'])
+	compile := os.exec([@VEXE, '-c99', '-o', '${out_c}', '${src}'])
 	assert compile.exit_code == 0, compile.output
 
 	c_code := os.read_file(out_c) or { panic(err) }
@@ -86,14 +78,17 @@ fn test_c99_flag_emits_linux_feature_macros_in_headerless_preamble() {
 
 // test_c99_flag_uses_headerless_stdatomic_fallback validates this v3 regression case.
 fn test_c99_flag_uses_headerless_stdatomic_fallback() {
-	src := os.join_path(os.temp_dir(), 'v3_c99_stdatomic_swap.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_c99_stdatomic_swap_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_c99_stdatomic_swap.v')
 	os.write_file(src,
 		"import sync.stdatomic\n\nfn main() {\n\tmut b := u8(1)\n\told_b_add := C.atomic_fetch_add_byte(voidptr(&b), u8(2))\n\tassert old_b_add == u8(1)\n\tassert b == u8(3)\n\told_b_sub := C.atomic_fetch_sub_byte(voidptr(&b), u8(1))\n\tassert old_b_sub == u8(3)\n\tassert b == u8(2)\n\n\tmut h := u16(10)\n\told_h_add := C.atomic_fetch_add_u16(voidptr(&h), u16(4))\n\tassert old_h_add == u16(10)\n\told_h_sub := C.atomic_fetch_sub_u16(voidptr(&h), u16(3))\n\tassert old_h_sub == u16(14)\n\tassert h == u16(11)\n\n\tmut w := u32(20)\n\told_w_sub := C.atomic_fetch_sub_u32(voidptr(&w), u32(5))\n\tassert old_w_sub == u32(20)\n\tassert w == u32(15)\n\n\tmut x := u64(1)\n\told := C.atomic_exchange_u64(voidptr(&x), u64(7))\n\tassert old == u64(1)\n\tassert x == u64(7)\n\tmut expected := u64(7)\n\tassert C.atomic_compare_exchange_strong_u64(voidptr(&x), &expected, u64(9))\n\tassert x == u64(9)\n\tprintln('atomic helpers ok')\n}\n") or {
 		panic(err)
 	}
 
-	out_bin := os.join_path(os.temp_dir(), 'v3_c99_stdatomic_swap')
-	compile := os.exec([v3_bin, '-c99', '${src}', '-o', out_bin])
+	out_bin := os.join_path(root, 'v3_c99_stdatomic_swap')
+	compile := os.exec([@VEXE, '-c99', '${src}', '-o', out_bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -105,14 +100,17 @@ fn test_c99_flag_uses_headerless_stdatomic_fallback() {
 // test_c99_flag_system_stdatomic_include_keeps_the_header validates this v3 regression case.
 // An explicit system header stays in the C output and owns its declarations.
 fn test_c99_flag_system_stdatomic_include_keeps_the_header() {
-	src := os.join_path(os.temp_dir(), 'v3_c99_system_stdatomic.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_c99_system_stdatomic_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_c99_system_stdatomic.v')
 	os.write_file(src,
 		"#include <stdatomic.h>\n\nfn main() {\n\tprintln('system stdatomic ok')\n}\n") or {
 		panic(err)
 	}
 
-	out_c := os.join_path(os.temp_dir(), 'v3_c99_system_stdatomic.c')
-	gen_c := os.exec([v3_bin, '-c99', '${src}', '-o', '${out_c}'])
+	out_c := os.join_path(root, 'v3_c99_system_stdatomic.c')
+	gen_c := os.exec([@VEXE, '-c99', '${src}', '-o', '${out_c}'])
 	assert gen_c.exit_code == 0, gen_c.output
 	c_code := os.read_file(out_c) or { panic(err) }
 	assert c_code.contains('#include <stdatomic.h>'), c_code
@@ -126,16 +124,16 @@ fn test_c99_flag_system_stdatomic_include_keeps_the_header() {
 	assert c_code.contains('static inline u64 atomic_exchange_u64'), c_code
 	assert c_code.contains('static inline bool atomic_compare_exchange_strong_u64'), c_code
 
-	out_bin := os.join_path(os.temp_dir(), 'v3_c99_system_stdatomic')
-	compile := os.exec([v3_bin, '-prod', '-c99', '${src}', '-o', out_bin])
+	out_bin := os.join_path(root, 'v3_c99_system_stdatomic')
+	compile := os.exec([@VEXE, '-prod', '-c99', '${src}', '-o', out_bin])
 	assert compile.exit_code == 0, compile.output
 
 	run := os.exec([out_bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'system stdatomic ok'
 
-	gnu_bin := os.join_path(os.temp_dir(), 'v3_gnu11_system_stdatomic')
-	gnu_compile := os.exec([v3_bin, '-prod', '${src}', '-o', gnu_bin])
+	gnu_bin := os.join_path(root, 'v3_gnu11_system_stdatomic')
+	gnu_compile := os.exec([@VEXE, '-prod', '${src}', '-o', gnu_bin])
 	assert gnu_compile.exit_code == 0, gnu_compile.output
 
 	gnu_run := os.exec([gnu_bin])

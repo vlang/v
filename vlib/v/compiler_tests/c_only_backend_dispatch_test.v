@@ -39,11 +39,12 @@ fn test_c_only_compiler_builds_and_reuses_full_backend_compiler() {
 		}
 	}
 	mut environment := {
-		'VFLAGS':                 ''
-		'VTOOLS_CACHE_DIR':       cache
-		'VTOOLS_NO_CACHE':        ''
-		'VTOOLS_CACHE_VERBOSE':   '1'
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VFLAGS':               ''
+		'CFLAGS':               ''
+		'LDFLAGS':              ''
+		'VTOOLS_CACHE_DIR':     cache
+		'VTOOLS_NO_CACHE':      ''
+		'VTOOLS_CACHE_VERBOSE': '1'
 	}
 	// Keep this regression valid when the test runner itself includes optional backends.
 	compiler := os.join_path(root, 'v_c_only' + $if windows { '.exe' } $else { '' })
@@ -62,14 +63,25 @@ fn test_c_only_compiler_builds_and_reuses_full_backend_compiler() {
 	}
 	// Forwarding VFLAGS and CLI flags must select the last backend exactly once.
 	environment['VFLAGS'] = '-b wasm'
+	// The requested C output needs no C compilation or linking. These flags
+	// fail if the launcher applies them to the host compiler helper instead.
+	target_header := os.join_path(root, 'target-only.h')
+	os.write_file(target_header, '#error target flags reached the host compiler\n')!
+	target_cflags := '-include ${os.quoted_path(target_header)}'
+	target_ldflags := os.quoted_path(os.join_path(root, 'target-only.o'))
+	environment['CFLAGS'] = target_cflags
+	environment['LDFLAGS'] = target_ldflags
 	fastc_output := os.join_path(root, 'fastc.c')
 	first := cmdexec.run_in_merged_with_env(compiler, ['-b', 'fastc', '-o', fastc_output, source], root, environment)
 	assert first.exit_code == 0, first.output
 	assert os.is_file(fastc_output), first.output
 	assert first.output.contains('recompiling `v3_full`'), first.output
+	environment['CFLAGS'] = '${target_cflags} -DV_TARGET_TEST=1'
+	environment['LDFLAGS'] = ''
 	second := cmdexec.run_in_merged_with_env(compiler, ['-b', 'fastc', '-o', fastc_output, source], root, environment)
 	assert second.exit_code == 0, second.output
 	assert !second.output.contains('recompiling `v3_full`'), second.output
+	environment['CFLAGS'] = ''
 	// The cached compiler includes other backends as well.
 	wasm_source := os.join_path(root, 'empty.v')
 	os.write_file(wasm_source, 'fn main() {}\n')!
@@ -90,6 +102,8 @@ fn test_c_only_compiler_builds_and_reuses_full_backend_compiler() {
 	os.mkdir(uncached_tmp)!
 	environment['VTMP'] = uncached_tmp
 	environment['VTOOLS_NO_CACHE'] = '1'
+	environment['CFLAGS'] = target_cflags
+	environment['LDFLAGS'] = target_ldflags
 	uncached := cmdexec.run_in_merged_with_env(compiler, ['-b', 'fastc', '-o', fastc_output, source], root, environment)
 	assert uncached.exit_code == 0, uncached.output
 	assert uncached.output.contains('building `v3_full`'), uncached.output

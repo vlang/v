@@ -120,7 +120,8 @@ fn test_fmt_joined_backend_options() {
 }
 
 fn test_fmt_accepts_semantic_duplicate_operator_and_recursive_alias() {
-	for source in [
+	mut paths := []string{}
+	for i, source in [
 		'struct Number {}\nfn (n Number) + (other Number) Number { return n }\nfn (n Number) + (other Number) Number { return n }\n',
 		'type Node = Node\n',
 		'type Maybe = int | none\n',
@@ -140,24 +141,23 @@ fn test_fmt_accepts_semantic_duplicate_operator_and_recursive_alias() {
 		'fn main() { select { else {} else {} } }\n',
 		'fn main() { unsafe { unsafe { println(1) } } }\n',
 	] {
-		path := os.join_path(vfmt_test_tdir, 'semantic_editing_buffer.v')
+		path := os.join_path(vfmt_test_tdir, 'semantic_editing_buffer_${i}.v')
 		os.write_file(path, source)!
-		res := os.exec([vexe, 'fmt', path])
-		assert res.exit_code == 0, res.output
+		paths << path
 	}
+	res := os.exec([vexe, 'fmt', ...paths])
+	assert res.exit_code == 0, res.output
 }
 
 fn test_fmt_preserves_assembly_compatibility() {
+	mut fixtures := []VfmtWriteFixture{}
+	for i, assembly in ['asm arm64 intel { nop }', 'asm amd64 raw { "nop" }', 'asm goto arm64 { nop }'] {
+		fixtures << VfmtWriteFixture{'assembly_compatibility_${i}', 'fn main() { ${assembly} }\n', [
+			assembly,
+		]}
+	}
 	for options in ['', '-b=wasm', '-b=arm64', '-b=eval'] {
-		for assembly in ['asm arm64 intel { nop }', 'asm amd64 raw { "nop" }', 'asm goto arm64 { nop }'] {
-			source := 'fn main() { ${assembly} }\n'
-			res, formatted := run_vfmt_write('assembly_compatibility', source, options)
-			assert res.exit_code == 0, res.output
-			assert formatted.contains(assembly), formatted
-			second, twice := run_vfmt_write('assembly_compatibility_twice', formatted, options)
-			assert second.exit_code == 0, second.output
-			assert twice == formatted
-		}
+		check_vfmt_write_batch(fixtures, options)!
 	}
 }
 
@@ -370,6 +370,7 @@ fn test_fmt_preserves_qualified_receiver_and_inclusive_range_syntax() {
 }
 
 fn test_fmt_preserves_semantic_signature_and_collection_restrictions() {
+	mut fixtures := []VfmtWriteFixture{}
 	for source, expected in {
 		'fn f(value array) {}':                               'value array'
 		'fn f(value map) {}':                                 'value map'
@@ -402,13 +403,9 @@ fn test_fmt_preserves_semantic_signature_and_collection_restrictions() {
 		'fn main() { values := chan !int{}; _ = values }':    'chan !int{}'
 		'fn main() { values := [2]int{len: 2}; _ = values }': '[2]int{len: 2}'
 	} {
-		res, formatted := run_vfmt_write('semantic_types', source + '\n', '')
-		assert res.exit_code == 0, res.output
-		assert formatted.contains(expected), formatted
-		second, formatted_twice := run_vfmt_write('semantic_types_twice', formatted, '')
-		assert second.exit_code == 0, second.output
-		assert formatted_twice == formatted
+		fixtures << VfmtWriteFixture{'semantic_types_${fixtures.len}', source + '\n', [expected]}
 	}
+	check_vfmt_write_batch(fixtures, '')!
 }
 
 fn test_fmt_uses_v3_formatter() {
@@ -489,6 +486,40 @@ fn run_vfmt_write(name string, source string, extra_args string) (os.Result, str
 			source_path])
 	formatted := os.read_file(source_path) or { panic(err) }
 	return res, formatted
+}
+
+struct VfmtWriteFixture {
+	name     string
+	source   string
+	expected []string
+}
+
+fn check_vfmt_write_batch(fixtures []VfmtWriteFixture, options string) ! {
+	mut paths := []string{cap: fixtures.len}
+	for fixture in fixtures {
+		path := os.join_path(vfmt_test_tdir, '${fixture.name}.v')
+		os.mkdir_all(os.dir(path))!
+		os.write_file(path, fixture.source)!
+		paths << path
+	}
+	args := [vexe, 'fmt', '-w', ...os.split_args(options)!, ...paths]
+	first := os.exec(args)
+	assert first.exit_code == 0, first.output
+	mut formatted := []string{cap: fixtures.len}
+	for i, path in paths {
+		assert first.output.contains(os.real_path(path)), first.output
+		output := os.read_file(path)!
+		for expected in fixtures[i].expected {
+			assert output.contains(expected), '${path}: expected ${expected}\n${output}'
+		}
+		formatted << output
+	}
+	second := os.exec(args)
+	assert second.exit_code == 0, second.output
+	for i, path in paths {
+		assert second.output.contains(os.real_path(path)), second.output
+		assert os.read_file(path)! == formatted[i], '${path} changed on the second pass'
+	}
 }
 
 fn test_fmt_preserves_comments_with_v3() {
@@ -2223,6 +2254,7 @@ fn test_fmt_demangles_function_local_aggregate_types_with_v3() {
 }
 
 fn test_fmt_preserves_contextual_range_embed_and_position_restrictions() {
+	mut fixtures := []VfmtWriteFixture{}
 	for source, expected in {
 		'fn main() { value := [2]field.typ{} }':                  '[2]field.typ{}'
 		'fn f[T]() { if T is int { println(1) } }':               'if T is int'
@@ -2235,19 +2267,15 @@ fn test_fmt_preserves_contextual_range_embed_and_position_restrictions() {
 		'fn f(x int) { match x { 0 .. 3 {} else {} } }':          '0 .. 3'
 		'struct Holder { pkg.lower }':                            'pkg.lower'
 	} {
-		res, formatted := run_vfmt_write('match_range_embed', source + '\n', '')
-		assert res.exit_code == 0, res.output
-		assert formatted.contains(expected), formatted
-		second, twice := run_vfmt_write('match_range_embed_twice', formatted, '')
-		assert second.exit_code == 0, second.output
-		assert twice == formatted
+		fixtures << VfmtWriteFixture{'match_range_embed_${fixtures.len}', source + '\n', [expected]}
 	}
+	check_vfmt_write_batch(fixtures, '')!
 }
 
 fn test_fmt_preserves_lowercase_struct_literals_before_and_after_declarations() {
 	declaration := 'struct lower_rec {\nmut:\n count int\n}\n'
 	function := 'fn make() lower_rec {\n mut r := lower_rec{count: 2}\n return r\n}\n'
-	mut case_index := 0
+	mut fixtures := []VfmtWriteFixture{}
 	for declaration_first in [true, false] {
 		source := if declaration_first { declaration + function } else { function + declaration }
 		conditional_declaration := '@[if windows]\n' + declaration
@@ -2261,15 +2289,8 @@ fn test_fmt_preserves_lowercase_struct_literals_before_and_after_declarations() 
 			for prefix in ['', '@[generated]\nmodule main\n'] {
 				// Generated modules scan sibling files. Isolate each variant so a
 				// preceding active declaration cannot hide an inactive-branch failure.
-				case_dir := 'lowercase_struct_literal_${case_index}'
-				case_index++
-				os.mkdir_all(os.join_path(vfmt_test_tdir, case_dir))!
-				res, formatted := run_vfmt_write('${case_dir}/first', prefix + variant, '')
-				assert res.exit_code == 0, res.output
-				assert formatted.contains('mut r := lower_rec{ count: 2 }'), formatted
-				second, twice := run_vfmt_write('${case_dir}/second', formatted, '')
-				assert second.exit_code == 0, second.output
-				assert twice == formatted
+				fixtures << VfmtWriteFixture{'lowercase_struct_literal_${fixtures.len}/literal', prefix +
+					variant, ['mut r := lower_rec{ count: 2 }']}
 			}
 		}
 	}
@@ -2278,18 +2299,12 @@ fn test_fmt_preserves_lowercase_struct_literals_before_and_after_declarations() 
 	assembly_source := 'const lower_rec = true\nfn check() {\n asm amd64 {\n .type lower_rec, @function\n }\n if lower_rec{ println("yes") }\n}\n'
 	for prefix in ['', '@[generated]\nmodule main\n'] {
 		for negative in [shadow_source, text_source, assembly_source] {
-			case_dir := 'lowercase_value_${case_index}'
-			case_index++
-			os.mkdir_all(os.join_path(vfmt_test_tdir, case_dir))!
-			res, formatted := run_vfmt_write('${case_dir}/value', prefix + negative, '')
-			assert res.exit_code == 0, res.output
-			assert formatted.contains("if lower_rec { println('yes') }"), formatted
+			mut expected := ["if lower_rec { println('yes') }"]
 			if negative == assembly_source {
-				assert formatted.contains('.type lower_rec, @function'), formatted
+				expected << '.type lower_rec, @function'
 			}
-			second, twice := run_vfmt_write('${case_dir}/second', formatted, '')
-			assert second.exit_code == 0, second.output
-			assert twice == formatted
+			fixtures << VfmtWriteFixture{'lowercase_value_${fixtures.len}/value', prefix + negative, expected}
 		}
 	}
+	check_vfmt_write_batch(fixtures, '')!
 }

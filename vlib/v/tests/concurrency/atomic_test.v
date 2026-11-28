@@ -1,5 +1,3 @@
-import time
-
 // vtest retry: 3
 
 struct App {
@@ -9,12 +7,14 @@ mut:
 
 fn test_atomic() {
 	mut app := &App{}
-	for i in 0 .. 10 {
-		spawn app.run()
+	worker_count := 10
+	mut workers := []thread{cap: worker_count}
+	for _ in 0 .. worker_count {
+		workers << spawn app.run()
 	}
-	time.sleep(200 * time.millisecond)
+	workers.wait()
 	println('idx=${app.idx}')
-	assert app.idx == 10
+	assert app.idx == worker_count
 }
 
 fn (mut app App) run() {

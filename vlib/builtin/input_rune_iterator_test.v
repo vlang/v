@@ -1,52 +1,38 @@
 // vtest build: linux
 // vtest retry: 2
 import os
-import time
 
-const input_rune_iterator_program = '
-fn main() {
-	for i, r in input_rune_iterator() {
-		println("> i: \${i:04} | r: `\${r}`")
+const input_rune_probe_arg = '--vtest-input-rune-iterator'
+
+fn testsuite_begin() {
+	if os.args.len != 2 || os.args[1] != input_rune_probe_arg {
+		return
 	}
+	for i, r in input_rune_iterator() {
+		println('> i: ${i:04} | r: `${r}`')
+	}
+	exit(0)
 }
-'
 
 fn test_input_rune_iterator_with_unicode_input() ! {
-	fixture_name := 'input_rune_iterator_${os.getpid()}'
-	fixture_path := os.join_path(os.vtmp_dir(), '${fixture_name}.v')
-	fixture_exe := os.join_path(os.vtmp_dir(), fixture_name)
+	input := os.join_path(os.vtmp_dir(), 'input_rune_iterator_${os.getpid()}.txt')
 	defer {
-		os.rm(fixture_path) or {}
-		os.rm(fixture_exe) or {}
+		os.rm(input) or {}
 	}
-	os.write_file(fixture_path, input_rune_iterator_program)!
-	compile_result := os.exec([@VEXE, '-o', fixture_exe, fixture_path])
-	assert compile_result.exit_code == 0, compile_result.output
-	mut p := os.new_process(fixture_exe)
+	// A suffix after NUL makes reading past the terminator visible.
+	os.write_file(input, 'Проба Abc 你好 🌍 123\x00extra')!
+	mut p := os.new_process(os.executable())
+	p.set_args([input_rune_probe_arg])
 	p.set_redirect_stdio()
+	p.set_stdin_path(input)
 	p.run()
-	spawn fn [mut p] () {
-		time.sleep(10 * time.millisecond)
-		dump(p.pid)
-		p.stdin_write('Проба Abc 你好 🌍 123')
-		time.sleep(10 * time.millisecond)
-		p.stdin_write('\0x00') // 0 should break the input stream
-		time.sleep(10 * time.millisecond)
-		eprintln('>>> done')
-	}()
-	mut olines := []string{}
-	for p.is_alive() {
-		if oline := p.pipe_read(.stdout) {
-			olines << oline
-		}
-		time.sleep(1 * time.millisecond)
+	defer {
+		p.close()
 	}
-	p.close()
+	solines := p.stdout_slurp().trim_space().replace('\r', '')
+	stderr := p.stderr_slurp()
 	p.wait()
-	assert p.code == 0
-	eprintln('done')
-	solines := olines.join('').trim_space().replace('\r', '')
-	eprintln('solines.len: ${solines.len} | solines: ${solines}')
+	assert p.code == 0, stderr
 	assert solines.len > 100
 	assert solines == '> i: 0000 | r: `П`
 > i: 0001 | r: `р`

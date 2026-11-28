@@ -2,6 +2,15 @@ module c
 
 import os
 
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux or macOS,
+	// and with it Windows C includes the SDK instead of the headerless declarations
+	// this file checks; let these builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 // winapi_names_project writes a program that links C functions of its own which
 // share their names with Win32 APIs. The object ships no header, so V writes their
 // prototypes itself.
@@ -42,8 +51,8 @@ fn test_program_owned_winapi_names_keep_their_meaning_off_windows() {
 	source := os.join_path(root, 'main.v')
 	for target_os in ['linux', 'macos'] {
 		c_source := os.join_path(root, '${target_os}.c')
-		result := os.exec([@VEXE, '-new-compiler', '-nocache', '-os', target_os, '-gc', 'none',
-			'-o', c_source, source])
+		result := os.exec([@VEXE, '-nocache', '-os', target_os, '-gc', 'none', '-o', c_source,
+			source])
 		assert result.exit_code == 0, result.output
 		generated := os.read_lines(c_source)!
 		// These program-owned names have no Win32 calling convention or suffix.
@@ -88,7 +97,7 @@ fn main() {
 			program
 		})!
 		c_source := os.join_path(root, 'windows_${with_headers}.c')
-		mut args := [@VEXE, '-new-compiler', '-nocache', '-os', 'windows', '-gc', 'none']
+		mut args := [@VEXE, '-nocache', '-os', 'windows', '-gc', 'none']
 		if !with_headers {
 			// The Windows overflow reporter includes the SDK; disable it to exercise
 			// the headerless declarations independently of that runtime helper.
@@ -125,7 +134,7 @@ fn test_program_links_its_own_c_functions_named_like_win32_apis() {
 	// Windows guards, or compiling the generated C loses their prototypes.
 	for mode in ['native', 'cross'] {
 		executable := os.join_path(root, 'program_${mode}')
-		mut args := [@VEXE, '-new-compiler', '-nocache', '-gc', 'none']
+		mut args := [@VEXE, '-nocache', '-gc', 'none']
 		if mode == 'cross' {
 			args << '-cross'
 		}

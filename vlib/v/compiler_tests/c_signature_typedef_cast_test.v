@@ -53,15 +53,14 @@ fn C.make_guid() C.NativeGUID
 fn C.take_guid(value C.DeviceGUID) u32
 fn C.ordinary_call(value u32) u32
 ')!
-	for flags in [[]string{}, ['-no-parallel', '-nocache']] {
-		result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', @CCOMPILER,
-			...flags, 'run', source])
-		assert result.exit_code == 0, result.output
-	}
-	c_path := os.join_path(root, 'main.c')
-	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-o', c_path, source])
-	assert generated.exit_code == 0, generated.output
-	c_source := os.read_file(c_path)!
+	args := [@VEXE, '-no-retry-compilation', '-cc', @CCOMPILER]
+	normal := os.exec([...args, 'run', source])
+	assert normal.exit_code == 0, normal.output
+
+	binary := os.join_path(root, 'native_casts')
+	serial := os.exec([...args, '-no-parallel', '-nocache', '-b', 'c', '-o', binary, 'run', source])
+	assert serial.exit_code == 0, serial.output
+	c_source := os.read_file(binary + '.c')!
 	start := c_source.index('((DeviceGUID[1]){') or { panic(c_source) }
 	end := c_source[start..].index('})[0]') or { panic(c_source) }
 	native_expr := c_source[start..start + end + '})[0]'.len]
@@ -80,8 +79,8 @@ fn C.ordinary_call(value u32) u32
 		assert strict_run.exit_code == 0, strict_run.output
 	}
 	windows_c_path := os.join_path(root, 'windows.c')
-	windows_generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-os', 'windows',
-		'-cc', 'msvc', '-gc', 'none', '-o', windows_c_path, source])
+	windows_generated := os.exec([@VEXE, '-no-retry-compilation', '-os', 'windows', '-cc', 'msvc',
+		'-gc', 'none', '-o', windows_c_path, source])
 	assert windows_generated.exit_code == 0, windows_generated.output
 	windows_c := os.read_file(windows_c_path)!
 	assert windows_c.contains(native_expr), windows_c
@@ -98,7 +97,7 @@ fn main() {
 	C.MissingType(u32(7))
 }
 ')!
-	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-check', source])
+	result := os.exec([@VEXE, '-no-retry-compilation', '-check', source])
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('unknown C function: `C.MissingType`'), result.output
 }

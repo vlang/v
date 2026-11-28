@@ -6,13 +6,7 @@ fn test_new_compiler_shared_library_exports_only_tagged_functions() {
 	if os.user_os() != 'linux' {
 		return
 	}
-	// The test runner can be the legacy fallback, but the library under test
-	// must be built by the new compiler whose flag handling regressed in #28749.
-	vexe := if os.base(@VEXE) == 'v1_fallback' {
-		os.join_path(os.dir(@VEXE), 'v')
-	} else {
-		@VEXE
-	}
+	vexe := @VEXE
 	old_vflags := os.getenv_opt('VFLAGS')
 	os.unsetenv('VFLAGS')
 	defer {
@@ -75,7 +69,7 @@ fn test_new_compiler_shared_library_exports_only_tagged_functions() {
 		lib_out := os.join_path(workdir, 'libmylib_${mode}')
 		lib_so := '${lib_out}.so'
 		// Exercise the default compiler choice and a directly linked native object.
-		mut args := ['-new-compiler', '-nocache', '-enable-globals', '-shared']
+		mut args := ['-nocache', '-enable-globals', '-shared']
 		if is_prod {
 			args << '-prod'
 		}
@@ -106,8 +100,8 @@ fn test_new_compiler_shared_library_exports_only_tagged_functions() {
 		assert run.exit_code == 0, run.output
 	}
 	project_dir := os.join_path(workdir, 'generated')
-	generated := cmdexec.run(vexe, ['-new-compiler', '-nocache', '-enable-globals', '-shared',
-		'-generate-c-project', project_dir, lib_src])
+	generated := cmdexec.run(vexe, ['-nocache', '-enable-globals', '-shared', '-generate-c-project',
+		project_dir, lib_src])
 	assert generated.exit_code == 0, generated.output
 	assert os.is_file(os.join_path(project_dir, 'exports.map'))
 	build_command := os.read_file(os.join_path(project_dir, 'build_command.txt'))!
@@ -122,8 +116,8 @@ fn test_new_compiler_shared_library_exports_only_tagged_functions() {
 	user_script := os.join_path(workdir, 'user.map')
 	os.write_file(user_script, 'V1 { global: mylib_compute; local: *; };\n')!
 	user_out := os.join_path(workdir, 'libmylib_user')
-	user_build := cmdexec.run(vexe, ['-new-compiler', '-nocache', '-enable-globals', '-shared',
-		'-ldflags', '-Wl,--version-script,${user_script}', '-o', user_out, lib_src])
+	user_build := cmdexec.run(vexe, ['-nocache', '-enable-globals', '-shared', '-ldflags',
+		'-Wl,--version-script,${user_script}', '-o', user_out, lib_src])
 	assert user_build.exit_code == 0, user_build.output
 	user_nm := cmdexec.run('nm', ['-D', '--defined-only', '--format=posix', '${user_out}.so'])
 	assert user_nm.exit_code == 0, user_nm.output
@@ -139,8 +133,7 @@ fn test_new_compiler_shared_library_exports_only_tagged_functions() {
 		}
 	}
 	env_out := os.join_path(workdir, 'libmylib_cflags')
-	env_build := cmdexec.run(vexe, ['-new-compiler', '-nocache', '-enable-globals', '-shared',
-		'-o', env_out, lib_src])
+	env_build := cmdexec.run(vexe, ['-nocache', '-enable-globals', '-shared', '-o', env_out, lib_src])
 	assert env_build.exit_code == 0, env_build.output
 	env_nm := cmdexec.run('nm', ['-D', '--defined-only', '--format=posix', '${env_out}.so'])
 	assert env_nm.exit_code == 0, env_nm.output

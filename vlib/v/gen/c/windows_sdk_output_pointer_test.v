@@ -4,6 +4,15 @@ import os
 import time
 import v.cmdexec
 
+fn testsuite_begin() {
+	// This file checks Windows C with the MinGW gcc, which rejects the MSVC flavor
+	// (intrinsics, CRT linkage) that `-cc msvc`, the VFLAGS of the MSVC CI jobs,
+	// writes; let these generations use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 fn test_windows_file_and_console_outputs_match_sdk_pointer_types() ! {
 	cc_name := $if windows { 'gcc' } $else { 'x86_64-w64-mingw32-gcc' }
 	cc := os.find_abs_path_of_executable(cc_name) or { return }

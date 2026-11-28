@@ -450,8 +450,32 @@ fn option_payload_fit[P](_ ?P, kind ValueKind) int {
 
 fn (mut decoder Decoder) decode_sumtype[T](mut val T) ! {
 	value_info := decoder.current_value()
-
-	decoder.init_sumtype_by_value_kind(mut val, value_info)!
-
-	decoder.decode_selected_sumtype(mut val)!
+	$if T.unaliased_typ is Any {
+		mut count_any_container := false
+		if value_info.value_kind == .array || value_info.value_kind == .object {
+			if decoder.any_container_depth >= max_any_nesting_depth {
+				decoder.decode_error('exceeded the maximum nesting depth for dynamic Any values')!
+			}
+			decoder.any_container_depth++
+			count_any_container = true
+		}
+		decoder.init_sumtype_by_value_kind(mut val, value_info) or {
+			if count_any_container {
+				decoder.any_container_depth--
+			}
+			return err
+		}
+		decoder.decode_selected_sumtype(mut val) or {
+			if count_any_container {
+				decoder.any_container_depth--
+			}
+			return err
+		}
+		if count_any_container {
+			decoder.any_container_depth--
+		}
+	} $else {
+		decoder.init_sumtype_by_value_kind(mut val, value_info)!
+		decoder.decode_selected_sumtype(mut val)!
+	}
 }

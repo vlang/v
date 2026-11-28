@@ -1,10 +1,11 @@
-import sync
+module sync
+
 import sync.stdatomic { new_atomic }
 import time
 
 // An optimistic stamp validates while nobody writes, and fails after a write.
 fn test_stamped_lock_optimistic_validate() {
-	mut l := sync.new_stamped_lock()
+	mut l := new_stamped_lock()
 	stamp := l.try_optimistic_read()
 	assert l.validate(stamp) == true, 'uncontended stamp must validate'
 	l.write_lock()
@@ -14,7 +15,7 @@ fn test_stamped_lock_optimistic_validate() {
 
 // Two readers may hold the lock at the same time.
 fn test_stamped_lock_shared_readers() {
-	mut l := sync.new_stamped_lock()
+	mut l := new_stamped_lock()
 	in_ch := chan bool{cap: 2}
 	release_ch := chan bool{cap: 2}
 	defer {
@@ -37,31 +38,45 @@ fn test_stamped_lock_shared_readers() {
 }
 
 // A writer waits while a reader holds, then proceeds after release.
-fn test_stamped_lock_writer_waits_for_reader() {
-	mut l := sync.new_stamped_lock()
+fn test_stamped_lock_writer_waits_for_reader() ! {
+	mut l := new_stamped_lock()
 	mut wrote := new_atomic(false)
 	done_ch := chan bool{cap: 1}
-	defer {
-		done_ch.close()
-	}
 	l.read_lock()
-	spawn fn [mut l, mut wrote, done_ch] () {
+	writer := spawn fn [mut l, mut wrote, done_ch] () {
 		l.write_lock()
 		wrote.store(true)
 		l.write_unlock()
 		done_ch <- true
 	}()
-	time.sleep(50 * time.millisecond)
-	assert wrote.load() == false, 'writer must wait while a reader holds'
+	sw := time.new_stopwatch()
+	mut queued := false
+	for !wrote.load() && sw.elapsed() < 2 * time.second {
+		l.cond.inner_mutex.lock()
+		queued = l.cond.waiters.len > 0
+		l.cond.inner_mutex.unlock()
+		if queued {
+			break
+		}
+		time.sleep(time.millisecond)
+	}
+	blocked := !wrote.load()
 	l.read_unlock()
-	_ := <-done_ch
+	select {
+		_ := <-done_ch {
+		}
+		2 * time.second {
+			return error('writer did not proceed after the reader released the lock')
+		}
+	}
+	writer.wait()
+	assert queued && blocked, 'writer must wait while a reader holds the lock'
 	assert wrote.load() == true, 'writer must proceed after release'
-	// the write bumped the version: an old stamp fails
 }
 
 // A stamp taken before a write fails even if the write already finished.
 fn test_stamped_lock_version_bumps_on_write() {
-	mut l := sync.new_stamped_lock()
+	mut l := new_stamped_lock()
 	first := l.try_optimistic_read()
 	l.write_lock()
 	l.write_unlock()
@@ -71,7 +86,7 @@ fn test_stamped_lock_version_bumps_on_write() {
 }
 
 fn test_stamped_lock_stamp_during_write_stays_invalid() {
-	mut l := sync.new_stamped_lock()
+	mut l := new_stamped_lock()
 	assert !l.validate(0)
 	before := l.try_optimistic_read()
 	assert before != 0

@@ -100,46 +100,70 @@ fn test_async_commands_keep_connections_independent() {
 	}
 }
 
-fn stalled_handshake(mut listener net.TcpListener, ready chan bool) {
+fn stalled_handshake(mut listener net.TcpListener, release chan bool) {
+	defer { listener.close() or {} }
 	mut server := listener.accept() or { return }
-	ready <- true
-	time.sleep(100 * time.millisecond)
+	// The fallback outlasts the client's assertion window, so a server close
+	// cannot satisfy the timeout check if the client ignores its deadline.
+	select {
+		_ := <-release {
+		}
+		2 * time.second {
+		}
+	}
 	server.close() or {}
-	listener.close() or {}
 }
 
 fn test_handshake_timeout_is_a_connection_error() {
 	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
 	address := listener.addr()!
-	ready := chan bool{cap: 1}
-	worker := spawn stalled_handshake(mut listener, ready)
-	started := time.now()
-	connect(host: '127.0.0.1', port: address.port()!, read_timeout: 10 * time.millisecond) or {
-		assert err is ConnectionError
-		assert time.now() - started < time.second
+	listener.set_accept_timeout(time.second)
+	release := chan bool{cap: 1}
+	worker := spawn stalled_handshake(mut listener, release)
+	defer {
+		release <- true
 		worker.wait()
+	}
+	sw := time.new_stopwatch()
+	mut unexpected := connect(
+		host:         '127.0.0.1'
+		port:         address.port()!
+		read_timeout: 10 * time.millisecond
+	) or {
+		assert err is ConnectionError
+		assert sw.elapsed() < time.second
 		return
 	}
-	worker.wait()
+	unexpected.close() or {}
 	assert false, 'handshake succeeded despite a stalled server'
 }
 
-fn backpressure_server(mut listener net.TcpListener) {
+fn backpressure_server(mut listener net.TcpListener, release chan bool) {
+	defer { listener.close() or {} }
 	mut socket := listener.accept() or { return }
+	socket.set_read_timeout(time.second)
 	mut server := DB{ version: 3, conn: socket }
-	defer {
-		server.close() or {}
-		listener.close() or {}
-	}
+	defer { server.close() or {} }
 	server.read_response() or { return }
 	server.write_data('%0\r\n'.bytes()) or { return }
-	time.sleep(500 * time.millisecond)
+	select {
+		_ := <-release {
+		}
+		500 * time.millisecond {
+		}
+	}
 }
 
 fn test_write_timeout_and_unlimited_connect_use_nonblocking_transport() {
 	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
 	port := listener.addr()!.port()!
-	worker := spawn backpressure_server(mut listener)
+	listener.set_accept_timeout(time.second)
+	release := chan bool{cap: 1}
+	worker := spawn backpressure_server(mut listener, release)
+	defer {
+		release <- true
+		worker.wait()
+	}
 	mut db := connect(
 		host:            '127.0.0.1'
 		port:            port
@@ -149,7 +173,7 @@ fn test_write_timeout_and_unlimited_connect_use_nonblocking_transport() {
 	defer { db.close() or {} }
 	assert !db.conn.is_blocking
 	db.conn.sock.set_option_int(.send_buf_size, 4096)!
-	started := time.now()
+	sw := time.new_stopwatch()
 	mut timed_out := false
 	db.set('large', 'x'.repeat(8 * 1024 * 1024)) or {
 		timed_out = true
@@ -157,8 +181,7 @@ fn test_write_timeout_and_unlimited_connect_use_nonblocking_transport() {
 		assert db.closed
 	}
 	assert timed_out
-	assert time.now() - started < 400 * time.millisecond
-	worker.wait()
+	assert sw.elapsed() < 400 * time.millisecond
 }
 
 fn test_authentication_credentials_survive_reconnect() {

@@ -1,0 +1,74 @@
+name: FastC tuple native thread linkage
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/gen/fastc/tuple_integer_width_test.v'
+      - 'vlib/v/gen/fastc/target_spawn_test.v'
+      - '.github/workflows/fastc_tuple_pthread_ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  legacy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    container:
+      image: thevlang/vlang:ubuntu-build
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 108eb83730bf52ef3409dfb42bffe8205287e584
+          path: baseline
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          path: candidate
+          persist-credentials: false
+      - name: Reproduce original direct C link error
+        working-directory: baseline
+        run: |
+          set -eu
+          git config --global --add safe.directory "$(pwd -P)"
+          test "$(git rev-parse HEAD)" = 108eb83730bf52ef3409dfb42bffe8205287e584
+          cc --version
+          make -j4
+          ./v -prod -cg -o v cmd/v
+          rc=0
+          env -u VFLAGS -u VOSARGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent -cc gcc -no-retry-compilation vlib/v/gen/fastc/tuple_integer_width_test.v > ../baseline-tuple.log 2>&1 || rc=$?
+          cat ../baseline-tuple.log
+          test "$rc" -ne 0
+          grep -E 'undefined reference to .*pthread_(once|getspecific|setspecific|key_create)' ../baseline-tuple.log
+      - name: Rebuild and validate original tuple and thread controls
+        working-directory: candidate
+        run: |
+          set -eu
+          git config --global --add safe.directory "$(pwd -P)"
+          make -j4
+          ./v -prod -cg -o v cmd/v
+          ./v fmt -verify vlib/v/gen/fastc/tuple_integer_width_test.v
+          env -u VFLAGS -u VOSARGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent -cc gcc -no-retry-compilation vlib/v/gen/fastc/tuple_integer_width_test.v
+          env -u VFLAGS -u VOSARGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent -cc gcc -no-retry-compilation vlib/v/gen/fastc/target_spawn_test.v
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: original-tuple-link-error
+          path: baseline-tuple.log
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+      - name: Rebuild and run both direct C fixtures
+        run: |
+          set -eu
+          ./v self
+          ./v fmt -verify vlib/v/gen/fastc/tuple_integer_width_test.v
+          ./v -silent -no-retry-compilation vlib/v/gen/fastc/tuple_integer_width_test.v
+          ./v -silent -no-retry-compilation vlib/v/gen/fastc/target_spawn_test.v

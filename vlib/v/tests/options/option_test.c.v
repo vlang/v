@@ -379,6 +379,11 @@ fn test_return_or() {
 	assert x == 0
 }
 
+// V declares `struct stat` itself for the other targets; on Windows it comes from the header.
+$if windows {
+	#include <sys/stat.h>
+}
+
 // For issue #16058: cgen error: exists spaces in the name of the ?&C.struct
 fn get_opt_pointer_to_c_struct() ?&C.stat {
 	return none

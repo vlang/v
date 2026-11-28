@@ -1,49 +1,14 @@
 import os
-
-const variadic_call_vexe = @VEXE
-const variadic_call_tests_dir = os.dir(@FILE)
-const variadic_call_v3_dir = os.dir(variadic_call_tests_dir)
-const variadic_call_vlib_dir = os.dir(variadic_call_v3_dir)
-const variadic_call_v3_src = os.join_path(variadic_call_v3_dir, 'v.v')
-
-fn variadic_call_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_variadic_call_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([variadic_call_vexe, '-gc', 'none', '-path',
-			'${variadic_call_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${variadic_call_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn test_fixed_slot_spread_variadic_call_expands_before_codegen() {
-	v3_bin := variadic_call_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_fixed_slot_spread_variadic_${os.getpid()}.v')
-	os.write_file(src, 'fn take(first int, rest ...int) int {
-	return first * 100 + rest[0] * 10 + rest[1]
-}
-
-fn main() {
-	xs := [2, 7, 8]
-	println(int_str(take(...xs)))
-}
-') or {
-		panic(err)
-	}
-	bin := os.join_path(os.temp_dir(), 'v3_fixed_slot_spread_variadic_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '278', run.output
-}
+import v.tempname
 
 fn test_fixed_slot_spread_variadic_call_rejects_trailing_args() {
-	v3_bin := variadic_call_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_fixed_slot_spread_variadic_trailing_${os.getpid()}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_variadic_call_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_fixed_slot_spread_variadic_trailing')
+	src := bin + '.v'
 	os.write_file(src, 'fn take(first int, rest ...int) int {
 	return first * 1000 + rest[0] * 100 + rest[1] * 10 + rest[2]
 }
@@ -55,17 +20,19 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_fixed_slot_spread_variadic_trailing_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('when forwarding a variadic variable, it must be the final argument'), compile.output
 }
 
-fn test_interface_variadic_forwarded_array_is_not_repacked() {
-	v3_bin := variadic_call_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_interface_variadic_forward_${os.getpid()}.v')
+fn test_variadic_calls_expand_fixed_slots_and_forward_arrays() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_variadic_call_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_variadic_arrays')
+	src := bin + '.v'
 	os.write_file(src, 'interface Displayable {
 	display() string
 }
@@ -96,7 +63,13 @@ fn count(values ...Any) int {
 	return values.len
 }
 
+fn take(first int, rest ...int) int {
+	return first * 100 + rest[0] * 10 + rest[1]
+}
+
 fn main() {
+	ints := [2, 7, 8]
+	println(int_str(take(...ints)))
 	println(forward(Item{
 		text: "a"
 	}, Item{
@@ -109,22 +82,24 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_interface_variadic_forward_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	// A spread array is forwarded as is, while a bare array is packed as one variadic
 	// element (d2e6876e38).
-	assert run.output.trim_space() == 'ab\n0\n1', run.output
+	assert run.output.trim_space() == '278\nab\n0\n1', run.output
 }
 
 fn test_source_var_with_generated_variadic_prefix_is_not_forwarded() {
-	v3_bin := variadic_call_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_source_varargs_prefix_${os.getpid()}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_variadic_call_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_source_varargs_prefix')
+	src := bin + '.v'
 	os.write_file(src, 'interface Any {}
 
 fn count(values ...Any) int {
@@ -138,10 +113,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_source_varargs_prefix_${os.getpid()}')
-	os.rm(bin) or {}
-	os.rm(bin + '.c') or {}
-	compile := os.exec([v3_bin, '-translated', '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, '-translated', src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([bin])

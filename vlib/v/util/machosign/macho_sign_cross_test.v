@@ -16,7 +16,7 @@ fn test_portable_signer_uses_the_available_hash_and_file_implementations() ! {
 	os.write_file(source, 'import os\nimport v.util.machosign\nfn main() { machosign.sign_adhoc(os.args[1]) or { panic(err) } }\n')!
 	for variant in ['portable', 'portable_macos', 'native_macos'] {
 		portable := variant != 'native_macos'
-		mut command := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-o', output]
+		mut command := [@VEXE, '-no-retry-compilation', '-nocache', '-o', output]
 		if portable {
 			command << '-cross'
 		}

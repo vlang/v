@@ -83,10 +83,9 @@ fn main() {
 	baseline := os.join_path(root, 'baseline')
 	baseline_build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'c', '-gc', 'none', '-o', baseline,
 		source_path], @VEXEROOT, {
-		'VEXE':                   @VEXE
-		'VFLAGS':                 ''
-		'VOSARGS':                ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VEXE':    @VEXE
+		'VFLAGS':  ''
+		'VOSARGS': ''
 	})
 	assert baseline_build.exit_code == 0, baseline_build.output
 	baseline_run := cmdexec.run(baseline, [])
@@ -103,7 +102,7 @@ fn main() {
 		c_path := os.join_path(root, 'main.c')
 		program := os.join_path(root, 'program')
 		os.write_file(c_path, source) or { panic(err) }
-		build := cmdexec.run('cc', ['-std=gnu11', '-O2', '-o', program, c_path])
+		build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-O2', '-o', program, c_path])
 		assert build.exit_code == 0, build.output
 		run := cmdexec.run(program, [])
 		assert run.exit_code == 0, run.output

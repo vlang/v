@@ -34,8 +34,10 @@ fn test_deadline_getters_agree_with_wait_state() ! {
 	}
 }
 
-fn connect_after_deadline_chunk_delay(path string) {
-	time.sleep(50 * time.millisecond)
+fn connect_deadline_probe(path string, delay time.Duration) {
+	if delay > 0 {
+		time.sleep(delay)
+	}
 	mut client := connect_stream(path) or { panic(err) }
 	client.close() or { panic(err) }
 }
@@ -50,7 +52,8 @@ fn test_select_deadline_retries_chunks_and_preserves_unset_sentinels() ! {
 			listener.close() or {}
 			os.rm(path) or {}
 		}
-		connector := spawn connect_after_deadline_chunk_delay(path)
+		delay := if deadline == future { 50 * time.millisecond } else { time.Duration(0) }
+		connector := spawn connect_deadline_probe(path, delay)
 		ready := select_deadline_chunked(listener.sock.handle, .read, deadline,
 			5 * time.millisecond)!
 		connector.wait()

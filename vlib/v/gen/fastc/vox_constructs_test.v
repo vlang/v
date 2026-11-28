@@ -33,6 +33,12 @@ pub enum Color {
 	red   @[json: "Red"]
 	green
 }
+
+@[flag]
+pub enum Filter {
+	first
+	second
+}
 ') or { panic(err) }
 	os.write_file(os.join_path(root, 'm', 'm.c.v'), r'module m
 
@@ -148,6 +154,26 @@ fn main() {
 	assert color == .green
 	missing := m.Color.from_string("blue") or { m.Color.none }
 	assert missing == .none
+	checked := m.Color.from(2) or { panic(err) }
+	assert checked == .green
+	rejected := m.Color.from(1 << 32) or {
+		assert err.msg() == "invalid value"
+		m.Color.red
+	}
+	assert rejected == .red
+	from_text := m.Color.from("green") or { panic(err) }
+	assert from_text == .green
+	bad_text := m.Color.from("blue") or {
+		assert err.msg() == "invalid value"
+		m.Color.red
+	}
+	assert bad_text == .red
+	filter := m.Filter.from(3) or { panic(err) }
+	assert filter == m.Filter.first | m.Filter.second
+	outside_mask := m.Filter.from(4) or { m.Filter.second }
+	assert outside_mask == .second
+	empty_filter := m.Filter.from("") or { panic(err) }
+	assert u64(empty_filter) == 0
 	counts := map[string]int{
 		"a": 1
 		"b": 2
@@ -202,6 +228,102 @@ fn fastc_vox_construct_program(name string, source string) {
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
 	program := os.join_path(root, 'program')
 	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-nocache', '-enable-globals', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}
+
+fn test_fastc_vox_struct_comparisons_and_static_call_arguments() ! {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_vox_call_context_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'mathfixture'))!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'mathfixture', 'matrix.v'), r'@[has_globals]
+module mathfixture
+
+const matrix = [4, 2]!
+
+fn sum(values [2]int) int {
+	return values[0] + values[1]
+}
+
+pub fn matrix() int {
+	return sum(matrix)
+}
+
+__global callback = fn () int { return 7 }
+
+pub fn callback_value() int {
+	if callback == unsafe { nil } {
+		return 0
+	}
+	return callback()
+}
+
+pub type Label = int | string
+pub struct Box {}
+
+pub fn Box.compute(value f64, label Label) f64 {
+	return value
+}
+')!
+	os.write_file(os.join_path(root, 'main.c.v'), r'module main
+
+import mathfixture
+
+#preinclude <complex.h>
+
+struct Marker {
+	value int
+}
+
+struct OtherMarker {
+	text string
+}
+
+type Choice = Marker | OtherMarker
+
+fn produce(value int) Choice {
+	return Marker{value}
+}
+
+fn (a Marker) == (b Marker) bool {
+	return a.value % 10 == b.value % 10
+}
+
+const workspace_capacity = 3
+
+struct Workspace {
+	values [workspace_capacity]Marker = [workspace_capacity]Marker{init: marker()}
+}
+
+fn marker() Marker {
+	return Marker{42}
+}
+
+fn main() {
+	assert mathfixture.matrix() == 6
+	assert mathfixture.callback_value() == 7
+	complex := true
+	assert mathfixture.Box.compute(if complex { 1 } else { 0 }, mathfixture.Label("name")) == 1
+	choice := produce(12)
+	assert choice is Marker
+	assert choice.value == 12
+	assert [Marker{2}].contains(Marker{12})
+	assert ![Marker{2}].contains(Marker{13})
+	workspace := Workspace{}
+	for index in 0 .. workspace_capacity {
+		assert workspace.values[index].value == 42
+	}
+	println("ok")
+}
+')!
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-cc', 'clang', '-cflags', '-w', '-o', program,
+		root])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output

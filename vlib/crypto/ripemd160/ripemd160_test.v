@@ -18,15 +18,16 @@ const vectors = [
 
 fn test_vectors() {
 	for tv in vectors {
+		data := tv.i.bytes()
 		mut md := ripemd160.new()
 		for j := 0; j < 3; j++ {
 			if j < 2 {
-				md.write(tv.i.bytes()) or { panic(err) }
+				md.write(data) or { panic(err) }
 			} else {
-				half := tv.i.len / 2
-				md.write(tv.i.bytes()[..half]) or { panic(err) }
+				half := data.len / 2
+				md.write(data[..half]) or { panic(err) }
 				md.sum([])
-				md.write(tv.i.bytes()[half..]) or { panic(err) }
+				md.write(data[half..]) or { panic(err) }
 			}
 			assert md.sum([]).hex() == tv.o
 			assert ripemd160.hexhash(tv.i) == tv.o
@@ -37,8 +38,9 @@ fn test_vectors() {
 
 fn million_a() string {
 	mut md := ripemd160.new()
+	chunk := 'aaaaaaaaaa'.bytes()
 	for _ in 0 .. 100000 {
-		md.write('aaaaaaaaaa'.bytes()) or { panic(err) }
+		md.write(chunk) or { panic(err) }
 	}
 	return md.sum([]).hex()
 }

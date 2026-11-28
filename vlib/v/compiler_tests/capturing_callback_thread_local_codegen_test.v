@@ -1,28 +1,37 @@
 import os
+import v.tempname
 
-const closure_tls_vexe = @VEXE
-const closure_tls_tests_dir = os.dir(@FILE)
-const closure_tls_v3_dir = os.dir(closure_tls_tests_dir)
-const closure_tls_vlib_dir = os.dir(closure_tls_v3_dir)
-const closure_tls_v3_src = os.join_path(closure_tls_v3_dir, 'v.v')
+fn capturing_callback_c_body(c_source string, name string) string {
+	_, definition := c_source.rsplit_once('\nvoid ${name}(') or {
+		panic('missing generated function ${name}')
+	}
+	signature, body := definition.split_once('\n') or { panic('missing body for ${name}') }
+	assert signature.ends_with(') {'), signature
+	return body.all_before('\n}')
+}
+
+fn capturing_callback_spawn_wrapper(c_source string, caller string) string {
+	// Follow the call site so a wrapper emitted for another case cannot satisfy the check.
+	_, call_args := caller.split_once('__v_thread_spawn(') or {
+		panic('missing spawn call in\n${caller}')
+	}
+	wrapper := call_args.all_before(',')
+	assert wrapper.starts_with('fn_value_args_thread_wrapper_'), caller
+	_, definition := c_source.split_once('static void* ${wrapper}(void* arg) {') or {
+		panic('missing generated spawn wrapper ${wrapper}')
+	}
+	return definition.all_before('\n')
+}
 
 fn test_capturing_callbacks_use_owned_capture_contexts() {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_closure_tls_${pid}')
-	src := os.join_path(os.temp_dir(), 'v3_closure_tls_${pid}.v')
-	out := os.join_path(os.temp_dir(), 'v3_closure_tls_program_${pid}')
-	defer {
-		os.rm(v3_bin) or {}
-		os.rm(src) or {}
-		os.rm(out) or {}
-		os.rm(out + '.c') or {}
-	}
-	build :=
-		os.exec([closure_tls_vexe, '-gc', 'none', '-path',
-			'${closure_tls_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${closure_tls_v3_src}'])
-	assert build.exit_code == 0, build.output
+	dir := os.join_path(os.vtmp_dir(), 'v3_capturing_callbacks_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	src := os.join_path(dir, 'main.v')
+	out := os.join_path(dir, 'program')
 	os.write_file(src, "module main
 
+import os
 import time
 
 fn invoke(value int, callback fn (int) int) int {
@@ -40,7 +49,7 @@ fn worker(base int, results chan int) {
 	}
 }
 
-fn main() {
+fn check_worker_callbacks() {
 	results := chan int{cap: 400}
 	mut threads := []thread{}
 	for base in [0, 1000, 2000, 3000] {
@@ -59,38 +68,8 @@ fn main() {
 	assert counts == [100, 100, 100, 100]
 	println('ok')
 }
-") or {
-		panic(err)
-	}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
-	assert compile.exit_code == 0, compile.output
-	c_source := os.read_file(out + '.c') or { panic(err) }
-	assert c_source.contains('closure__closure_create_with_data')
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
 
-fn test_spawned_capturing_literals_use_owned_capture_contexts() {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_spawn_capture_tls_${pid}')
-	src := os.join_path(os.temp_dir(), 'v3_spawn_capture_tls_${pid}.v')
-	out := os.join_path(os.temp_dir(), 'v3_spawn_capture_tls_program_${pid}')
-	defer {
-		os.rm(v3_bin) or {}
-		os.rm(src) or {}
-		os.rm(out) or {}
-		os.rm(out + '.c') or {}
-	}
-	build :=
-		os.exec([closure_tls_vexe, '-gc', 'none', '-path',
-			'${closure_tls_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${closure_tls_v3_src}'])
-	assert build.exit_code == 0, build.output
-	os.write_file(src, "module main
-
-import time
-
-fn main() {
+fn check_spawned_literal() {
 	count := 32
 	results := chan int{cap: count}
 	mut threads := []thread int{cap: count}
@@ -116,41 +95,8 @@ fn main() {
 	}
 	println('ok')
 }
-") or {
-		panic(err)
-	}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
-	assert compile.exit_code == 0, compile.output
-	c_source := os.read_file(out + '.c') or { panic(err) }
-	assert c_source.contains('closure__closure_create_with_data'), c_source
-	assert c_source.contains('__anon_fn_0_Ctx'), c_source
-	assert c_source.contains('_args_thread_wrapper'), c_source
-	// The spawn wrapper names its argument block `__v3_spawn_args`.
-	assert c_source.contains(' = __v3_spawn_args->f'), c_source
-	assert c_source.contains('closure__closure_try_destroy((void*)__v3_spawn_args->f);'), c_source
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
-}
 
-fn test_spawned_named_capturing_callback_survives_join_and_reuse() {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_spawn_named_capture_${pid}')
-	src := os.join_path(os.temp_dir(), 'v3_spawn_named_capture_${pid}.v')
-	out := os.join_path(os.temp_dir(), 'v3_spawn_named_capture_program_${pid}')
-	defer {
-		os.rm(v3_bin) or {}
-		os.rm(src) or {}
-		os.rm(out) or {}
-		os.rm(out + '.c') or {}
-	}
-	build :=
-		os.exec([closure_tls_vexe, '-gc', 'none', '-path',
-			'${closure_tls_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${closure_tls_v3_src}'])
-	assert build.exit_code == 0, build.output
-	os.write_file(src, "module main
-
-fn main() {
+fn check_named_callback() {
 	value := 41
 	callback := fn [value] () int {
 		return value
@@ -160,15 +106,36 @@ fn main() {
 	assert callback() == 41
 	println('ok')
 }
-") or {
-		panic(err)
+
+fn main() {
+	match os.args[1] {
+		'worker' { check_worker_callbacks() }
+		'literal' { check_spawned_literal() }
+		'named' { check_named_callback() }
+		else { panic('unknown callback case') }
 	}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
+}
+")!
+	compile := os.exec([@VEXE, '-b', 'c', '-o', out, src])
 	assert compile.exit_code == 0, compile.output
 	c_source := os.read_file(out + '.c') or { panic(err) }
-	assert c_source.contains('_args_thread_wrapper'), c_source
-	assert !c_source.contains('closure__closure_try_destroy((void*)__v3_spawn_args->f);'), c_source
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ok'
+	worker := capturing_callback_c_body(c_source, 'worker')
+	assert worker.contains('closure__closure_create_with_data('), worker
+	literal := capturing_callback_c_body(c_source, 'check_spawned_literal')
+	assert literal.contains('closure__closure_create_with_data(__anon_fn_'), literal
+	assert literal.contains('_Ctx'), literal
+	literal_wrapper := capturing_callback_spawn_wrapper(c_source, literal)
+	named := capturing_callback_c_body(c_source, 'check_named_callback')
+	named_wrapper := capturing_callback_spawn_wrapper(c_source, named)
+	destroy := 'closure__closure_try_destroy((void*)__v3_spawn_args->f);'
+	assert literal_wrapper.contains(' = __v3_spawn_args->f'), literal_wrapper
+	assert literal_wrapper.contains(destroy), literal_wrapper
+	assert named_wrapper.contains(' = __v3_spawn_args->f'), named_wrapper
+	assert !named_wrapper.contains(destroy), named_wrapper
+
+	for name in ['worker', 'literal', 'named'] {
+		run := os.exec([out, name])
+		assert run.exit_code == 0, '${name}: ${run.output}'
+		assert run.output.trim_space() == 'ok', '${name}: ${run.output}'
+	}
 }

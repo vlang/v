@@ -1,6 +1,6 @@
 // vtest build: !windows && (amd64 || arm64)
 import sync
-import time
+import sync.stdatomic
 
 struct Counter {
 pub mut:
@@ -57,37 +57,35 @@ fn test_many_times_fifth() {
 
 struct ManyTimesState {
 pub mut:
-	value int
-	ready chan bool
+	value   u64
+	ready   chan bool
+	release chan bool
 }
 
-fn run_mt_ordering(mut m sync.ManyTimes, s &ManyTimesState, c chan bool) {
-	m.do(fn [s] () {
-		mut ms := unsafe { &ManyTimesState(s) }
-		ms.ready <- true
-		time.sleep(50 * time.millisecond)
-		ms.value = 99
+fn run_mt_ordering(mut m sync.ManyTimes, mut state ManyTimesState) {
+	m.do(fn [mut state] () {
+		state.ready <- true
+		_ := <-state.release
+		stdatomic.store_u64(&state.value, 99)
 	})
-	c <- true
 }
 
 fn test_many_times_ordering() {
-	s := &ManyTimesState{
-		ready: chan bool{cap: 1}
+	mut state := &ManyTimesState{
+		ready:   chan bool{}
+		release: chan bool{}
 	}
 	mut m := sync.new_many_times(1)
-	c := chan bool{}
+	worker := spawn run_mt_ordering(mut m, mut state)
 
-	spawn run_mt_ordering(mut m, s, c)
-
-	// Wait until the goroutine is inside f().  With the old buggy code,
-	// count is incremented before f() runs, so the second do() call sees
-	// count >= times on the fast path and returns immediately — before
-	// f() has finished.  With the fix, count is still 0 here, so the
-	// second do() blocks on the mutex until f() completes.
-	_ := <-s.ready
-	m.do(fn () {})
-
-	assert s.value == 99, 'do must not return before f() completes'
-	_ := <-c
+	_ := <-state.ready
+	published := stdatomic.load_u64(&m.count)
+	state.release <- true
+	m.do(fn () {
+		assert false, 'the second call must not execute another callback'
+	})
+	value := stdatomic.load_u64(&state.value)
+	worker.wait()
+	assert published == 0, 'do must publish the count after the callback completes'
+	assert value == 99, 'do must not return before the callback completes'
 }

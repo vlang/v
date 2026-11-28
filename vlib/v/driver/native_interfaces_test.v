@@ -5,8 +5,30 @@ import v.flat
 import v.gen.c as cgen
 import v.pref
 
+// native_interface_test_compiler returns the C compiler the manifest tests probe
+// with. A Windows `clang` usually targets the MSVC ABI, which V cannot build
+// Windows programs with, so a Windows build never probes with it; use the MinGW
+// gcc there.
+fn native_interface_test_compiler() !string {
+	return os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'clang' })
+}
+
+// native_interface_manifest_input returns the entry of the dependency manifest of
+// `closure` that names `path`, or '' without one. A compiler lists a header the
+// way its include spells it, which on Windows can separate the parts with `/`
+// (MinGW gcc), so the entries are compared by real path.
+fn native_interface_manifest_input(closure &V3NativeInputClosure, path string) string {
+	real := os.real_path(path)
+	for input in closure.inputs['__v3_c_flags__'] {
+		if os.real_path(input) == real {
+			return input
+		}
+	}
+	return ''
+}
+
 fn test_native_interface_contract_requires_known_paths_and_complete_manifest() ! {
-	compiler := os.find_abs_path_of_executable('clang') or { return }
+	compiler := native_interface_test_compiler() or { return }
 	root := os.join_path(os.real_path(os.vtmp_dir()), 'native_interface_contract_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -31,8 +53,8 @@ fn test_native_interface_contract_requires_known_paths_and_complete_manifest() !
 	prefs := pref.Preferences{ vroot: root, target: pref.host_target() }
 	closure := v3_native_interface_closure(&a, &prefs, [], compiler, &inputs)
 	assert closure.unassignable == ''
-	assert header in closure.inputs['__v3_c_flags__']
-	assert nested in closure.inputs['__v3_c_flags__']
+	assert native_interface_manifest_input(&closure, header) != ''
+	assert native_interface_manifest_input(&closure, nested) != ''
 	for input in closure.inputs['__v3_c_flags__'] {
 		assert os.is_file(input), input
 	}
@@ -58,7 +80,9 @@ fn test_native_interface_contract_requires_known_paths_and_complete_manifest() !
 	changed := v3_native_interface_closure(&a, &prefs, [], compiler, &inputs)
 	mut second := V3ModuleCacheState{}
 	assert prepare_v3_cache_external_inputs(mut second, &inputs, &changed)
-	assert first.external_input_digests[nested] != second.external_input_digests[nested]
+	first_nested := native_interface_manifest_input(&closure, nested)
+	second_nested := native_interface_manifest_input(&changed, nested)
+	assert first.external_input_digests[first_nested] != second.external_input_digests[second_nested]
 	assert v3_native_interface_closure(&a, &prefs, [], 'tcc', &inputs).unassignable != ''
 	for macro_name in ['__DATE__', '__TIME__', '__TIMESTAMP__'] {
 		os.write_file(nested, 'static const char *probe_build = ${macro_name};\n')!
@@ -99,7 +123,7 @@ fn test_native_interface_contract_requires_known_paths_and_complete_manifest() !
 // its exact dependency closure with their compiler-produced -M manifest.
 // A modified header and TinyCC must still fail closed; no test is skipped.
 fn test_windows_core_header_manifest_is_audited_and_invalidateable() ! {
-	compiler := os.find_abs_path_of_executable('clang') or { return }
+	compiler := native_interface_test_compiler() or { return }
 	root := os.join_path(os.real_path(os.vtmp_dir()), 'core_windows_interface_${os.getpid()}')
 	header := os.join_path(root, 'vlib', 'builtin', 'core_windows.h')
 	os.mkdir_all(os.dir(header))!
@@ -125,7 +149,7 @@ fn test_windows_core_header_manifest_is_audited_and_invalidateable() ! {
 	prefs := pref.Preferences{ vroot: root, target: pref.host_target() }
 	closure := v3_native_interface_closure(&a, &prefs, [], compiler, &inputs)
 	assert closure.unassignable == '', closure.unassignable
-	assert canonical in closure.inputs['__v3_c_flags__']
+	assert native_interface_manifest_input(&closure, canonical) != ''
 	assert v3_native_interface_closure(&a, &prefs, [], 'tcc', &inputs).unassignable != ''
 	os.write_file(header, '#define UNREVIEWED_NATIVE_STORAGE 1\n')!
 	assert !v3_windows_native_interface(canonical, root)

@@ -6,6 +6,10 @@ fn test_cached_dependencies_preserve_dispatch_and_module_test_functions() ! {
 	$if !macos && !linux {
 		return
 	}
+	// The Ubuntu musl image links SQLite with musl-gcc. Nested cached V builds
+	// must use the same C runtime; other hosts retain Clang.
+	is_ubuntu_musl := os.getenv('V_CI_UBUNTU_MUSL') != ''
+	cc := if is_ubuntu_musl { 'musl-gcc' } else { 'clang' }
 	root := os.join_path(os.vtmp_dir(), 'v_cached_dispatch_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -19,11 +23,18 @@ fn test_cached_dependencies_preserve_dispatch_and_module_test_functions() ! {
 			// Compiler test builds can force source mode internally. Exercise the
 			// actual module cache here, including warm declaration headers.
 			mut command := ['env', '-u', 'V3_INTERNAL_CACHE_FORCE_SOURCE', '-u', 'V3_CACHE_FORCE_SOURCE',
-				'V3CACHE=' + cache, 'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', @VEXE, '-cc', 'clang',
+				'V3CACHE=' + cache, 'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', @VEXE, '-cc', cc,
 				'-show-timings']
+			// vtest-self removes VFLAGS before running each test. Nested musl builds
+			// must keep the matching GC-free toolchain flags explicitly, even in full VLIB.
+			if is_ubuntu_musl {
+				command << ['-gc', 'none', '-d', 'use_bundled_libgc']
+			}
 			// Instrumented SQLite needs the same MemorySanitizer runtime at the final link.
+			// The job's VFLAGS do not reach this build, so also keep its `-gc none`:
+			// MemorySanitizer reports Boehm's partially initialized sigaction at GC_init.
 			if os.getenv('SANITIZER_GITHUB_JOB') == 'sanitize-memory-clang' {
-				command << ['-cflags', '-fsanitize=memory']
+				command << ['-gc', 'none', '-cflags', '-fsanitize=memory']
 			}
 			command << ['-o', binary, os.join_path(@VMODROOT, 'vlib', test_file)]
 			compiled := os.exec(command)

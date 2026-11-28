@@ -1,4 +1,6 @@
 import os
+import v.cmdexec
+import v.tempname
 
 // Regression test for the `x = f(mut x)` use-after-free.
 //
@@ -9,39 +11,20 @@ import os
 // corrupted array contents (e.g. `2043 0 3 4` instead of `1 2 3 4`) and, in the
 // ripgrep port's literal extractor (`seq = ex.cross(seq, ...)`), as a crash.
 
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-fn self_reassign_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_self_reassign_call_codegen_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([vexe, '-gc', 'none', '-d', 'ownership', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
-			'-o', v3_bin, '${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn self_reassign_run_good(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
-	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	compile := os.exec([v3_bin, '-ownership', '-d', 'ownership', '-b', 'c', '-o', bin, src])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	return run.output.trim_space()
-}
-
-// `acc = combine(mut acc, mut other)` where `combine` returns its mutated-by-ref
-// first argument. The heap array field must survive intact.
-fn test_self_reassign_via_mut_ref_call_preserves_owned_field() {
-	v3_bin := self_reassign_build_v3()
-	out := self_reassign_run_good(v3_bin, 'self_reassign_bag', 'struct Bag implements IClone {
+fn test_self_reassign_preserves_owned_storage() {
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	v3_src := os.join_path(os.dir(@FILE), '../v.v')
+	compiler := if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(v3_src) {
+		os.real_path(shared)
+	} else {
+		@VEXE
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_self_reassign_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_self_reassign.v')
+	os.write_file(src, 'struct Bag implements IClone {
 mut:
 	items []int
 }
@@ -57,7 +40,7 @@ fn combine(mut a Bag, mut b Bag) Bag {
 	return a
 }
 
-fn main() {
+fn check_bag() {
 	mut acc := Bag{ items: [1, 2] }
 	mut other := Bag{ items: [3, 4] }
 	acc = combine(mut acc, mut other)
@@ -66,18 +49,10 @@ fn main() {
 	assert acc.items[1] == 2
 	assert acc.items[2] == 3
 	assert acc.items[3] == 4
-	println("ok")
-}
-')
-	assert out == 'ok'
+	println("bag")
 }
 
-// Nested-owned variant closer to the extractor: a struct holds an array of
-// structs that each own a `[]u8`. `seq = grow(mut seq, ...)` must not free the
-// inner buffers early.
-fn test_self_reassign_preserves_nested_owned_arrays() {
-	v3_bin := self_reassign_build_v3()
-	out := self_reassign_run_good(v3_bin, 'self_reassign_nested', 'struct Lit implements IClone {
+struct Lit implements IClone {
 mut:
 	bytes []u8
 }
@@ -106,7 +81,7 @@ fn grow(mut s Seq, b u8) Seq {
 	return s
 }
 
-fn main() {
+fn check_nested() {
 	mut seq := Seq{ lits: [] }
 	seq = grow(mut seq, `a`)
 	seq = grow(mut seq, `b`)
@@ -115,8 +90,23 @@ fn main() {
 	assert seq.lits[0].bytes[0] == `a`
 	assert seq.lits[1].bytes[0] == `b`
 	assert seq.lits[2].bytes[0] == `c`
-	println("ok")
+	println("nested")
 }
-')
-	assert out == 'ok'
+
+fn main() {
+	check_bag()
+	check_nested()
+}
+') or { panic(err) }
+	bin := os.join_path(root, 'v3_self_reassign')
+	compile := cmdexec.run_in_merged_with_env(compiler, ['-ownership', '-d', 'ownership', '-b',
+		'c', '-o', bin, src], '', {
+		'VFLAGS':               ''
+		'VTOOLS_CACHE_VERBOSE': ''
+	})
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.exec([bin])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space().split_into_lines() == ['bag', 'nested'], run.output
 }

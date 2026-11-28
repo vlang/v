@@ -75,15 +75,14 @@ fn update_pair(object &Object, delta &Delta) {
 	object.value += delta.value
 }
 ')!
-	for flags in [[]string{}, ['-no-parallel', '-nocache']] {
-		result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-translated', '-gc',
-			'none', '-cc', @CCOMPILER, ...flags, 'run', root])
-		assert result.exit_code == 0, result.output
-	}
-	c_path := os.join_path(root, 'callbacks.c')
-	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-translated', '-gc',
-		'none', '-o', c_path, root])
-	assert generated.exit_code == 0, generated.output
+	args := [@VEXE, '-no-retry-compilation', '-translated', '-gc', 'none', '-cc', @CCOMPILER]
+	normal := os.exec([...args, 'run', root])
+	assert normal.exit_code == 0, normal.output
+
+	binary := os.join_path(root, 'callbacks')
+	serial := os.exec([...args, '-no-parallel', '-nocache', '-b', 'c', '-o', binary, 'run', root])
+	assert serial.exit_code == 0, serial.output
+	c_path := binary + '.c'
 	c_source := os.read_file(c_path)!
 	// GCC and TCC can accept the incompatible initializer as a warning. Check
 	// that both global and local generic fields retain an actual conversion.

@@ -2,6 +2,14 @@ module main
 
 import os
 
+fn testsuite_begin() {
+	// The MSVC that a Windows job selects through VFLAGS cannot target Linux, and
+	// this file generates Linux C; let those builds use the default compiler.
+	if os.getenv('VFLAGS').contains('msvc') {
+		os.unsetenv('VFLAGS')
+	}
+}
+
 // An element store in a function marked @[direct_array_access] has to go through
 // the array data pointer, the same way an element load does. When it did not, a
 // hot loop that writes array elements compiled to an array__set() call per
@@ -101,7 +109,7 @@ fn main() {
 ")!
 	// V1-hosted unit tests get a shared V3 compiler from their runner.
 	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
-	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE, '-new-compiler'] }
+	mut args := if shared_v3 != '' { [shared_v3] } else { [@VEXE] }
 	args << ['-gc', 'none', '-os', 'linux', '-arch', 'amd64', '-o', c_path, path]
 	compiled := os.exec(args)
 	assert compiled.exit_code == 0, compiled.output

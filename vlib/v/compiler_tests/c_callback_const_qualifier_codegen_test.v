@@ -1,34 +1,11 @@
 import os
 import strings
-
-const const_cb_vexe = @VEXE
-const const_cb_tests_dir = os.dir(@FILE)
-const const_cb_v3_dir = os.dir(const_cb_tests_dir)
-const const_cb_vlib_dir = os.dir(const_cb_v3_dir)
-const const_cb_v3_src = os.join_path(const_cb_v3_dir, 'v.v')
-
-fn const_cb_build_v3() string {
-	return const_cb_build_v3_with_flags('serial', '')
-}
-
-fn const_cb_build_v3_parallel() string {
-	return const_cb_build_v3_with_flags('parallel', '-d parallel')
-}
-
-fn const_cb_build_v3_with_flags(name string, flags string) string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_const_callback_test_${name}_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([const_cb_vexe, ...(os.split_args(flags) or { panic(err) }), '-gc', 'none', '-path',
-			'${const_cb_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${const_cb_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.cmdexec
+import v.tempname
 
 fn const_cb_write_project(source string) string {
-	root := os.join_path(os.temp_dir(), 'v3_const_callback_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+	root := os.join_path(os.vtmp_dir(), 'v3_const_callback_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
 	header := '#ifndef V3_CONST_CALLBACK_NATIVE_H
 #define V3_CONST_CALLBACK_NATIVE_H
 typedef struct native_event {
@@ -56,7 +33,6 @@ typedef struct late_alias_desc {
 }
 
 fn test_c_callback_const_qualifier_codegen() {
-	v3_bin := const_cb_build_v3()
 	src := const_cb_write_project('module main
 
 #include "@DIR/native_callback.h"
@@ -140,8 +116,10 @@ fn main() {
 	println(int_str(app.hits))
 }
 ')
-	out := os.join_path(os.temp_dir(), 'v3_const_callback_out_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
+	root := os.dir(src)
+	defer { os.rmdir_all(root) or {} }
+	out := os.join_path(root, 'out')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
@@ -167,16 +145,24 @@ fn main() {
 	assert !generated.contains('.plain = plain_event_callback_adapter_'), generated
 }
 
-fn test_generic_heap_positional_c_callback_codegen() {
-	v3_bin := const_cb_build_v3()
+fn test_generic_heap_and_late_alias_c_callback_codegen() {
 	src := const_cb_write_project('module main
 
 #include "@DIR/native_callback.h"
 
 @[typedef]
+struct C.late_alias_desc {
+mut:
+	cb fn (&Event, voidptr) = unsafe { nil }
+	user_data voidptr
+}
+
+@[typedef]
 struct C.native_event {
 	value int
 }
+
+type Event = C.native_event
 
 @[typedef]
 struct C.native_desc {
@@ -205,50 +191,13 @@ fn make_desc[T](data T) &C.native_desc {
 	return &C.native_desc{concrete_event, plain_event, voidptr(data)}
 }
 
-fn main() {
+fn run_generic_heap_callback() {
 	mut app := App{}
 	event := C.native_event{value: 5}
 	desc := make_desc(&app)
 	desc.cb(&event, desc.user_data)
 	desc.plain(&event, desc.user_data)
 	println(int_str(app.hits))
-}
-')
-	out := os.join_path(os.temp_dir(), 'v3_const_callback_heap_positional_out_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '55'
-	generated := os.read_file(out + '.c') or { panic(err) }
-	assert generated.contains('concrete_event_callback_adapter_'), generated
-	assert generated.contains('.cb = concrete_event_callback_adapter_'), generated
-	assert !generated.contains('.cb = concrete_event,'), generated
-}
-
-fn test_c_callback_c_alias_declared_after_field_codegen() {
-	v3_bin := const_cb_build_v3()
-	src := const_cb_write_project('module main
-
-#include "@DIR/native_callback.h"
-
-@[typedef]
-struct C.late_alias_desc {
-mut:
-	cb fn (&Event, voidptr) = unsafe { nil }
-	user_data voidptr
-}
-
-@[typedef]
-struct C.native_event {
-	value int
-}
-
-type Event = C.native_event
-
-struct App {
-mut:
-	hits int
 }
 
 fn late_alias_event(e &C.native_event, data voidptr) {
@@ -257,6 +206,7 @@ fn late_alias_event(e &C.native_event, data voidptr) {
 }
 
 fn main() {
+	run_generic_heap_callback()
 	mut app := App{}
 	event := C.native_event{value: 11}
 	mut desc := C.late_alias_desc{
@@ -269,16 +219,21 @@ fn main() {
 	println(int_str(app.hits))
 }
 ')
-	out := os.join_path(os.temp_dir(), 'v3_const_callback_late_alias_out_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
+	root := os.dir(src)
+	defer { os.rmdir_all(root) or {} }
+	out := os.join_path(root, 'out')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '22'
+	assert run.output.trim_space().split_into_lines() == ['55', '22'], run.output
 	generated := os.read_file(out + '.c') or { panic(err) }
+	assert generated.contains('concrete_event_callback_adapter_'), generated
+	assert generated.contains('.cb = concrete_event_callback_adapter_'), generated
+	assert !generated.contains('.cb = concrete_event,'), generated
 	assert generated.contains('(const native_event*, void*)'), generated
-	assert generated.contains('late_alias_event_callback_adapter_'), generated
-	assert generated.contains('const native_event* arg0, void* arg1'), generated
+	assert generated.split_into_lines().any(it.contains('late_alias_event_callback_adapter_')
+		&& it.contains('(const native_event* arg0, void* arg1)')), generated
 	assert generated.contains('late_alias_event((native_event*)arg0, arg1);'), generated
 	assert generated.contains('.cb = late_alias_event_callback_adapter_'), generated
 	assert generated.contains('desc.cb = late_alias_event_callback_adapter_'), generated
@@ -288,7 +243,6 @@ fn main() {
 }
 
 fn test_c_callback_const_qualifier_parallel_worker_codegen() {
-	v3_bin := const_cb_build_v3_parallel()
 	mut src := strings.new_builder(96 * 1024)
 	src.write_string('module main
 
@@ -352,8 +306,12 @@ fn main() {
 }
 ')
 	path := const_cb_write_project(src.str())
-	out := os.join_path(os.temp_dir(), 'v3_const_callback_parallel_out_${os.getpid()}')
-	compile := os.exec(['env', 'VJOBS=2', v3_bin, path, '-b', 'c', '-o', '${out}'])
+	root := os.dir(path)
+	defer { os.rmdir_all(root) or {} }
+	out := os.join_path(root, 'out')
+	compile := cmdexec.run_in_merged_with_env(@VEXE, [path, '-b', 'c', '-o', out], '', {
+		'VJOBS': '2'
+	})
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output

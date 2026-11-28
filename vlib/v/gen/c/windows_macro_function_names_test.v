@@ -3,7 +3,9 @@ module c
 import os
 
 fn test_main_functions_compile_with_windows_header_macros() {
-	cc := os.find_abs_path_of_executable('clang') or { return }
+	// A Windows `clang` usually targets the MSVC ABI, which V cannot build Windows
+	// programs with, so use the MinGW gcc there.
+	cc := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'clang' }) or { return }
 	dir := os.join_path(os.vtmp_dir(), 'windows_macro_functions_${os.getpid()}')
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
@@ -13,6 +15,9 @@ fn test_main_functions_compile_with_windows_header_macros() {
 fn far(a int) int { return a + 1 }
 fn pascal(a int) int { return a + 2 }
 fn cdecl(a int) int { return a + 3 }
+fn small(a int) int { return a + 4 }
+struct Sizes { small u32 hyper u32 }
+fn total(small u32, hyper u32) u32 { sizes := Sizes{ small: small, hyper: hyper } return sizes.small + sizes.hyper }
 fn main__near(a f64, b f64) bool { return a + b > 10.0 }
 fn main__far(a int) int { return a + 101 }
 fn main__pascal(a int) int { return a + 102 }
@@ -25,6 +30,10 @@ fn main() {
 	assert far(1) == 2
 	assert pascal(1) == 3
 	assert cdecl(1) == 4
+	assert small(1) == 5
+	assert total(2, 3) == 5
+	hyper := u64(7)
+	assert hyper == 7
 	assert apply_near(near)
 	assert apply(far, 2) == 3
 	assert apply(pascal, 2) == 4
@@ -42,8 +51,9 @@ fn main() {
 	println("ok")
 }
 ')!
-	compiled := os.exec([@VEXE, '-new-compiler', '-nocache', '-gc', 'none', '-cc', cc, '-cflags',
-		'-Dnear= -Dfar= -Dpascal=__stdcall -Dcdecl=', '-o', binary, source])
+	compiled := os.exec([@VEXE, '-nocache', '-gc', 'none', '-cc', cc, '-cflags',
+		'-Dnear= -Dfar= -Dpascal=__stdcall -Dcdecl= -Dsmall=char -Dhyper=double', '-o', binary,
+		source])
 	assert compiled.exit_code == 0, compiled.output
 	ran := os.exec([binary])
 	assert ran.exit_code == 0, ran.output

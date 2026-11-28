@@ -18,7 +18,7 @@ fn ownership_value_semantics_cleanup(source string) {
 }
 
 fn ownership_value_semantics_v(mode string, args []string) os.Result {
-	mut cmd := [@VEXE, '-new-compiler', '-nocache', '-ownership']
+	mut cmd := [@VEXE, '-nocache', '-ownership']
 	if mode != '' {
 		cmd << mode
 	}
@@ -32,6 +32,26 @@ fn ownership_value_semantics_c(mode string, source string) !string {
 	out := ownership_value_semantics_v(mode, ['-gc', 'none', '-o', c_file, source])
 	assert out.exit_code == 0, '${mode}: ${out.output}'
 	return os.read_file(c_file)!
+}
+
+fn ownership_value_semantics_run_with_c(source string) !(string, os.Result) {
+	root := os.dir(source)
+	name := os.file_name(root)
+	binary := os.join_path(root, name)
+	tmp := os.vtmp_dir()
+	existing := os.ls(tmp)!.filter(it.starts_with('${name}.') && it.ends_with('.tmp.c'))
+	out := ownership_value_semantics_v('', ['-gc', 'none', '-cc', 'clang', '-keepc', '-o', binary,
+		'run', source])
+	retained := os.ls(tmp)!.filter(it.starts_with('${name}.') && it.ends_with('.tmp.c')
+		&& it !in existing)
+	defer {
+		for file in retained {
+			os.rm(os.join_path(tmp, file)) or {}
+		}
+	}
+	assert out.exit_code == 0, out.output
+	assert retained.len == 1, 'expected one retained C file for ${binary}, got ${retained}'
+	return os.read_file(os.join_path(tmp, retained[0]))!, out
 }
 
 // ownership_value_semantics_c_fn returns the definition of the C function `name`.
@@ -54,7 +74,7 @@ fn ownership_value_semantics_c_fn(c string, name string) string {
 }
 
 fn test_owned_arguments_are_not_moved_inside_stdlib_bodies() {
-	source := ownership_value_semantics_source('stdlib', 'import os
+	code := 'import os
 import net.http
 import time
 
@@ -74,10 +94,26 @@ fn main() {
 	assert stamp.format() == "2020-01-02 03:04"
 	println("ok")
 }
-')!
+'
+	source := ownership_value_semantics_source('stdlib', code)!
 	defer { ownership_value_semantics_cleanup(source) }
+	with_veb := ownership_value_semantics_source('stdlib_veb', 'import veb\n' +
+		code.replace_once('\nfn main() {\n', '\nfn main() {\n\tcheck_veb()\n') + '
+struct App {}
+
+fn (mut app App) index() veb.Result {
+	return veb.no_result()
+}
+
+fn check_veb() {
+	mut app := &App{}
+	veb.run[App, veb.Context](mut app, 8080)
+}
+')!
+	defer { ownership_value_semantics_cleanup(with_veb) }
 	for mode in ['-no-parallel', ''] {
-		check := ownership_value_semantics_v(mode, ['-check', source])
+		check_source := if mode == '' { with_veb } else { source }
+		check := ownership_value_semantics_v(mode, ['-check', check_source])
 		assert check.exit_code == 0, '${mode}: ${check.output}'
 		assert !check.output.contains('error:'), '${mode}: ${check.output}'
 		out := ownership_value_semantics_v(mode, ['-cc', 'clang', 'run', source])
@@ -109,8 +145,9 @@ fn main() {
 }
 ')!
 	defer { ownership_value_semantics_cleanup(source) }
+	default_c, out := ownership_value_semantics_run_with_c(source)!
 	for mode in ['-no-parallel', ''] {
-		c := ownership_value_semantics_c(mode, source)!
+		c := if mode == '' { default_c } else { ownership_value_semantics_c(mode, source)! }
 		// `h.data[i] = h.data[i + 1]` replaces an entry whose strings the next slot still shares.
 		delete_at := ownership_value_semantics_c_fn(c, 'http__Header__delete_at')
 		assert !delete_at.contains('__drop_assign'), '${mode}: ${delete_at}'
@@ -133,8 +170,6 @@ fn main() {
 		request_head := ownership_value_semantics_c_fn(c, 'http__parse_request_head_str')
 		assert !request_head.contains('map_old_value'), '${mode}: ${request_head}'
 	}
-	out := ownership_value_semantics_v('', ['-gc', 'none', '-cc', 'clang', 'run', source])
-	assert out.exit_code == 0, out.output
 	assert out.output.trim_space() == 'ok', out.output
 }
 
@@ -153,34 +188,13 @@ fn main() {
 }
 ')!
 	defer { ownership_value_semantics_cleanup(source) }
+	default_c, out := ownership_value_semantics_run_with_c(source)!
 	for mode in ['-no-parallel', ''] {
-		c := ownership_value_semantics_c(mode, source)!
+		c := if mode == '' { default_c } else { ownership_value_semantics_c(mode, source)! }
 		atoi_check := ownership_value_semantics_c_fn(c, 'strconv__atoi_common_check')
 		assert atoi_check.contains('string__clone('), '${mode}: ${atoi_check}'
 	}
-	out := ownership_value_semantics_v('', ['-gc', 'none', '-cc', 'clang', 'run', source])
-	assert out.exit_code == 0, out.output
 	assert out.output.split_into_lines() == ['custom failure', 'strconv.atoi: parsing "": empty string'], out.output
-}
-
-fn test_stdlib_owned_values_do_not_report_moves_in_veb() {
-	source := ownership_value_semantics_source('veb', 'import veb
-
-struct App {}
-
-fn (mut app App) index() veb.Result {
-	return veb.no_result()
-}
-
-fn main() {
-	mut app := &App{}
-	veb.run[App, veb.Context](mut app, 8080)
-}
-')!
-	defer { ownership_value_semantics_cleanup(source) }
-	out := ownership_value_semantics_v('', ['-check', source])
-	assert out.exit_code == 0, out.output
-	assert !out.output.contains('error:'), out.output
 }
 
 fn test_program_code_keeps_move_checks() {

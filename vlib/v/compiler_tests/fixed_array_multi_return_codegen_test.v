@@ -1,21 +1,5 @@
 import os
-
-const fixed_array_multi_vexe = @VEXE
-const fixed_array_multi_tests_dir = os.dir(@FILE)
-const fixed_array_multi_v3_dir = os.dir(fixed_array_multi_tests_dir)
-const fixed_array_multi_vlib_dir = os.dir(fixed_array_multi_v3_dir)
-const fixed_array_multi_v3_src = os.join_path(fixed_array_multi_v3_dir, 'v.v')
-
-fn fixed_array_multi_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_fixed_array_multi_return_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([fixed_array_multi_vexe, '-gc', 'none', '-path',
-			'${fixed_array_multi_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${fixed_array_multi_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn compact_c_whitespace(s string) string {
 	return s.replace('\t', '').replace(' ', '').replace('\n', '')
@@ -36,9 +20,12 @@ fn has_fixed_array_memmove_source(compact string, name string) bool {
 	return compact.contains(',${name},sizeof(')
 }
 
-fn test_fixed_array_multi_return_payloads_use_c_arrays_and_memmove() {
-	v3_bin := fixed_array_multi_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_fixed_array_multi_return_${os.getpid()}.v')
+fn test_multi_return_uses_fixed_array_copies_and_dereferences_pointer_values() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fixed_array_multi_return_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	bin := os.join_path(root, 'v3_fixed_array_multi_return')
+	src := bin + '.v'
 	os.write_file(src, 'module main
 
 fn pair() (int, [3]int) {
@@ -81,6 +68,20 @@ fn choose_pair(c bool) (int, [3]int) {
 	}
 }
 
+struct S {
+	value int
+}
+
+fn deferred_pointer_pair() (S, int) {
+	defer {
+		_ := 0
+	}
+	s := S{
+		value: 41
+	}
+	return &s, 1
+}
+
 fn main() {
 	n, xs := pair()
 	assert n == 7
@@ -102,16 +103,17 @@ fn main() {
 	assert choice[0] == 10
 	assert choice[2] == 12
 	println(int_str(n + xs[1] + m + ys[2] + q + zs[0] + d + ds[1] + choice_n + choice[2]))
+	s, pointer_n := deferred_pointer_pair()
+	println(int_str(s.value + pointer_n))
 }
 ') or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_multi_return_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '81'
+	assert run.output.split_into_lines() == ['81', '42'], run.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := compact_c_whitespace(generated)
 	assert generated.contains('i64 xs[3];'), generated
@@ -133,42 +135,10 @@ fn main() {
 	assert !has_fixed_array_assignment(compact, 'Array_fixed_int_2', 'ds'), generated
 	assert !generated.contains('return (multi_return_int_Array_fixed_int_3){7, xs};'), generated
 	assert !compact.contains('.arg1=choice'), generated
-}
 
-fn test_deferred_multi_return_pointer_value_slot_uses_expected_type() {
-	v3_bin := fixed_array_multi_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_deferred_multi_return_pointer_value_${os.getpid()}.v')
-	os.write_file(src, 'module main
-
-struct S {
-	value int
-}
-
-fn f() (S, int) {
-	defer {
-		_ := 0
-	}
-	s := S{
-		value: 41
-	}
-	return &s, 1
-}
-
-fn main() {
-	s, n := f()
-	println(int_str(s.value + n))
-}
-') or {
-		panic(err)
-	}
-	bin := os.join_path(os.temp_dir(), 'v3_deferred_multi_return_pointer_value_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '42'
-	generated := os.read_file(bin + '.c') or { panic(err) }
-	compact := compact_c_whitespace(generated)
-	assert compact.contains('{*&s,1}') || compact.contains('{*(&s),1}'), generated
-	assert !compact.contains('{&s,1}'), generated
+	pointer_body := generated.all_after(' deferred_pointer_pair(void) {').all_before('\n}')
+	assert pointer_body.len > 0, generated
+	pointer_c := compact_c_whitespace(pointer_body)
+	assert pointer_c.contains('{*&s,1}') || pointer_c.contains('{*(&s),1}'), pointer_body
+	assert !pointer_c.contains('{&s,1}'), pointer_body
 }

@@ -37,13 +37,13 @@ import time
 // FakeH3UdpTransport is an in-memory H3UdpTransport stand-in.
 @[heap]
 struct FakeH3UdpTransport {
+	read_started chan bool = chan bool{cap: 1}
+	release_read chan bool = chan bool{cap: 1}
 mut:
-	mu         &sync.Mutex = sync.new_mutex()
-	has_fatal  bool
-	fatal_msg  string
-	read_delay time.Duration
-	writes     [][]u8
-	closed     bool
+	mu        &sync.Mutex = sync.new_mutex()
+	fatal_msg string
+	writes    [][]u8
+	closed    bool
 }
 
 fn new_fake_h3_udp_transport() &FakeH3UdpTransport {
@@ -52,23 +52,14 @@ fn new_fake_h3_udp_transport() &FakeH3UdpTransport {
 	}
 }
 
-// read blocks for `read_delay` (simulating a slow/idle socket, giving other
-// goroutines a real window to act before this call returns) and then either
-// returns the armed fatal error or a plain timeout, matching a real
-// UdpConn's own net.err_timed_out_code contract for "nothing arrived".
+// read can hold a fatal error until the test has queued its requests.
 fn (mut t FakeH3UdpTransport) read(mut buf []u8) !int {
-	t.mu.lock()
-	delay := t.read_delay
-	has_fatal := t.has_fatal
-	msg := t.fatal_msg
-	t.mu.unlock()
-	if delay > 0 {
-		time.sleep(delay)
+	if t.fatal_msg == '' {
+		return error_with_code('fake: no data', net.err_timed_out_code)
 	}
-	if has_fatal {
-		return error(msg)
-	}
-	return error_with_code('fake: no data', net.err_timed_out_code)
+	t.read_started <- true
+	_ := <-t.release_read
+	return error(t.fatal_msg)
 }
 
 fn (mut t FakeH3UdpTransport) write(buf []u8) !int {
@@ -78,24 +69,11 @@ fn (mut t FakeH3UdpTransport) write(buf []u8) !int {
 	return buf.len
 }
 
-fn (mut t FakeH3UdpTransport) set_read_timeout(timeout time.Duration) {
-	// Deliberately ignored: this fake's own read_delay (set directly by the
-	// test, not through this method) controls timing instead, so tests get
-	// a fixed, predictable window regardless of driver_loop's own computed
-	// wait duration.
-}
+fn (mut t FakeH3UdpTransport) set_read_timeout(timeout time.Duration) {}
 
 fn (mut t FakeH3UdpTransport) close() ! {
 	t.mu.lock()
 	t.closed = true
-	t.mu.unlock()
-}
-
-fn (mut t FakeH3UdpTransport) arm_fatal_error(msg string, delay time.Duration) {
-	t.mu.lock()
-	t.has_fatal = true
-	t.fatal_msg = msg
-	t.read_delay = delay
 	t.mu.unlock()
 }
 
@@ -294,79 +272,71 @@ fn h3_test_do_worker(mut c H3MuxConn, req H3ClientRequest, mut outcome H3TestDoO
 	done <- true
 }
 
-// test_driver_fails_a_pending_request_stranded_by_a_dying_transport is a
-// regression test for the exact race fail_conn's own doc comment
-// describes: do() queues a request (c.pending) while the driver thread is
-// blocked inside its current transport.read() call; that same read()
-// returns a fatal error, and the driver's fail_conn must still find and
-// fail the request that arrived DURING the blocked call, not just
-// whatever was already in c.pending/c.streams before it started waiting.
-// FakeH3UdpTransport.read()'s own read_delay creates that exact window
-// deterministically: it always sleeps before returning, giving the
-// spawned do() call a wide, reliable margin to enqueue before the fatal
-// error is delivered.
-fn test_driver_fails_a_pending_request_stranded_by_a_dying_transport() {
+// Exercise a transport failure while one or more requests are still queued.
+fn check_h3_driver_fails_pending_requests(request_count int) ! {
 	mut transport := new_fake_h3_udp_transport()
-	transport.arm_fatal_error('simulated transport death', 300 * time.millisecond)
-
+	transport.fatal_msg = 'simulated transport death'
+	defer {
+		transport.release_read.close()
+	}
 	mut h3 := new_handshaking_h3_conn()
 	mut c := new_h3_mux_conn(H3UdpTransport(transport), h3, unsafe { nil })
 
-	done := chan bool{cap: 1}
-	mut outcome := &H3TestDoOutcome{}
-	// The driver's first read() call is already in flight (blocked in the
-	// fake's 300ms delay) by the time this spawn schedules -- this do()
-	// call queues into c.pending well within that window on any reasonable
-	// scheduler.
-	spawn h3_test_do_worker(mut c, H3ClientRequest{ authority: 'example.com' }, mut outcome, done)
+	// Wait for the driver to enter read(), after it has drained the queue for
+	// this iteration. New requests must stay pending until the fatal read returns.
 	select {
-		_ := <-done {
+		_ := <-transport.read_started {
 		}
 		2 * time.second {
-			assert false, "do() never returned -- the request queued during the driver's blocked read() was stranded (the exact regression fail_conn.pending draining fixes)"
-			return
+			return error('the driver did not reach the blocked read')
 		}
 	}
-	assert outcome.got_err, 'expected the pending request to fail once the transport died, not succeed'
-	assert outcome.err_code == h3_err_retryable_code
+
+	done := chan bool{cap: request_count}
+	mut outcomes := []&H3TestDoOutcome{cap: request_count}
+	for i in 0 .. request_count {
+		mut outcome := &H3TestDoOutcome{}
+		outcomes << outcome
+		spawn h3_test_do_worker(mut c, H3ClientRequest{ authority: '${i}.example.com' },
+			mut outcome, done)
+	}
+
+	sw := time.new_stopwatch()
+	for {
+		c.qmu.lock()
+		pending := c.pending.len
+		c.qmu.unlock()
+		if pending == request_count {
+			break
+		}
+		if sw.elapsed() >= 2 * time.second {
+			return error('only ${pending}/${request_count} requests queued during the blocked read')
+		}
+		time.sleep(time.millisecond)
+	}
+	transport.release_read <- true
+
+	for _ in outcomes {
+		select {
+			_ := <-done {
+			}
+			2 * time.second {
+				return error('a request queued during the blocked read never returned')
+			}
+		}
+	}
+	for outcome in outcomes {
+		assert outcome.got_err, 'expected the pending request to fail once the transport died'
+		assert outcome.err_code == h3_err_retryable_code
+	}
 }
 
-// test_driver_fails_a_second_concurrent_pending_request_too runs the same
-// scenario with TWO concurrent requesters, confirming the fix generalizes
-// past a single-entry c.pending list (fail_conn iterates the whole slice).
-fn test_driver_fails_a_second_concurrent_pending_request_too() {
-	mut transport := new_fake_h3_udp_transport()
-	transport.arm_fatal_error('simulated transport death', 300 * time.millisecond)
+fn test_driver_fails_a_pending_request_stranded_by_a_dying_transport() ! {
+	check_h3_driver_fails_pending_requests(1)!
+}
 
-	mut h3 := new_handshaking_h3_conn()
-	mut c := new_h3_mux_conn(H3UdpTransport(transport), h3, unsafe { nil })
-
-	done1 := chan bool{cap: 1}
-	done2 := chan bool{cap: 1}
-	mut outcome1 := &H3TestDoOutcome{}
-	mut outcome2 := &H3TestDoOutcome{}
-	spawn h3_test_do_worker(mut c, H3ClientRequest{ authority: 'a.example.com' }, mut outcome1,
-		done1)
-	spawn h3_test_do_worker(mut c, H3ClientRequest{ authority: 'b.example.com' }, mut outcome2,
-		done2)
-	select {
-		_ := <-done1 {
-		}
-		2 * time.second {
-			assert false, 'first concurrent request never returned'
-			return
-		}
-	}
-	select {
-		_ := <-done2 {
-		}
-		2 * time.second {
-			assert false, 'second concurrent request never returned'
-			return
-		}
-	}
-	assert outcome1.got_err && outcome1.err_code == h3_err_retryable_code
-	assert outcome2.got_err && outcome2.err_code == h3_err_retryable_code
+fn test_driver_fails_a_second_concurrent_pending_request_too() ! {
+	check_h3_driver_fails_pending_requests(2)!
 }
 
 // --- dispatch_h3_event: GOAWAY draining (RFC 9114 section 5.2) -----------

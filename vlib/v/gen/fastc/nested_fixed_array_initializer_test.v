@@ -66,6 +66,13 @@ fn main() {
 	signed := SignedRows{}
 	signed_copy := signature_rows(signed.rows)
 	assert sizeof(signed_copy) == 24 && signed_copy[2][1] == 0
+	row := [i32(17), i32(23)]!
+	mut repeated := [3][2]i32{init: row}
+	repeated[0][0] = 8
+	assert repeated[0][0] == 8
+	assert row[0] == 17 && repeated[1][0] == 17 && repeated[2][1] == 23
+	argument := signature_rows([3][2]i32{init: row})
+	assert argument[0][0] == 17 && argument[2][1] == 23
 }
 ') or { panic(err) }
 	mut prefs := pref.new_preferences()
@@ -78,7 +85,7 @@ fn main() {
 	c_file := os.join_path(root, 'main.c')
 	program := os.join_path(root, 'program')
 	os.write_file(c_file, c_source) or { panic(err) }
-	build := cmdexec.run('cc', ['-std=gnu11', '-O2', '-o', program, c_file])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-O2', '-o', program, c_file])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output

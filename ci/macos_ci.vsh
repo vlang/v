@@ -77,11 +77,6 @@ fn self_tests() {
 }
 
 fn run_self_tests() {
-	// Do not select the V1 compatibility compiler here. It is a separate V 0.5.2
-	// installation, so `test-self vlib` would resolve `vlib` under *its* VROOT and
-	// test the release's own standard library instead of this repository's.
-	// Individual files still fall back to it when the default compiler cannot
-	// build them.
 	// Exercise default caching throughout the standard library suite. Respect the
 	// workflow's worker count as well as the aggregate runner's serial setting.
 	if common.is_github_job {
@@ -150,10 +145,6 @@ fn build_blog_autofree() {
 		eprintln('> skipping ownership/autofree test')
 		return
 	}
-	// `-autofree` still needs the V1 compatibility compiler, and the frozen V 0.5.2
-	// release behind it ships a vlib without `json2`, which the blog imports. Build
-	// the tutorial with the default compiler until V3 ownership can run it;
-	// build_tetris_autofree keeps the autofree path covered.
 	exec_args(['v', '-o', 'blog', 'tutorials/building_a_simple_web_blog_with_veb/code/blog'])
 }
 
@@ -313,7 +304,6 @@ fn run_ci_tasks(reset bool) ! {
 	os.setenv('VTEST_SHOW_LONGEST_BY_COMPTIME', '3', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_TOTALTIME', '3', true)
 	os.setenv('VTEST_SKIP_OWNERSHIP', '1', true)
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	os.setenv('V_MACOS_MULTIWINDOW_TESTS', '0', true)
 
 	check_macho_signing()

@@ -1,32 +1,30 @@
 // vtest ownership
 import os
+import v.cmdexec
+import v.tempname
 
-const drop_codegen_vexe = @VEXE
-const drop_codegen_tests_dir = os.dir(@FILE)
-const drop_codegen_v3_dir = os.dir(drop_codegen_tests_dir)
-const drop_codegen_vlib_dir = os.dir(drop_codegen_v3_dir)
-const drop_codegen_v3_src = os.join_path(drop_codegen_v3_dir, 'v.v')
-
-fn test_drop_codegen_covers_generic_natural_return_and_propagation_exits() {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_drop_codegen_${pid}')
-	src := os.join_path(os.temp_dir(), 'v3_drop_codegen_${pid}.v')
-	out := os.join_path(os.temp_dir(), 'v3_drop_codegen_program_${pid}')
-	os.rm(v3_bin) or {}
-	os.rm(src) or {}
-	os.rm(out) or {}
-	os.rm(out + '.c') or {}
-	defer {
-		os.rm(v3_bin) or {}
-		os.rm(src) or {}
-		os.rm(out) or {}
-		os.rm(out + '.c') or {}
+fn compile_drop_codegen(src string, out string) os.Result {
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	v3_src := os.join_path(os.dir(@FILE), '../v.v')
+	compiler := if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(v3_src) {
+		os.real_path(shared)
+	} else {
+		@VEXE
 	}
-	build :=
-		os.exec([drop_codegen_vexe, '-gc', 'none', '-d', 'ownership', '-path',
-			'${drop_codegen_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${drop_codegen_v3_src}'])
-	assert build.exit_code == 0, build.output
-	os.write_file(src, "module main
+	return cmdexec.run_in_merged_with_env(compiler, [src, '-d', 'ownership', '-b', 'c', '-o', out], '', {
+		'VFLAGS':               ''
+		'VTOOLS_CACHE_VERBOSE': ''
+	})
+}
+
+fn test_drop_codegen_covers_scope_exits_and_owned_container_elements() {
+	root := os.join_path(os.vtmp_dir(), 'v3_drop_codegen_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_drop_codegen.v')
+	out := os.join_path(root, 'v3_drop_codegen_program')
+	source := "module main
 
 struct Resource implements Drop {
 	id int
@@ -278,7 +276,7 @@ fn loop_exits() {
 	}
 }
 
-fn main() {
+fn check_scope_exits() {
 	println(early())
 	nested()
 	r := moved()
@@ -309,44 +307,6 @@ fn main() {
 	c_for_init_labelled_break_drop()
 	loop_exits()
 }
-") or {
-		panic(err)
-	}
-	compile := os.exec([v3_bin, '${src}', '-d', 'ownership', '-b', 'c', '-o', '${out}'])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output == 'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 11\nexplicit\ndrop 12\nnone\ndrop 13\nforward none\ndrop 33\nfirst propagation\ndrop 34\nlater propagation\nelse branch\ndrop 14\ndrop 15\n15\ndrop 29\n31\ndrop 30\n32\ndrop 16\n16\nimplicit 18:17\ndrop 17\ndrop 18\ndrop 19\n20\ndrop 32\nconverted none\ndrop 31\n33:34\ndrop 21\ndrop 20\nguard 22\ndrop 22\nmatch 23\ndrop 23\nselect 24\ndrop 24\noptional wrapper\ndrop 25\nfor init 26\ndrop 26\nfor break 27\ndrop 27\nfor labelled break 28\ndrop 28\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n', run.output
-}
-
-fn test_drop_codegen_recurses_through_owned_container_elements() {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_recursive_drop_codegen_${pid}')
-	src := os.join_path(os.temp_dir(), 'v3_recursive_drop_codegen_${pid}.v')
-	out := os.join_path(os.temp_dir(), 'v3_recursive_drop_codegen_program_${pid}')
-	os.rm(v3_bin) or {}
-	os.rm(src) or {}
-	os.rm(out) or {}
-	os.rm(out + '.c') or {}
-	defer {
-		os.rm(v3_bin) or {}
-		os.rm(src) or {}
-		os.rm(out) or {}
-		os.rm(out + '.c') or {}
-	}
-	build :=
-		os.exec([drop_codegen_vexe, '-gc', 'none', '-d', 'ownership', '-path',
-			'${drop_codegen_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${drop_codegen_v3_src}'])
-	assert build.exit_code == 0, build.output
-	os.write_file(src, "module main
-
-struct Resource implements Drop {
-	id int
-}
-
-fn (mut r Resource) drop() {
-	println('drop \${r.id}')
-}
 
 struct Node {
 	name     string
@@ -354,7 +314,7 @@ struct Node {
 	children []Node
 }
 
-fn main() {
+fn check_recursive_containers() {
 	tree := Node{
 		name: 'root'.clone()
 		resource: Resource{1}
@@ -373,12 +333,25 @@ fn main() {
 	}
 	println(tree.name)
 }
-") or {
-		panic(err)
+
+fn main() {
+	match arguments()[1] {
+		'scope_exits' { check_scope_exits() }
+		'recursive_containers' { check_recursive_containers() }
+		else { panic('unknown drop codegen case') }
 	}
-	compile := os.exec([v3_bin, '${src}', '-d', 'ownership', '-b', 'c', '-o', '${out}'])
+}
+"
+	os.write_file(src, source)!
+	compile := compile_drop_codegen(src, out)
 	assert compile.exit_code == 0, compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output == 'root\ndrop 1\ndrop 2\ndrop 3\n', run.output
+	expected_outputs := {
+		'scope_exits':          'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 11\nexplicit\ndrop 12\nnone\ndrop 13\nforward none\ndrop 33\nfirst propagation\ndrop 34\nlater propagation\nelse branch\ndrop 14\ndrop 15\n15\ndrop 29\n31\ndrop 30\n32\ndrop 16\n16\nimplicit 18:17\ndrop 17\ndrop 18\ndrop 19\n20\ndrop 32\nconverted none\ndrop 31\n33:34\ndrop 21\ndrop 20\nguard 22\ndrop 22\nmatch 23\ndrop 23\nselect 24\ndrop 24\noptional wrapper\ndrop 25\nfor init 26\ndrop 26\nfor break 27\ndrop 27\nfor labelled break 28\ndrop 28\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n'
+		'recursive_containers': 'root\ndrop 1\ndrop 2\ndrop 3\n'
+	}
+	for name, expected in expected_outputs {
+		run := os.exec([out, name])
+		assert run.exit_code == 0, '${name}: ${run.output}'
+		assert run.output == expected, '${name}: ${run.output}'
+	}
 }

@@ -229,8 +229,35 @@ fn main() {
 	c_path := os.join_path(root, 'main.c')
 	program := os.join_path(root, 'program')
 	os.write_file(c_path, c_source) or { panic(err) }
-	build := cmdexec.run('cc', ['-std=gnu11', '-O2', '-o', program, c_path])
+	build := cmdexec.run('cc', ['-std=gnu11', '-pthread', '-O2', '-o', program, c_path])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
+}
+
+// The comparison and type memos are keyed by the address of a token buffer. Each
+// entry keeps its buffer referenced: otherwise the collector can hand a freed
+// buffer's address to a later expression's tokens, which then read the earlier
+// expression's memoized rendering or type.
+fn test_fastc_expression_memos_keep_their_token_buffers_alive() {
+	fast := fastc_primitive_comparison_parser(true)
+	for _ in 0 .. 3 {
+		for _ in 0 .. 50 {
+			tokens := fastc_primitive_comparison_tokens('a == wide')
+			raw := fast.render_raw_expression_tokens(tokens) or { panic('a == wide') }
+			special := fast.render_special_expression(tokens, raw) or { panic('a == wide') }
+			assert special.source.contains('v_fastc_us_'), special.source
+			sum := fastc_primitive_comparison_tokens('a + b')
+			assert fast.infer_expression_type(sum) or { panic(err) } == flat.source_type_int
+		}
+		gc_collect()
+		for _ in 0 .. 50 {
+			tokens := fastc_primitive_comparison_tokens('f == a')
+			raw := fast.render_raw_expression_tokens(tokens) or { panic('f == a') }
+			assert fast.render_special_expression(tokens, raw) == none
+			sum := fastc_primitive_comparison_tokens('f + g')
+			assert fast.infer_expression_type(sum) or { panic(err) } == flat.source_type_f64
+		}
+		gc_collect()
+	}
 }

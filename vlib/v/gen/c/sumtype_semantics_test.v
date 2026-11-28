@@ -37,7 +37,7 @@ fn exercise_array_element() {
 	} {
 		os.write_file(os.join_path(root, name), source)!
 	}
-	result := os.exec([@VEXE, '-new-compiler', '-nocolor', '-check', root])
+	result := os.exec([@VEXE, '-nocolor', '-check', root])
 	assert result.exit_code != 0, result.output
 	diagnostics := result.output.split_into_lines()
 	for name, message in {
@@ -65,7 +65,7 @@ type Value = int | Pair
 fn pack(x int) Value { return Pair{x, x + 1} }
 fn main() { println(pack(3)) }'
 	os.write_file(path, source)!
-	result := os.exec([@VEXE, '-new-compiler', '-o', output, path])
+	result := os.exec([@VEXE, '-o', output, path])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(output)!
 	body := sumtype_test_function_body(generated, 'pack')
@@ -99,7 +99,7 @@ fn main() {
 	os.write_file(os.join_path(dir, 'model', 'model.v'), model)!
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, program)!
-	result := os.exec([@VEXE, '-new-compiler', 'run', path])
+	result := os.exec([@VEXE, 'run', path])
 	assert result.exit_code == 0, result.output
 }
 
@@ -154,7 +154,7 @@ fn main() {
 }'
 	os.write_file(path, source)!
 	// An explicit C backend retains the translation unit used for the executable.
-	run := os.exec([@VEXE, '-new-compiler', '-nocache', '-b', 'c', '-o', binary, 'run', path])
+	run := os.exec([@VEXE, '-nocache', '-b', 'c', '-o', binary, 'run', path])
 	assert run.exit_code == 0, run.output
 	generated := os.read_file('${binary}.c')!
 	local := sumtype_test_function_body(generated, 'from_local')
@@ -196,7 +196,7 @@ fn main() {
  assert voidptr(null as &Item) == unsafe { nil }
 }')!
 	for flags in [['-nocache'], []string{}] {
-		result := os.exec([@VEXE, '-new-compiler', ...flags, '-no-closures', 'run', path])
+		result := os.exec([@VEXE, ...flags, '-no-closures', 'run', path])
 		assert result.exit_code == 0, result.output
 	}
 }

@@ -24,7 +24,7 @@ curl --fail --location --retry 3 --retry-all-errors --retry-delay 1 \
   --connect-timeout 15 --max-time 60 --retry-max-time 180 \
   --output "$build_dir/$archive" \
   "https://download.savannah.gnu.org/releases/freetype/$archive"
-printf '%s  %s\n' "$checksum" "$build_dir/$archive" | sha256sum --check
+printf '%s  %s\n' "$checksum" "$build_dir/$archive" | sha256sum -c -
 tar -xJf "$build_dir/$archive" -C "$build_dir"
 cd "$build_dir/freetype-$version"
 

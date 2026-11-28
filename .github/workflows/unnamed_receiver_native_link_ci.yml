@@ -1,0 +1,65 @@
+name: Unnamed receiver native link regression
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/tests/unnamed_receiver_c_import_test.v'
+      - 'vlib/v/tests/testdata/unnamed_receiver_c_module/**'
+      - 'vlib/v/types/generic_interface_pattern_test.v'
+      - 'vlib/v/types/static_instance_method_privacy_test.v'
+      - '.github/workflows/unnamed_receiver_native_link_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x64
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Original native-link receiver regression
+        shell: pwsh
+        run: |
+          .\v.exe fmt -verify vlib/v/tests/testdata/unnamed_receiver_c_module/module.c.v
+          if ($LASTEXITCODE -ne 0) { throw "Format verification failed" }
+          foreach ($cc in @('tcc', 'gcc', 'msvc')) {
+            .\v.exe -cc $cc -no-retry-compilation -showcc -silent vlib/v/tests/unnamed_receiver_c_import_test.v
+            if ($LASTEXITCODE -ne 0) { throw "$cc receiver regression failed" }
+          }
+      - name: Verify upstream nested compiler fixtures on Windows
+        shell: pwsh
+        run: |
+          foreach ($cc in @('gcc', 'msvc')) {
+            foreach ($fixture in @('generic_interface_pattern_test.v', 'static_instance_method_privacy_test.v')) {
+              .\v.exe -cc $cc -no-retry-compilation -silent "vlib/v/types/$fixture"
+              if ($LASTEXITCODE -ne 0) { throw "$cc $fixture failed" }
+            }
+          }
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Preserve Unix libm coverage
+        run: |
+          ./v fmt -verify vlib/v/tests/testdata/unnamed_receiver_c_module/module.c.v
+          for cc in gcc clang; do
+            ./v -cc "$cc" -no-retry-compilation -showcc -silent vlib/v/tests/unnamed_receiver_c_import_test.v
+          done

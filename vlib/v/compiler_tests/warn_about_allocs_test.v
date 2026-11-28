@@ -1,35 +1,12 @@
 import os
 import strings
 import v.cmdexec
+import v.tempname
 
-const warn_allocs_vexe = @VEXE
-const warn_allocs_tests_dir = os.dir(@FILE)
-const warn_allocs_v3_dir = os.dir(warn_allocs_tests_dir)
-const warn_allocs_vlib_dir = os.dir(warn_allocs_v3_dir)
-const warn_allocs_v3_src = os.join_path(warn_allocs_v3_dir, 'v.v')
-
-fn build_warn_allocs_v3(root string) string {
-	bin := os.join_path(root, 'v3_warn_allocs')
-	result := cmdexec.run(warn_allocs_vexe, ['-gc', 'none', '-path',
-		'${warn_allocs_vlib_dir}|@vlib|@vmodules', '-o', bin, warn_allocs_v3_src])
-	assert result.exit_code == 0, result.output
-	return bin
-}
-
-fn run_warn_allocs_process(program string, args []string, environment map[string]string) os.Result {
-	mut process := os.new_process(program)
-	process.set_args(args)
-	process.set_environment(environment)
-	process.set_redirect_stdio()
-	process.run()
-	process.wait()
-	output := process.stdout_slurp() + process.stderr_slurp()
-	result := os.Result{
-		exit_code: process.code
-		output:    output
-	}
-	process.close()
-	return result
+fn compile_warn_allocs(args []string) os.Result {
+	return cmdexec.run_in_merged_with_env(@VEXE, args, '', {
+		'VFLAGS': ''
+	})
 }
 
 // The allocations the source does not show: `&T{}`, a value becoming an
@@ -37,13 +14,11 @@ fn run_warn_allocs_process(program string, args []string, environment map[string
 // the heap. They were the leaks -warn-about-allocs missed in a kernel built
 // with -gc none.
 fn test_warn_about_allocs_reports_implicit_allocations() {
-	root := os.join_path(os.vtmp_dir(), 'v3_warn_allocs_implicit_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root)!
+	root := os.join_path(os.vtmp_dir(), 'v3_warn_allocs_implicit_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_warn_allocs_v3(root)
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, "interface Resource {
 mut:
@@ -136,11 +111,11 @@ fn fill(mut values []int) {
 }
 ")!
 	output := os.join_path(root, 'main.c')
-	plain := cmdexec.run(v3_bin, ['-silent', '-nocache', '-o', output, source])
+	plain := compile_warn_allocs(['-silent', '-nocache', '-o', output, source])
 	assert plain.exit_code == 0, plain.output
 	assert !plain.output.contains('allocation ('), plain.output
 
-	warned := cmdexec.run(v3_bin, ['-silent', '-nocache', '-warn-about-allocs', '-o', output, source])
+	warned := compile_warn_allocs(['-silent', '-nocache', '-warn-about-allocs', '-o', output, source])
 	assert warned.exit_code == 0, warned.output
 	// `&File{}` twice; `&Dog{}` is freed. hold(f), the field, the assignment,
 	// the return, and a Dog value passed and appended: a pointer passed as a
@@ -158,7 +133,7 @@ fn fill(mut values []int) {
 	assert warned.output.contains('main.v:47:7: warning: allocation (conversion to interface)'), warned.output
 	assert warned.output.contains('main.v:57:2: warning: allocation (local moved to the heap: its address escapes)'), warned.output
 
-	as_errors := cmdexec.run(v3_bin, ['-silent', '-nocache', '-W', '-warn-about-allocs', '-o',
+	as_errors := compile_warn_allocs(['-silent', '-nocache', '-W', '-warn-about-allocs', '-o',
 		output, source])
 	assert as_errors.exit_code != 0, as_errors.output
 	assert as_errors.output.contains('error: allocation (struct on the heap)'), as_errors.output
@@ -169,13 +144,11 @@ fn fill(mut values []int) {
 // and a `@[heap]` local a comptime `$for` expands is reported unless it is
 // `@[freed]`, whether or not the transform runs in parallel.
 fn test_warn_about_allocs_reports_casts_multi_returns_and_expanded_locals() {
-	root := os.join_path(os.vtmp_dir(), 'v3_warn_allocs_review_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root)!
+	root := os.join_path(os.vtmp_dir(), 'v3_warn_allocs_review_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_warn_allocs_v3(root)
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, "interface Speaker {
 	speak() string
@@ -221,7 +194,7 @@ fn main() {
 	println(n + m)
 }
 ")!
-	warned := cmdexec.run(v3_bin, ['-silent', '-nocache', '-warn-about-allocs', '-o',
+	warned := compile_warn_allocs(['-silent', '-nocache', '-warn-about-allocs', '-o',
 		os.join_path(root, 'main.c'), source])
 	assert warned.exit_code == 0, warned.output
 	assert warned.output.count('allocation (conversion to interface)') == 4, warned.output
@@ -283,7 +256,7 @@ fn freed_tags[T]() int {
 		if !parallel {
 			args.prepend('-no-parallel')
 		}
-		result := cmdexec.run(v3_bin, args)
+		result := compile_warn_allocs(args)
 		assert result.exit_code == 0, result.output
 		assert result.output.count('allocation (local of a `@[heap]` struct)') == 1, result.output
 		assert result.output.contains('expanded.v:18:3: warning: allocation (local of a `@[heap]` struct)'), result.output
@@ -291,13 +264,11 @@ fn freed_tags[T]() int {
 }
 
 fn test_warn_about_allocs_reports_v1_allocation_sites() {
-	root := os.join_path(os.vtmp_dir(), 'v3_warn_allocs_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root)!
+	root := os.join_path(os.vtmp_dir(), 'v3_warn_allocs_${tempname.unique_token()}')
+	os.mkdir(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_warn_allocs_v3(root)
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, "type Name = string
 
@@ -395,11 +366,11 @@ fn main() {
 ")!
 
 	output := os.join_path(root, 'main.c')
-	plain := cmdexec.run(v3_bin, ['-silent', '-nocache', '-o', output, source])
+	plain := compile_warn_allocs(['-silent', '-nocache', '-o', output, source])
 	assert plain.exit_code == 0, plain.output
 	assert !plain.output.contains('allocation ('), plain.output
 
-	warned := cmdexec.run(v3_bin, ['-silent', '-nocache', '-warn-about-allocs', '-o', output, source])
+	warned := compile_warn_allocs(['-silent', '-nocache', '-warn-about-allocs', '-o', output, source])
 	assert warned.exit_code == 0, warned.output
 	for description in ['array initialization', 'string interpolation', 'string concatenation',
 		'cast to interface'] {
@@ -417,7 +388,7 @@ fn main() {
 		assert warned.output.contains('warning: ${message}'), warned.output
 	}
 
-	as_errors := cmdexec.run(v3_bin, ['-silent', '-nocache', '-W', '-warn-about-allocs', '-o',
+	as_errors := compile_warn_allocs(['-silent', '-nocache', '-W', '-warn-about-allocs', '-o',
 		output, source])
 	assert as_errors.exit_code != 0, as_errors.output
 	for description in ['array initialization', 'string interpolation', 'string concatenation',
@@ -433,7 +404,7 @@ fn main() {
 	println(unsafe { typeof(RuntimeValue('d' + name)) })
 }
 ")!
-	runtime_typeof := cmdexec.run(v3_bin, ['-silent', '-nocache', '-warn-about-allocs', '-o',
+	runtime_typeof := compile_warn_allocs(['-silent', '-nocache', '-warn-about-allocs', '-o',
 		os.join_path(root, 'runtime_typeof.c'), runtime_typeof_source])
 	assert runtime_typeof.exit_code == 0, runtime_typeof.output
 	assert runtime_typeof.output.count('allocation (string concatenation)') == 1, runtime_typeof.output
@@ -445,7 +416,7 @@ fn main() {
 	println(freed)
 }
 ')!
-	assignment := cmdexec.run(v3_bin, ['-silent', '-nocache', '-o',
+	assignment := compile_warn_allocs(['-silent', '-nocache', '-o',
 		os.join_path(root, 'assignment_attribute.c'), assignment_source])
 	assert assignment.exit_code == 0, assignment.output
 
@@ -455,7 +426,7 @@ fn main() {
 	println(values)
 }
 ')!
-	invalid_assignment_attribute := cmdexec.run(v3_bin, ['-silent', '-nocache', '-no-retry-compilation',
+	invalid_assignment_attribute := compile_warn_allocs(['-silent', '-nocache', '-no-retry-compilation',
 		'-warn-about-allocs', '-o', os.join_path(root, 'invalid_assignment_attribute.c'),
 		invalid_assignment_attribute_source])
 	assert invalid_assignment_attribute.exit_code != 0, invalid_assignment_attribute.output
@@ -565,7 +536,7 @@ fn main() {
 	println(embedded.len)
 }
 ")!
-	nonallocating := cmdexec.run(v3_bin, ['-silent', '-nocache', '-W', '-warn-about-allocs', '-o',
+	nonallocating := compile_warn_allocs(['-silent', '-nocache', '-W', '-warn-about-allocs', '-o',
 		os.join_path(root, 'nonallocating.c'), nonallocating_source])
 	assert nonallocating.exit_code == 0, nonallocating.output
 	assert !nonallocating.output.contains('allocation ('), nonallocating.output
@@ -595,15 +566,17 @@ fn main() {
 }
 ')!
 	cache_output := os.join_path(cache_project, 'program')
-	mut cache_environment := os.environ()
-	cache_environment['V3CACHE'] = os.join_path(root, 'module_cache')
-	cache_environment['VTMP'] = os.join_path(root, 'cache_vtmp')
-	uncached_import := run_warn_allocs_process(v3_bin, ['-silent', '-nocache', '-warn-about-allocs',
-		'-o', cache_output, cache_project], cache_environment)
+	cache_environment := {
+		'V3CACHE': os.join_path(root, 'module_cache')
+		'VTMP':    os.join_path(root, 'cache_vtmp')
+		'VFLAGS':  ''
+	}
+	uncached_import := cmdexec.run_in_merged_with_env(@VEXE, ['-silent', '-nocache',
+		'-warn-about-allocs', '-o', cache_output, cache_project], '', cache_environment)
 	assert uncached_import.exit_code == 0, uncached_import.output
 	assert uncached_import.output.count('allocation (array initialization)') == 1, uncached_import.output
-	warm_cache := run_warn_allocs_process(v3_bin, ['-silent', '-warn-about-allocs', '-o', cache_output,
-		cache_project], cache_environment)
+	warm_cache := cmdexec.run_in_merged_with_env(@VEXE, ['-silent', '-warn-about-allocs', '-o',
+		cache_output, cache_project], '', cache_environment)
 	assert warm_cache.exit_code == 0, warm_cache.output
 	assert warm_cache.output.count('allocation (array initialization)') == 1, warm_cache.output
 	os.write_file(cache_main, 'module main
@@ -615,8 +588,8 @@ fn main() {
 	println(value)
 }
 ')!
-	rebuilt_entry := run_warn_allocs_process(v3_bin, ['-silent', '-warn-about-allocs', '-o',
-		cache_output, cache_project], cache_environment)
+	rebuilt_entry := cmdexec.run_in_merged_with_env(@VEXE, ['-silent', '-warn-about-allocs', '-o',
+		cache_output, cache_project], '', cache_environment)
 	assert rebuilt_entry.exit_code == 0, rebuilt_entry.output
 	assert rebuilt_entry.output.count('allocation (array initialization)') == 1, rebuilt_entry.output
 
@@ -638,7 +611,7 @@ fn main() {
 }
 ")!
 
-	result := cmdexec.run(v3_bin, ['-silent', '-nocache', '-warn-about-allocs', '-o',
+	result := compile_warn_allocs(['-silent', '-nocache', '-warn-about-allocs', '-o',
 		os.join_path(core_root, 'main.c'), os.join_path(core_root, 'main.v')])
 	assert result.exit_code == 0, result.output
 	assert !result.output.contains('allocation ('), result.output

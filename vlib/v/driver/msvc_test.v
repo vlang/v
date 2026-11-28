@@ -17,12 +17,16 @@ fn test_msvc_cl_object_args_translate_a_third_party_object_build() {
 		'-c', 'C:/v/thirdparty/cJSON/cJSON.c'], 'windows')
 	assert args == ['/nologo', '/volatile:ms', '/bigobj', '/MD', '/w', '/DNDEBUG', '/c',
 		'/FoC:/tmp/cJSON.obj', 'C:/v/thirdparty/cJSON/cJSON.c']
+	debug := msvc_cl_object_args(['-g', '-o', 'C:/tmp/a.obj', '-c', 'C:/v/a.c'], 'windows')
+	assert debug == ['/nologo', '/volatile:ms', '/bigobj', '/MD', '/Z7', '/c', '/FoC:/tmp/a.obj',
+		'C:/v/a.c']
 }
 
 fn test_msvc_cl_args_translate_shared_and_debug_builds() {
 	args := msvc_cl_args(['-g', '-shared', '-o', 'out', 'src.c', '-mwindows'], 'windows')
 	assert '/LD' in args
-	assert '/Zi' in args
+	assert '/Z7' in args
+	assert '/Zi' !in args
 	assert '/Feout' in args
 	link := args[args.index('/link') + 1..]
 	assert link == ['/SUBSYSTEM:WINDOWS', '/DEBUG']
@@ -32,6 +36,30 @@ fn test_msvc_cl_args_keep_cpp_sources_out_of_c11_mode() {
 	args := msvc_cl_args(['-std=gnu++11', '-x', 'c++', '-o', 'x.obj', '-c', 'x.cpp'], 'windows')
 	assert '/std:c11' !in args
 	assert args.contains('x.cpp')
+}
+
+fn test_msvc_cl_args_name_the_language_of_forced_sources() {
+	args := msvc_cl_args(['-o', 'out.exe', 'src.c', '-x', 'c', 'C:/tmp/helper', '-x', 'none', '-xc',
+		'C:/tmp/joined', 'C:/tmp/plain.c', 'C:/tmp/helper.o', '-xnone', 'C:/tmp/archive'],
+		'windows')
+	inputs := args[args.index('src.c')..args.index('kernel32.lib')]
+	assert inputs == ['src.c', '/TcC:/tmp/helper', '/TcC:/tmp/joined', 'C:/tmp/plain.c',
+		'C:/tmp/helper.o', 'C:/tmp/archive']
+	assert '/std:c11' in args
+	cpp := msvc_cl_args(['-o', 'out.exe', 'src.c', '-x', 'c++', 'C:/tmp/impl.c', 'C:/tmp/impl.cpp',
+		'-x', 'none'], 'windows')
+	assert cpp.contains('/TpC:/tmp/impl.c')
+	assert cpp.contains('C:/tmp/impl.cpp')
+	assert '/std:c11' !in cpp
+}
+
+fn test_msvc_cl_args_link_objects_named_in_linker_options() {
+	args := msvc_cl_args(['-o', 'out.exe', 'src.c', '-Wl,C:/tmp/helper.o,--as-needed', '-Xlinker',
+		'C:/tmp/extra.lib', '-Wl,-rpath,C:/tmp/lib,/STACK:1024,C:/tmp/exports.def'],
+		'windows')
+	assert args[args.index('src.c')..args.index('kernel32.lib')] == ['src.c', 'C:/tmp/helper.o',
+		'C:/tmp/extra.lib']
+	assert args[args.index('/link') + 1..] == ['/STACK:1024', '/DEF:C:/tmp/exports.def']
 }
 
 fn test_v3_msvc_link_flags() {

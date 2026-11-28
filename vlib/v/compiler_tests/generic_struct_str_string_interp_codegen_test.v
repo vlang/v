@@ -1,25 +1,7 @@
 import os
+import v.tempname
 
-const generic_struct_str_vexe = @VEXE
-const generic_struct_str_tests_dir = os.dir(@FILE)
-const generic_struct_str_v3_dir = os.dir(generic_struct_str_tests_dir)
-const generic_struct_str_vlib_dir = os.dir(generic_struct_str_v3_dir)
-const generic_struct_str_v3_src = os.join_path(generic_struct_str_v3_dir, 'v.v')
-
-fn generic_struct_str_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_struct_str_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([generic_struct_str_vexe, '-gc', 'none', '-path',
-			'${generic_struct_str_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${generic_struct_str_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn generic_struct_str_write_project(name string, main_source string) string {
-	root := os.join_path(os.temp_dir(), 'v3_generic_struct_str_${name}_${os.getpid()}')
-	os.rmdir_all(root) or {}
+fn generic_struct_str_write_project(root string, main_source string) string {
 	os.mkdir_all(os.join_path(root, 'gr')) or { panic(err) }
 	os.mkdir_all(os.join_path(root, 'a')) or { panic(err) }
 	os.mkdir_all(os.join_path(root, 'b')) or { panic(err) }
@@ -159,18 +141,19 @@ pub fn (holder Box[T]) str() string {
 	return os.join_path(root, 'main.v')
 }
 
-fn generic_struct_str_compile_project(name string, main_source string) (string, string) {
-	v3_bin := generic_struct_str_build_v3()
-	main_path := generic_struct_str_write_project(name, main_source)
-	out := os.join_path(os.temp_dir(), 'v3_generic_struct_str_${name}_out_${os.getpid()}')
-	os.rm(out) or {}
-	os.rm(out + '.c') or {}
-	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', '${out}'])
+fn generic_struct_str_run_project(name string, main_source string) (os.Result, string) {
+	root := os.join_path(os.vtmp_dir(), 'v3_generic_struct_str_${name}_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	main_path := generic_struct_str_write_project(root, main_source)
+	out := os.join_path(root, 'app')
+	compile := os.exec([@VEXE, main_path, '-b', 'c', '-o', out])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	generated := os.read_file(out + '.c') or { panic(err) }
-	return out, generated
+	run := os.exec([out])
+	return run, generated
 }
 
 fn generic_struct_str_c_fn(generated string, prefix string) string {
@@ -193,7 +176,7 @@ fn generic_struct_str_c_fn(generated string, prefix string) string {
 }
 
 fn test_generic_inner_nested_array_str_uses_array_iterator() {
-	out, generated := generic_struct_str_compile_project('nested_array', 'module main
+	run, generated := generic_struct_str_run_project('nested_array', 'module main
 
 import gr
 
@@ -209,7 +192,6 @@ fn main() {
 	println(array_str)
 }
 ')
-	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == "[['A', 'B'], ['C']]"
 
@@ -220,7 +202,7 @@ fn main() {
 }
 
 fn test_generic_struct_str_preserves_module_array_string_specialization() {
-	out, generated := generic_struct_str_compile_project('array_string_collision', "module main
+	run, generated := generic_struct_str_run_project('array_string_collision', "module main
 
 import gr
 
@@ -235,7 +217,6 @@ fn main() {
 	println(collision)
 }
 ")
-	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '[gr.Array_string{}]'
 
@@ -245,7 +226,7 @@ fn main() {
 }
 
 fn test_generic_struct_str_keeps_same_short_generic_bases_separate() {
-	out, generated := generic_struct_str_compile_project('short_base_collision', 'module main
+	run, generated := generic_struct_str_run_project('short_base_collision', 'module main
 
 import a
 import b
@@ -264,7 +245,6 @@ fn main() {
 	println(left_text + "|" + right_text)
 }
 ')
-	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == "[['A'], ['B', 'C']]|[1, 2]"
 
@@ -281,7 +261,7 @@ fn main() {
 }
 
 fn test_generic_struct_str_does_not_decode_fixed_array_suffix_as_runtime_array() {
-	out, generated := generic_struct_str_compile_project('fixed_array_suffix', 'module main
+	run, generated := generic_struct_str_run_project('fixed_array_suffix', 'module main
 
 import gr
 
@@ -298,7 +278,6 @@ fn main() {
 	println(text)
 }
 ')
-	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == "[['A', 'B'], ['C', 'D']]"
 
@@ -312,7 +291,7 @@ fn main() {
 }
 
 fn test_generic_outer_embedded_inner_default_init_str() {
-	out, generated := generic_struct_str_compile_project('embedded_default_init', 'module main
+	run, generated := generic_struct_str_run_project('embedded_default_init', 'module main
 
 import gr
 
@@ -328,7 +307,6 @@ fn main() {
 	println(direct)
 }
 ')
-	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == "outer=inner=[['A', 'B'], ['C']]"
 
@@ -340,7 +318,7 @@ fn main() {
 }
 
 fn test_generic_wrapper_list_str_preserves_nested_array_suffix() {
-	out, generated := generic_struct_str_compile_project('wrapper_nested_array', 'module main
+	run, generated := generic_struct_str_run_project('wrapper_nested_array', 'module main
 
 import gr
 
@@ -353,7 +331,6 @@ fn main() {
 	println(text)
 }
 ')
-	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == "[['A', 'B'], ['C']]"
 

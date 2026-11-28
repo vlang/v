@@ -1,20 +1,5 @@
 import os
-
-const c_variadic_vexe = @VEXE
-const c_variadic_tests_dir = os.dir(@FILE)
-const c_variadic_v3_dir = os.dir(c_variadic_tests_dir)
-const c_variadic_vlib_dir = os.dir(c_variadic_v3_dir)
-const c_variadic_v3_src = os.join_path(c_variadic_v3_dir, 'v.v')
-
-fn c_variadic_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_c_variadic_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([c_variadic_vexe, '-gc', 'none', '-path',
-			'${c_variadic_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${c_variadic_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn c_variadic_call_lines(generated string, names []string) []string {
 	mut lines := []string{}
@@ -30,8 +15,10 @@ fn c_variadic_call_lines(generated string, names []string) []string {
 }
 
 fn test_c_variadic_calls_emit_real_args_without_v_pack_array() {
-	v3_bin := c_variadic_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_c_variadic_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_c_variadic_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_c_variadic.v')
 	os.write_file(src, "module main
 
 import time
@@ -68,8 +55,8 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_c_variadic_${os.getpid()}')
-	compile := os.exec([v3_bin, '-enable-globals', '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_c_variadic')
+	compile := os.exec([@VEXE, '-enable-globals', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
@@ -97,8 +84,10 @@ fn main() {
 }
 
 fn test_voidptr_variadic_alias_scalars_promote_before_boxing() {
-	v3_bin := c_variadic_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_c_variadic_alias_${os.getpid()}.v')
+	root := os.join_path(os.vtmp_dir(), 'v3_c_variadic_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'v3_c_variadic_alias.v')
 	os.write_file(src, 'module main
 
 type Small = u8
@@ -114,8 +103,8 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin := os.join_path(os.temp_dir(), 'v3_c_variadic_alias_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	bin := os.join_path(root, 'v3_c_variadic_alias')
+	compile := os.exec([@VEXE, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output

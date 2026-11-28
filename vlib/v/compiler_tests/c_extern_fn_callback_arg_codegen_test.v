@@ -1,27 +1,12 @@
 import os
-
-const extern_cb_vexe = @VEXE
-const extern_cb_tests_dir = os.dir(@FILE)
-const extern_cb_v3_dir = os.dir(extern_cb_tests_dir)
-const extern_cb_vlib_dir = os.dir(extern_cb_v3_dir)
-const extern_cb_v3_src = os.join_path(extern_cb_v3_dir, 'v.v')
-
-fn extern_cb_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_extern_callback_arg_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([extern_cb_vexe, '-gc', 'none', '-path', '${extern_cb_vlib_dir}' + '|@vlib|@vmodules',
-			'-o', v3_bin, '${extern_cb_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 // extern_cb_write_source mirrors the mbedtls shape that broke: `mbedtls_net_send`
 // is handed to `mbedtls_ssl_set_bio`, whose callback slot takes a
 // `const unsigned char *` buffer. A `fn C.` line cannot spell that `const`, so
 // casting the argument to the V-declared signature is what breaks the call.
-fn extern_cb_write_source() string {
-	src := os.join_path(os.temp_dir(), 'v3_extern_callback_arg_${os.getpid()}.v')
+fn extern_cb_write_source(root string) string {
+	src := os.join_path(root, 'v3_extern_callback_arg.v')
 	header := src + '.h'
 	os.write_file(header, '#include <stddef.h>
 #include <stdint.h>
@@ -88,25 +73,19 @@ fn main() {
 }
 
 fn test_c_extern_fn_callback_arg_is_not_cast() {
-	v3_bin := extern_cb_build_v3()
-	src := extern_cb_write_source()
-	c_path := src + '.c'
-	header := src + '.h'
+	root := os.join_path(os.vtmp_dir(), 'v3_extern_callback_arg_${tempname.unique_token()}')
+	os.mkdir(root)!
+	defer { os.rmdir_all(root) or {} }
+	src := extern_cb_write_source(root)
 	mut exe := src + '.out'
 	$if windows {
 		exe += '.exe'
 	}
-	defer {
-		os.rm(v3_bin) or {}
-		os.rm(src) or {}
-		os.rm(header) or {}
-		os.rm(c_path) or {}
-		os.rm(exe) or {}
-	}
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', c_path])
+	compile := os.exec([@VEXE, '-b', 'c', '-o', exe, src])
 	assert compile.exit_code == 0, compile.output
+	assert os.is_file(exe), 'compiler did not produce ${exe}: ${compile.output}'
 
-	c_code := os.read_file(c_path) or { panic(err) }
+	c_code := os.read_file(exe + '.c') or { panic(err) }
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
 	// A `C.` function goes into the callback slot by name: C already has its real
 	// prototype, and a cast to the V-declared signature would drop the parameter's
@@ -135,9 +114,6 @@ fn test_c_extern_fn_callback_arg_is_not_cast() {
 	// to the C-ABI adapter instead of directly to its V-ABI `__anon_fn` target.
 	assert compact.contains('closure__closure_create_with_data(__anon_fn_0_callback_adapter_'), c_code
 
-	build_program := os.exec([v3_bin, '-o', exe, '${src}'])
-	assert build_program.exit_code == 0, build_program.output
-	assert os.is_file(exe), 'compiler did not produce ${exe}: ${build_program.output}'
 	run := os.exec([exe])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().split_into_lines() == ['8', '8', '8', '8', '3', '3', '2', '9']

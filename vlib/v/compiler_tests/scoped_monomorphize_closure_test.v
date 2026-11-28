@@ -1,6 +1,7 @@
 import os
+import v.cmdexec
+import v.tempname
 
-const scoped_monomorph_vexe = @VEXE
 const scoped_monomorph_tests_dir = os.dir(@FILE)
 const scoped_monomorph_v3_dir = os.dir(scoped_monomorph_tests_dir)
 const scoped_monomorph_vlib_dir = os.dir(scoped_monomorph_v3_dir)
@@ -10,10 +11,6 @@ $if windows {
 	const scoped_monomorph_bin_suffix = '.exe'
 } $else {
 	const scoped_monomorph_bin_suffix = ''
-}
-
-fn scoped_monomorph_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_scoped_monomorphize_closure_test_${os.getpid()}${scoped_monomorph_bin_suffix}')
 }
 
 fn scoped_monomorph_cc() string {
@@ -26,26 +23,20 @@ fn scoped_monomorph_cc() string {
 	panic('the scoped monomorphize regression needs clang or gcc')
 }
 
-fn scoped_monomorph_v3_bin() string {
-	bin := scoped_monomorph_v3_bin_path()
-	if os.exists(bin) {
-		return bin
+fn scoped_monomorph_compiler(dir string) string {
+	// The runner may already have a production compiler that supports scoped specialization.
+	shared_v3 := os.getenv('V3_TEST_UNIT_SHARED_V3')
+	if os.getenv('V3_TEST_PROD_COMPILER') == '1' && os.is_file(shared_v3) && os.is_executable(shared_v3)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(scoped_monomorph_v3_src) {
+		return os.real_path(shared_v3)
 	}
-	// `-prealloc` is what enables `scope_parallel_workers` and the scoped
-	// monomorphize path, matching how the distributed compiler is built.
-	build := os.exec([scoped_monomorph_vexe, '-gc', 'none', '-cc', scoped_monomorph_cc(), '-prealloc',
-		'-path', '${scoped_monomorph_vlib_dir}' + '|@vlib|@vmodules', '-o', bin,
-		'${scoped_monomorph_v3_src}'])
+	bin := os.join_path(dir, 'compiler' + scoped_monomorph_bin_suffix)
+	// `-prealloc` enables memory-bounded specialization. Use Clang or GCC so the
+	// compiler can enter the parallel specializer on targets where TinyCC cannot.
+	build := os.exec([@VEXE, '-gc', 'none', '-cc', scoped_monomorph_cc(), '-prealloc', '-path',
+		'${scoped_monomorph_vlib_dir}' + '|@vlib|@vmodules', '-o', bin, scoped_monomorph_v3_src])
 	assert build.exit_code == 0, build.output
 	return bin
-}
-
-fn testsuite_begin() {
-	os.rm(scoped_monomorph_v3_bin_path()) or {}
-}
-
-fn testsuite_end() {
-	os.rm(scoped_monomorph_v3_bin_path()) or {}
 }
 
 // Compiler builds use `-prealloc`, and the memory-bounded monomorphize path (the
@@ -62,24 +53,10 @@ fn test_scoped_monomorphize_keeps_closure_signatures_and_args() {
 		// The scoped specializer is deliberately disabled on this target.
 		return
 	}
-	v3_bin := scoped_monomorph_v3_bin()
-	// The driver keeps parallel monomorphization opt-in. Preallocation alone
-	// selects the serial path and never enters the scoped worker merge.
-	parallel := os.getenv_opt('V3_PARALLEL_MONOMORPHIZE')
-	os.setenv('V3_PARALLEL_MONOMORPHIZE', '1', true)
-	defer {
-		if value := parallel {
-			os.setenv('V3_PARALLEL_MONOMORPHIZE', value, true)
-		} else {
-			os.unsetenv('V3_PARALLEL_MONOMORPHIZE')
-		}
-	}
-	dir := os.join_path(os.temp_dir(), 'v3_scoped_monomorphize_closure_${os.getpid()}')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
+	dir := os.join_path(os.vtmp_dir(), 'v3_scoped_monomorphize_closure_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	v3_bin := scoped_monomorph_compiler(dir)
 	os.write_file(os.join_path(dir, 'main.v'), "module main
 
 import veb
@@ -129,8 +106,10 @@ fn main() {
 	out := os.join_path(dir, 'app${scoped_monomorph_bin_suffix}')
 	// Run V3 directly without C-compiler retries, so a failed scoped merge
 	// cannot be hidden by a successful retry with another compiler.
-	compile := os.exec([v3_bin, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-cc',
-		scoped_monomorph_cc(), '-nocache', '-o', '${out}', dir])
+	compile := cmdexec.run_in_merged_with_env(v3_bin, ['-no-retry-compilation', '-gc', 'none',
+		'-cc', scoped_monomorph_cc(), '-nocache', '-o', out, dir], '', {
+		'V3_PARALLEL_MONOMORPHIZE': '1'
+	})
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	assert os.is_file(out), 'the compile produced no binary'

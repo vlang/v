@@ -1,4 +1,24 @@
+import arrays
 import os
+
+// Each fixture already passes the unit runner's -gc none.
+const interface_sum_escape_default_vflags = os.getenv('VFLAGS').trim_space() in ['', '-gc none']
+const interface_sum_escape_compiler = find_interface_sum_escape_compiler()
+
+fn find_interface_sum_escape_compiler() string {
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	source := os.join_path(os.dir(@FILE), '../v.v')
+	if interface_sum_escape_default_vflags && os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(source) {
+		return os.real_path(shared)
+	}
+	return @VEXE
+}
+
+fn run_interface_sum_escape_fixture(source string, flags []string) os.Result {
+	return os.exec([interface_sum_escape_compiler, '-nocache', '-ownership', '-d', 'ownership',
+		'-gc', 'none', '-cc', 'clang', ...flags, source])
+}
 
 struct InterfaceSumEscapeCase {
 	typ        string
@@ -53,7 +73,6 @@ fn test_ownership_interface_and_sum_payloads_cannot_return_local_references() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_interface_sum_escape_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
 	cases := [
 		InterfaceSumEscapeCase{'Target', 'wrap_target(mut local)', ''},
 		InterfaceSumEscapeCase{'InheritedTarget', 'wrap_inherited(mut local)', ''},
@@ -74,20 +93,35 @@ fn test_ownership_interface_and_sum_payloads_cannot_return_local_references() {
 		InterfaceSumEscapeCase{'Holder', 'wrap_unique(mut local) as Holder', ''},
 		InterfaceSumEscapeCase{'Holder', 'wrap_opaque(mut local) as Holder', ''},
 	]
-	for case in cases {
-		os.write_file(source, interface_sum_escape_declarations + '
-fn escaped() ${case.typ} {
+	// Custom flags can limit the diagnostics emitted by a single compilation.
+	batch_size := if interface_sum_escape_default_vflags { cases.len } else { 1 }
+	for i, batch in arrays.chunk(cases, batch_size) {
+		check_interface_sum_escape_batch(os.join_path(root, 'batch_${i}'), batch)!
+	}
+}
+
+fn check_interface_sum_escape_batch(root string, cases []InterfaceSumEscapeCase) ! {
+	os.mkdir(root)!
+	os.write_file(os.join_path(root, 'main.v'), interface_sum_escape_declarations + '\nfn main() {}\n')!
+	for i, case in cases {
+		source := os.join_path(root, 'escape_case_${i}.v')
+		os.write_file(source, 'module main
+
+fn escaped_${i}() ${case.typ} {
 	mut local := Builder{}
 	${case.binding}
 	return ${case.expression}
 }
-fn main() {}
 ')!
-		for mode in ['-no-parallel', ''] {
-			// These returned references would be dangling, so rejection cases are never run.
-			out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -gc none -cc clang ${mode} -check ${os.quoted_path(source)}')
-			assert out.exit_code != 0, '${case.typ}: ${case.expression}: ${out.output}'
-			assert out.output.contains('cannot return a reference to local storage `local`'), '${case.typ}: ${case.expression}: ${out.output}'
+	}
+	for mode in [['-no-parallel'], []string{}] {
+		// Each file must report its own rejection in the shared compilation.
+		out := run_interface_sum_escape_fixture(root, [...mode, '-check'])
+		assert out.exit_code != 0, '${mode}: ${out.output}'
+		diagnostics := out.output.split_into_lines().filter(it.contains('cannot return a reference to local storage `local`'))
+		for i, case in cases {
+			filename := 'escape_case_${i}.v'
+			assert diagnostics.any(it.contains('${filename}:') || it.contains('${filename}"')), '${mode}: ${case.typ}: ${case.expression}: ${out.output}'
 		}
 	}
 }
@@ -148,8 +182,8 @@ fn main() {
 	if number is ValueTarget { assert number.target == 52 } else { panic("wrong number variant") }
 }
 ')!
-	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -ownership -d ownership -gc none -cc clang ${mode} run ${os.quoted_path(source)}')
+	for mode in [['-no-parallel'], []string{}] {
+		out := run_interface_sum_escape_fixture(source, [...mode, 'run'])
 		assert out.exit_code == 0, '${mode}: ${out.output}'
 	}
 }

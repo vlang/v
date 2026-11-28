@@ -9,6 +9,11 @@ const incbin_workspace = os.join_path(os.vtmp_dir(), 'embed_file_incbin_${os.get
 const incbin_payload_len = 200_000
 
 fn testsuite_begin() {
+	// The TCC that a job selects through VFLAGS cannot build `-prod`; let these builds
+	// use the default compiler. The TCC refusal is checked below with an explicit `-cc tcc`.
+	if os.getenv('VFLAGS').contains('tcc') {
+		os.unsetenv('VFLAGS')
+	}
 	os.rmdir_all(incbin_workspace) or {}
 	os.mkdir_all(incbin_workspace) or { panic(err) }
 	// longer than one C object is required to hold, so the array form would be
@@ -97,7 +102,13 @@ fn test_keepc_and_dumped_flags_do_not_use_temporary_incbin_objects() {
 }
 
 fn test_prod_incbin_build_with_a_cold_and_warm_cache() {
-	cache_dir := os.join_path(os.vtmp_dir(), 'embed_file_incbin_cache_${os.getpid()}')
+	$if msvc {
+		// MSVC cannot assemble the payload; it keeps the array form.
+		return
+	}
+	// A short name: the module cache nests long temporary names below it, and on
+	// Windows the whole path has to stay under MAX_PATH.
+	cache_dir := os.join_path(os.vtmp_dir(), 'eic_${os.getpid()}')
 	os.rmdir_all(cache_dir) or {}
 	old_cache := os.getenv_opt('V3CACHE')
 	old_trace := os.getenv_opt('V3_CACHE_TRACE')

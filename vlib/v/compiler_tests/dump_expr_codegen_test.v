@@ -1,63 +1,13 @@
 import os
-
-const dump_expr_vexe = @VEXE
-const dump_expr_tests_dir = os.dir(@FILE)
-const dump_expr_v3_dir = os.dir(dump_expr_tests_dir)
-const dump_expr_vlib_dir = os.dir(dump_expr_v3_dir)
-const dump_expr_v3_src = os.join_path(dump_expr_v3_dir, 'v.v')
-
-fn dump_expr_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_dump_expr_codegen_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
-	if os.is_executable(v3_bin) {
-		return v3_bin
-	}
-	os.rm(v3_bin) or {}
-	build :=
-		os.exec([dump_expr_vexe, '-gc', 'none', '-prealloc', '-path',
-			'${dump_expr_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${dump_expr_v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn dump_expr_compact_c(s string) string {
 	return s.replace('\t', '').replace(' ', '').replace('\n', '')
 }
 
-fn test_dump_expr_is_transparent_for_c_oracle_output() {
-	v3_bin := dump_expr_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_dump_expr_codegen_${os.getpid()}.v')
-	source := [
-		'module main',
-		'',
-		'fn f() int {',
-		'	return dump(3)',
-		'}',
-		'',
-		'fn take_int(n int) int {',
-		'	return n + 1',
-		'}',
-		'',
-		"fn bump(n int) int { println('side'); return n + 1 }",
-		'',
-		'fn main() {',
-		'	x := dump(1 + 2)',
-		'	assert x == 3',
-		'	mut n := 4',
-		'	n = dump(n + 2)',
-		'	assert n == 6',
-		'	assert f() == 3',
-		'	y := take_int(dump(6))',
-		'	assert y == 7',
-		'	z := dump(bump(0))',
-		'	assert z == 1',
-		'	println(int_str(x + n + f() + y + z))',
-		'}',
-	].join('\n')
-	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_codegen_${os.getpid()}')
-	compile := os.exec([v3_bin, '-no-parallel', '-nocache', '-b', 'c', '-o', bin, '${src}'])
-	assert compile.exit_code == 0, compile.output
+fn dump_expr_run(bin string, args []string) (string, string) {
 	mut process := os.new_process(bin)
+	process.set_args(args)
 	process.set_redirect_stdio()
 	process.wait()
 	stdout := process.stdout_slurp().trim_space()
@@ -65,61 +15,117 @@ fn test_dump_expr_is_transparent_for_c_oracle_output() {
 	exit_code := process.code
 	process.close()
 	assert exit_code == 0, 'stdout:\n${stdout}\nstderr:\n${stderr}'
-	lines := stdout.replace('\r\n', '\n').split('\n')
-	assert lines == ['side', '20'], stdout
-	assert stderr.len > 0
-	generated := os.read_file(bin + '.c') or { panic(err) }
-	compact := dump_expr_compact_c(generated)
-	assert !generated.contains('dump('), generated
-	assert !generated.contains('= ;'), generated
-	// V `int` is `i64` on 64-bit targets; literal arithmetic widens before evaluation.
-	assert compact.contains('i64__dump_0=((i64)(1)+(2));'), generated
-	assert compact.contains('i64__dump_1=n+2;'), generated
-	assert compact.contains('n=__dump_1;'), generated
-	assert compact.contains('return__dump_0;'), generated
-	assert compact.contains('take_int(__dump_2)'), generated
-	assert compact.contains('i64__dump_3=bump(0);'), generated
+	return stdout, stderr
 }
 
-fn test_dump_expr_writes_to_stderr() {
-	v3_bin := dump_expr_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_dump_expr_stderr_${os.getpid()}.v')
-	source := [
-		'module main',
-		'',
-		'fn main() {',
-		'	value := dump(3)',
-		'	println(int_str(value + 4))',
-		'}',
-	].join('\n')
+fn test_dump_expr_codegen_and_output() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_dump_expr_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_dump_expr_checks')
+	src := bin + '.v'
+	source := "module main
+
+import os
+
+fn f() int {
+	return dump(3)
+}
+
+fn take_int(n int) int {
+	return n + 1
+}
+
+fn bump(n int) int { println('side'); return n + 1 }
+
+fn check_transparent() {
+	x := dump(1 + 2)
+	assert x == 3
+	mut n := 4
+	n = dump(n + 2)
+	assert n == 6
+	assert f() == 3
+	y := take_int(dump(6))
+	assert y == 7
+	z := dump(bump(0))
+	assert z == 1
+	println(int_str(x + n + f() + y + z))
+}
+
+fn check_stderr() {
+	value := dump(3)
+	println(int_str(value + 4))
+}
+
+fn check_pointer() {
+	i := 42
+	dump(i)
+	ir := &i
+	dump(ir)
+	irr := &ir
+	dump(irr)
+	irrr := &irr
+	dump(irrr)
+}
+
+fn main() {
+	match os.args[1] {
+		'transparent' { check_transparent() }
+		'stderr' { check_stderr() }
+		'pointer' { check_pointer() }
+		else { panic('unknown dump fixture') }
+	}
+}
+"
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_stderr_${os.getpid()}')
-	compile := os.exec([v3_bin, '-no-parallel', '-nocache', '-b', 'c', '-o', bin, '${src}'])
+	compile := os.exec([@VEXE, '-no-parallel', '-nocache', '-b', 'c', '-o', bin, src])
 	assert compile.exit_code == 0, compile.output
 
-	mut process := os.new_process(bin)
-	process.set_redirect_stdio()
-	process.wait()
-	stdout := process.stdout_slurp().trim_space()
-	stderr := process.stderr_slurp().trim_space()
-	exit_code := process.code
-	process.close()
-	assert exit_code == 0, 'stdout:\n${stdout}\nstderr:\n${stderr}'
-	assert stdout == '7', stdout
-	assert stderr.ends_with('] 3: 3'), stderr
+	stdout, stderr := dump_expr_run(bin, ['transparent'])
+	assert stdout.split_into_lines() == ['side', '20'], stdout
+	assert stderr.len > 0
+
+	label_stdout, label_stderr := dump_expr_run(bin, ['stderr'])
+	assert label_stdout == '7', label_stdout
+	assert label_stderr.ends_with('] 3: 3'), label_stderr
+
+	pointer_stdout, pointer_stderr := dump_expr_run(bin, ['pointer'])
+	assert pointer_stdout == '', pointer_stdout
+	lines := pointer_stderr.split_into_lines()
+	assert lines.len == 4, pointer_stderr
+	assert lines[0].ends_with('] i: 42'), pointer_stderr
+	assert lines[1].ends_with('] ir: &42'), pointer_stderr
+	assert lines[2].ends_with('] irr: &&42'), pointer_stderr
+	assert lines[3].ends_with('] irrr: &&&42'), pointer_stderr
 
 	generated := os.read_file(bin + '.c') or { panic(err) }
-	compact := dump_expr_compact_c(generated)
-	// The label and the integer value are joined either by string__plus, or by
-	// string_plus_many over a stack buffer for the number (no temporary string).
-	assert compact.contains('eprintln(string__plus(')
-		|| compact.contains('eprintln(({string__v3_internal_symbol_join_'), generated
-	assert !compact.contains('dump('), generated
+	assert !generated.contains('dump('), generated
+	assert !generated.contains('= ;'), generated
+	transparent := dump_expr_compact_c(generated.all_after(' check_transparent(void) {').all_before('\n}'))
+	returning := dump_expr_compact_c(generated.all_after(' f(void) {').all_before('\n}'))
+	label := dump_expr_compact_c(generated.all_after(' check_stderr(void) {').all_before('\n}'))
+	// V int is i64 on 64-bit targets, so literal arithmetic widens before evaluation.
+	assert transparent.contains('i64__dump_0=((i64)(1)+(2));'), transparent
+	assert transparent.contains('i64__dump_1=n+2;'), transparent
+	assert transparent.contains('n=__dump_1;'), transparent
+	assert transparent.contains('take_int(__dump_2)'), transparent
+	assert transparent.contains('i64__dump_3=bump(0);'), transparent
+	assert returning.contains('return__dump_0;'), returning
+	// The label and value are joined with string__plus or a stack-buffered string_plus_many.
+	assert label.contains('eprintln(string__plus(')
+		|| label.contains('eprintln(({string__v3_internal_symbol_join_'), label
 }
 
 fn test_dump_expr_respects_nop_dump_and_preserves_evaluation() {
-	v3_bin := dump_expr_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_dump_expr_nop_dump_${os.getpid()}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_dump_expr_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_dump_expr_nop_dump')
+	src := bin + '.v'
 	source := [
 		'module main',
 		'',
@@ -135,62 +141,15 @@ fn test_dump_expr_respects_nop_dump_and_preserves_evaluation() {
 		'}',
 	].join('\n')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_nop_dump_${os.getpid()}')
-	compile := os.exec([v3_bin, '-no-parallel', '-nocache', '-d', 'nop_dump', '-b', 'c', '-o',
-		bin, '${src}'])
+	compile := os.exec([@VEXE, '-no-parallel', '-nocache', '-d', 'nop_dump', '-b', 'c', '-o', bin,
+		src])
 	assert compile.exit_code == 0, compile.output
 
-	mut process := os.new_process(bin)
-	process.set_redirect_stdio()
-	process.wait()
-	stdout := process.stdout_slurp().trim_space()
-	stderr := process.stderr_slurp().trim_space()
-	exit_code := process.code
-	process.close()
-	assert exit_code == 0, 'stdout:\n${stdout}\nstderr:\n${stderr}'
+	stdout, stderr := dump_expr_run(bin, [])
 	assert stdout == '42:1', stdout
 	assert stderr == '', stderr
 
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	assert !generated.contains('bump(mut calls): '), generated
 	assert dump_expr_compact_c(generated).count('bump(&calls)') == 1, generated
-}
-
-fn test_dump_expr_preserves_pointer_values() {
-	v3_bin := dump_expr_build_v3()
-	src := os.join_path(os.temp_dir(), 'v3_dump_expr_pointer_${os.getpid()}.v')
-	source := [
-		'module main',
-		'',
-		'fn main() {',
-		'	i := 42',
-		'	dump(i)',
-		'	ir := &i',
-		'	dump(ir)',
-		'	irr := &ir',
-		'	dump(irr)',
-		'	irrr := &irr',
-		'	dump(irrr)',
-		'}',
-	].join('\n')
-	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_pointer_${os.getpid()}')
-	compile := os.exec([v3_bin, '-no-parallel', '-nocache', '-b', 'c', '-o', bin, '${src}'])
-	assert compile.exit_code == 0, compile.output
-
-	mut process := os.new_process(bin)
-	process.set_redirect_stdio()
-	process.wait()
-	stdout := process.stdout_slurp().trim_space()
-	stderr := process.stderr_slurp().trim_space()
-	exit_code := process.code
-	process.close()
-	assert exit_code == 0, 'stdout:\n${stdout}\nstderr:\n${stderr}'
-	assert stdout == '', stdout
-	lines := stderr.replace('\r\n', '\n').split('\n')
-	assert lines.len == 4, stderr
-	assert lines[0].ends_with('] i: 42'), stderr
-	assert lines[1].ends_with('] ir: &42'), stderr
-	assert lines[2].ends_with('] irr: &&42'), stderr
-	assert lines[3].ends_with('] irrr: &&&42'), stderr
 }

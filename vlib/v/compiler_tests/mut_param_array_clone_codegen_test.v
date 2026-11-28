@@ -1,24 +1,14 @@
 import os
-
-const vexe = @VEXE
-const tests_dir = os.dir(@FILE)
-const v3_dir = os.dir(tests_dir)
-const vlib_dir = os.dir(v3_dir)
-const v3_src = os.join_path(v3_dir, 'v.v')
-
-fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_mut_param_array_clone_test_${os.getpid()}')
-	build :=
-		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${v3_src}'])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
+import v.tempname
 
 fn test_mut_array_param_clone_reassigns_value_array() {
-	v3_bin := build_v3()
-
-	src := os.join_path(os.temp_dir(), 'v3_mut_param_array_clone_input_${os.getpid()}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_mut_param_array_clone_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_mut_param_array_clone_input')
+	src := bin + '.v'
 	os.write_file(src, "fn update(mut xs []int) {
 	mut ys := xs.clone()
 	ys[0] = 2
@@ -36,8 +26,7 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_mut_param_array_clone_input_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('cannot assign `&[]int` to `[]int`'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
@@ -48,9 +37,13 @@ fn main() {
 }
 
 fn test_mut_array_param_assignment_still_rejects_non_array() {
-	v3_bin := build_v3()
-
-	src := os.join_path(os.temp_dir(), 'v3_mut_array_param_bad_assign_${os.getpid()}.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_mut_param_array_clone_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	bin := os.join_path(dir, 'v3_mut_array_param_bad_assign')
+	src := bin + '.v'
 	os.write_file(src, 'fn update(mut xs []int) {
 	xs = 1
 }
@@ -63,8 +56,7 @@ fn main() {
 		panic(err)
 	}
 
-	bin := os.join_path(os.temp_dir(), 'v3_mut_array_param_bad_assign_${os.getpid()}')
-	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot assign'), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output

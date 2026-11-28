@@ -1,23 +1,14 @@
 import os
-
-const generic_const_global_vexe = @VEXE
-const generic_const_global_tests_dir = os.dir(@FILE)
-const generic_const_global_v3_dir = os.dir(generic_const_global_tests_dir)
-const generic_const_global_vlib_dir = os.dir(generic_const_global_v3_dir)
-const generic_const_global_v3_src = os.join_path(generic_const_global_v3_dir, 'v.v')
+import v.tempname
 
 fn test_inferred_generic_const_return_has_concrete_global_type() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_const_global_test')
-	build :=
-		os.exec([generic_const_global_vexe, '-gc', 'none', '-path',
-			'${generic_const_global_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
-			'${generic_const_global_v3_src}'])
-	assert build.exit_code == 0, build.output
-
-	source := os.join_path(os.temp_dir(), 'v3_generic_const_global_input.v')
+	dir := os.join_path(os.vtmp_dir(), 'v3_generic_const_global_${tempname.unique_token()}')
+	os.mkdir(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'v3_generic_const_global_input.v')
 	os.write_file(source,
 		"import sync.stdatomic\n\nconst flag = stdatomic.new_atomic(false)\nconst number = stdatomic.new_atomic(7)\n\nfn main() {\n\tassert !flag.load()\n\tassert number.load() == 7\n\tprintln('ok')\n}\n")!
-	out := os.exec([v3_bin, '-no-parallel', 'run', source])
+	out := os.exec([@VEXE, '-no-parallel', 'run', source])
 	assert out.exit_code == 0, out.output
 	// `run` prints no C compiler lines before the program output any more.
 	assert out.output.split_into_lines().any(it == 'ok'), out.output

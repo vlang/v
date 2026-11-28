@@ -116,13 +116,9 @@ fn test_imported_library_resolves_symbols_from_later_native_object() {
 	source := os.join_path(root, 'main.v')
 	output := os.join_path(root, 'main' + $if windows { '.exe' } $else { '' })
 	os.write_file(source, 'import archive\nimport consumer\nfn main() {\n assert archive.marker() == 41\n assert consumer.answer() == 42\n}\n')!
-	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
-		os.join_path(@VEXEROOT, 'v' + $if windows { '.exe' } $else { '' })
-	} else {
-		@VEXE
-	}
-	built := cmdexec.run(vexe, ['-new-compiler', '-nocache', '-gc', 'none', '-cc', compiler, '-showcc',
-		'-o', output, source])
+	vexe := @VEXE
+	built := cmdexec.run(vexe, ['-nocache', '-gc', 'none', '-cc', compiler, '-showcc', '-o', output,
+		source])
 	assert built.exit_code == 0, built.output
 	// Native inputs use canonical paths, including through macOS /tmp symlinks.
 	// Normalize Windows separators too, since #flag joins @DIR with `/`.
@@ -135,6 +131,16 @@ fn test_imported_library_resolves_symbols_from_later_native_object() {
 	assert ran.exit_code == 0, ran.output
 }
 
+// link_test_compiles_cpp reports whether `compiler` can compile C++. A C compiler driver
+// such as gcc runs a separately installed C++ front end (cc1plus), which an image may lack.
+fn link_test_compiles_cpp(compiler string, root string) bool {
+	probe := os.join_path(root, 'cpp_probe.cpp')
+	os.write_file(probe, 'template<int N> int probe() { return N; }\nint value() { return probe<0>(); }\n') or {
+		return false
+	}
+	return cmdexec.run(compiler, ['-fsyntax-only', '-x', 'c++', probe]).exit_code == 0
+}
+
 fn test_reordered_native_sources_keep_joined_and_reset_languages() {
 	compiler := os.find_abs_path_of_executable($if windows { 'gcc' } $else { 'cc' }) or {
 		return
@@ -143,6 +149,9 @@ fn test_reordered_native_sources_keep_joined_and_reset_languages() {
 	os.mkdir_all(root)!
 	defer {
 		os.rmdir_all(root) or { panic(err) }
+	}
+	if !link_test_compiles_cpp(compiler, root) {
+		return
 	}
 	cpp_source := os.join_path(root, 'template.c')
 	c_source := os.join_path(root, 'plain.c')
@@ -221,6 +230,9 @@ fn test_trailing_native_language_reaches_sources_passed_through_ldflags() {
 	defer {
 		os.rmdir_all(root) or { panic(err) }
 	}
+	if !link_test_compiles_cpp(compiler, root) {
+		return
+	}
 	source := os.join_path(root, 'main.v')
 	cpp_source := os.join_path(root, 'template.c')
 	c_source := os.join_path(root, 'plain.c')
@@ -228,16 +240,11 @@ fn test_trailing_native_language_reaches_sources_passed_through_ldflags() {
 	os.write_file(source, 'fn main() {}\n')!
 	os.write_file(cpp_source, 'template<int N> int answer() { return N; }\nextern "C" int template_answer(void) { return answer<42>(); }\n')!
 	os.write_file(c_source, 'int class(void) { return 42; }\n')!
-	vexe := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
-		os.join_path(@VEXEROOT, 'v' + $if windows { '.exe' } $else { '' })
-	} else {
-		@VEXE
-	}
+	vexe := @VEXE
 	for flags in [['-x c++', cpp_source], ['-xc++', cpp_source], ['-x c++ -x none', c_source],
 		['-xc++ -xnone', c_source]] {
-		built := cmdexec.run(vexe, ['-new-compiler', '-no-std', '-nocache', '-gc', 'none', '-cc',
-			compiler, '-cflags', flags[0], '-ldflags', os.quoted_path(flags[1]), '-o', output,
-			source])
+		built := cmdexec.run(vexe, ['-no-std', '-nocache', '-gc', 'none', '-cc', compiler, '-cflags',
+			flags[0], '-ldflags', os.quoted_path(flags[1]), '-o', output, source])
 		assert built.exit_code == 0, built.output
 		ran := cmdexec.run(output, [])
 		assert ran.exit_code == 0, ran.output
@@ -427,6 +434,46 @@ fn test_link_preparation_preserves_option_pairs_beside_real_objects() {
 	plan := valid_c_link_plan(manifest, mut stats) or { panic('invalid mixed-input manifest') }
 	assert plan.flags == flags
 	assert plan.requests == 1
+}
+
+fn test_shared_native_link_objects_outlive_the_producing_session() {
+	$if windows {
+		return
+	}
+	compiler := os.find_abs_path_of_executable('cc') or { return }
+	old_vtmp := os.getenv_opt('VTMP')
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'shared_link_inputs_${os.getpid()}')
+	cache_dir := os.join_path(root, 'shared')
+	first := os.join_path(root, 'first')
+	second := os.join_path(root, 'second')
+	defer {
+		if value := old_vtmp {
+			os.setenv('VTMP', value, true)
+		} else {
+			os.unsetenv('VTMP')
+		}
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(cache_dir)!
+	for session in [first, second] {
+		os.mkdir(session)!
+		os.symlink(cache_dir, os.join_path(session, 'v3_thirdparty_objs'))!
+	}
+	os.write_file(os.join_path(root, 'helper.c'), 'int helper(void) { return 42; }\n')!
+	flags := [os.join_path(root, 'helper.o')]
+	target := pref.host_target()
+	os.setenv('VTMP', first, true)
+	mut cold := CObjectCacheStats{}
+	produced := prepare_c_flags_for_link(flags, [], [], [], false, false, '', [], target,
+		compiler, false, root, mut cold)!
+	os.setenv('VTMP', second, true)
+	mut warm := CObjectCacheStats{}
+	reused := prepare_c_flags_for_link(flags, [], [], [], false, false, '', [], target,
+		compiler, false, root, mut warm)!
+	assert reused == produced
+	assert warm.dependency_scans == 0
+	os.rm(os.join_path(first, 'v3_thirdparty_objs'))!
+	assert os.is_file(reused[0]), reused[0]
 }
 
 fn test_c_source_language_flags_preserve_filename_case_and_explicit_languages() {

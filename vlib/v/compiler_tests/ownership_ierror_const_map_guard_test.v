@@ -16,11 +16,10 @@ fn ownership_ierror_const_cleanup(source string) {
 }
 
 fn ownership_ierror_const_compile(flags string, source string) os.Result {
-	return os.exec([@VEXE, '-new-compiler', '-nocache', ...flags.split(' '), source])
+	return os.exec([@VEXE, '-nocache', ...flags.split(' '), source])
 }
 
-fn test_returned_error_constants_give_the_caller_its_own_copy() {
-	source := ownership_ierror_const_source('returns', 'import net
+const ownership_ierror_const_return_fixture = 'import net
 
 const err_busy = error_with_code("busy", 7)
 const err_alias = err_busy
@@ -72,59 +71,64 @@ fn main() {
 	}
 	println("\${err_busy.msg()} \${err_busy.code()} \${net.err_timed_out.msg()}")
 }
-') or {
+'
+
+const ownership_ierror_const_return_output = 'busy\n7\nnet: op timed out\nbusy\nother\nbusy\nnet: port out of range\nbusy busy 7\n'.repeat(3) +
+	'busy 7 net: op timed out'
+
+fn test_returned_error_constants_give_the_caller_its_own_copy() {
+	source := ownership_ierror_const_source('returns', ownership_ierror_const_return_fixture) or {
 		panic(err)
 	}
 	defer {
 		ownership_ierror_const_cleanup(source)
 	}
-	once := 'busy\n7\nnet: op timed out\nbusy\nother\nbusy\nnet: port out of range\nbusy busy 7'
-	expected := [once, once, once, 'busy 7 net: op timed out'].join('\n')
-	for flags in ['-autofree -cc clang -no-parallel run', '-autofree -cc clang run',
-		'-ownership -d ownership -cc clang run'] {
-		out := ownership_ierror_const_compile(flags, source)
-		assert out.exit_code == 0, '${flags}: ${out.output}'
-		assert out.output.trim_space() == expected, '${flags}: ${out.output}'
-	}
+	out := ownership_ierror_const_compile('-ownership -d ownership -cc clang run', source)
+	assert out.exit_code == 0, out.output
+	assert out.output.trim_space() == ownership_ierror_const_return_output, out.output
 }
 
 fn test_issue_programs_pass_autofree_check() {
-	programs := {
-		'net':     'import net
+	source := ownership_ierror_const_source('issue_programs', 'import net
+import net.mbedtls
+import toml
 
-fn main() {
+fn check_net() {
 	mut conn := net.dial_tcp("127.0.0.1:9") or { return }
 	mut buf := []u8{len: 16}
 	_ := conn.read(mut buf) or { return }
 }
-'
-		'mbedtls': 'import net.mbedtls
 
-fn main() {
+fn check_mbedtls() {
 	mut listener := mbedtls.new_ssl_listener("127.0.0.1:0", mbedtls.SSLConnectConfig{}, mbedtls.SSLListenerOptions{}) or {
 		return
 	}
 	mut conn := listener.accept() or { return }
 	conn.close() or {}
 }
-'
-		'toml':    'import toml
 
-fn main() {
+fn check_toml() {
 	_ := toml.parse_text("[a.b]\\nc = 1\\n") or { return }
 }
-'
+
+fn main() {
+	check_net()
+	check_mbedtls()
+	check_toml()
+}
+') or {
+		panic(err)
 	}
-	for name, code in programs {
-		source := ownership_ierror_const_source(name, code) or { panic(err) }
-		out := ownership_ierror_const_compile('-autofree -check', source)
+	defer {
 		ownership_ierror_const_cleanup(source)
-		assert out.exit_code == 0, '${name}: ${out.output}'
 	}
+	out := ownership_ierror_const_compile('-autofree -check', source)
+	assert out.exit_code == 0, out.output
 }
 
-fn test_map_guard_through_a_mutable_borrowed_alias_is_a_view() {
-	source := ownership_ierror_const_source('map_guard', 'type Value = map[string]Value | string | int
+fn test_autofree_error_constants_and_map_guard_preserve_owners() {
+	code := ownership_ierror_const_return_fixture.replace('fn main()', 'fn check_error_constants()') + '
+type Value = map[string]Value | string | int
 
 fn is_all_tables(table map[string]Value, keys []string) bool {
 	unsafe {
@@ -144,7 +148,7 @@ fn is_all_tables(table map[string]Value, keys []string) bool {
 	return true
 }
 
-fn main() {
+fn check_map_guard() {
 	mut inner := map[string]Value{}
 	inner["c"] = Value("x".repeat(3))
 	mut root := map[string]Value{}
@@ -156,14 +160,20 @@ fn main() {
 	}
 	println(root)
 }
-') or {
+
+fn main() {
+	check_error_constants()
+	check_map_guard()
+}
+'
+	source := ownership_ierror_const_source('autofree_error_and_map', code) or {
 		panic(err)
 	}
 	defer {
 		ownership_ierror_const_cleanup(source)
 	}
 	once := 'true\nfalse\nfalse'
-	expected := [once, once, "{'a': Value({'c': Value('xxx')})}"].join('\n')
+	expected := [ownership_ierror_const_return_output, once, once, "{'a': Value({'c': Value('xxx')})}"].join('\n')
 	for flags in ['-autofree -cc clang -no-parallel run', '-autofree -cc clang run'] {
 		out := ownership_ierror_const_compile(flags, source)
 		assert out.exit_code == 0, '${flags}: ${out.output}'
@@ -171,8 +181,8 @@ fn main() {
 	}
 }
 
-fn test_borrowed_error_without_a_compatible_clone_is_still_rejected() {
-	source := ownership_ierror_const_source('no_clone', 'struct DetailError {
+fn test_borrowed_error_copy_and_map_move_are_rejected() {
+	source := ownership_ierror_const_source('borrowed_rejections', 'struct DetailError {
 	Error
 	detail string
 }
@@ -201,6 +211,7 @@ fn busy() ! {
 fn main() {
 	detailed() or { println(err.msg()) }
 	busy() or { println(err.msg()) }
+	borrowed_map_guard()
 }
 ') or {
 		panic(err)
@@ -208,21 +219,12 @@ fn main() {
 	defer {
 		ownership_ierror_const_cleanup(source)
 	}
-	for flags in ['-autofree -check', '-ownership -d ownership -check'] {
-		out := ownership_ierror_const_compile(flags, source)
-		assert out.exit_code != 0, '${flags}: ${out.output}'
-		assert out.output.contains('main.v:20:9: error: cannot copy borrowed `IError` value: `DetailError` requires ownership destruction but has no compatible `clone()` method'), '${flags}: ${out.output}'
-		// `err_busy` comes from builtin `error_with_code()` and always holds a MessageError.
-		assert !out.output.contains('main.v:24:'), '${flags}: ${out.output}'
-	}
-}
-
-fn test_owned_value_moved_out_of_a_borrowed_map_is_still_rejected() {
-	source := ownership_ierror_const_source('owned_guard', 'struct Entry {
+	root := os.dir(source)
+	os.write_file(os.join_path(root, 'map_guard.v'), 'struct Entry {
 	name string
 }
 
-fn main() {
+fn borrowed_map_guard() {
 	mut m := map[string]Entry{}
 	m["a"] = Entry{"x".repeat(3)}
 	mut t := &m
@@ -233,15 +235,13 @@ fn main() {
 	}
 	println(m.len)
 }
-') or {
-		panic(err)
-	}
-	defer {
-		ownership_ierror_const_cleanup(source)
-	}
+')!
 	for flags in ['-autofree -check', '-ownership -d ownership -check'] {
-		out := ownership_ierror_const_compile(flags, source)
+		out := ownership_ierror_const_compile(flags, root)
 		assert out.exit_code != 0, '${flags}: ${out.output}'
-		assert out.output.contains('cannot move `t[a]` because it borrows `m[a]`; attempted move to `val`'), '${flags}: ${out.output}'
+		assert out.output.contains('main.v:20:9: error: cannot copy borrowed `IError` value: `DetailError` requires ownership destruction but has no compatible `clone()` method'), '${flags}: ${out.output}'
+		// `err_busy` comes from builtin `error_with_code()` and always holds a MessageError.
+		assert !out.output.contains('main.v:24:'), '${flags}: ${out.output}'
+		assert out.output.contains('map_guard.v:10:20: error: cannot move `t[a]` because it borrows `m[a]`; attempted move to `val`'), '${flags}: ${out.output}'
 	}
 }

@@ -1,48 +1,82 @@
 // vtest flaky: true
 // vtest retry: 3
 // vtest build: !windows && !docker-ubuntu-musl && !sanitize-memory-clang && !sanitize-address-clang-without-gc
+import net
+import net.http
 import os
 import time
-import net.http
+import veb
 
-const sport = 13085
-const localserver = '127.0.0.1:${sport}'
-const exit_after_time = 30000
-const vexe = os.getenv('VEXE')
-const vroot = os.dir(vexe)
-const serverexe = os.join_path(os.cache_dir(), 'veb_memory_test_server.exe')
+const memory_server_probe = '--vtest-veb-memory-server'
+
+struct MemoryTestContext {
+	veb.Context
+}
+
+struct MemoryTestApp {}
+
+struct MemoryTestServer {
+mut:
+	process &os.Process = unsafe { nil }
+	address string
+}
+
+const memory_server = &MemoryTestServer{}
+
+fn run_memory_test_server(port int) {
+	spawn fn () {
+		time.sleep(30 * time.second)
+		exit(1)
+	}()
+	mut app := &MemoryTestApp{}
+	veb.run_at[MemoryTestApp, MemoryTestContext](mut app,
+		host:               '127.0.0.1'
+		port:               port
+		family:             .ip
+		timeout_in_seconds: 10
+	) or { panic(err) }
+}
 
 fn testsuite_begin() {
-	os.chdir(vroot) or {}
-	if os.exists(serverexe) {
-		os.rm(serverexe) or {}
+	if os.args.len == 3 && os.args[1] == memory_server_probe {
+		run_memory_test_server(os.args[2].int())
+		exit(0)
 	}
+	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := listener.addr()!.port()!
+	listener.close()!
+
+	mut child := os.new_process(os.executable())
+	child.set_args([memory_server_probe, port.str()])
+	child.run()
+	// testsuite_begin and testsuite_end share ownership of the child process.
+	mut server := unsafe { memory_server }
+	server.process = child
+	server.address = 'http://127.0.0.1:${port}'
 }
 
 fn testsuite_end() {
-	if os.exists(serverexe) {
-		os.rm(serverexe) or {}
-	}
-}
-
-fn test_server_compiles() {
-	did_compile :=
-		os.system_args([vexe, '-o', serverexe, 'vlib/veb/tests/memory_leak_test_server.v'])
-	assert did_compile == 0
-	assert os.exists(serverexe)
+	mut server := unsafe { memory_server }
+	server.process.signal_kill()
+	server.process.wait()
+	server.process.close()
 }
 
 fn test_server_runs_in_background() {
-	spawn os.system_args([serverexe, '${sport}', '${exit_after_time}'])
-	for _ in 0 .. 50 {
-		resp := http.get('http://${localserver}/heap') or {
-			time.sleep(100 * time.millisecond)
+	sw := time.new_stopwatch()
+	for sw.elapsed() < 5 * time.second {
+		resp := http.fetch(
+			url:          '${memory_server.address}/heap'
+			max_retries:  1
+			read_timeout: 250 * time.millisecond
+		) or {
+			time.sleep(10 * time.millisecond)
 			continue
 		}
 		if resp.status_code == 200 {
 			return
 		}
-		time.sleep(100 * time.millisecond)
+		time.sleep(10 * time.millisecond)
 	}
 	assert false, 'Timed out waiting for background server to start'
 }
@@ -52,7 +86,7 @@ fn test_large_responses_work_correctly() {
 	request_count := 20
 	mut successful := 0
 	for _ in 0 .. request_count {
-		resp := http.get('http://${localserver}/large') or { continue }
+		resp := http.get('${memory_server.address}/large') or { continue }
 		if resp.status_code == 200 && resp.body.len > 50000 {
 			successful += 1
 		}
@@ -62,7 +96,7 @@ fn test_large_responses_work_correctly() {
 }
 
 fn test_heap_usage_endpoint_works() {
-	resp := http.get('http://${localserver}/heap') or {
+	resp := http.get('${memory_server.address}/heap') or {
 		assert false, 'Failed to get heap usage: ${err}'
 		return
 	}
@@ -73,7 +107,7 @@ fn test_heap_usage_endpoint_works() {
 }
 
 fn test_gc_collect_endpoint_works() {
-	resp := http.get('http://${localserver}/gc') or {
+	resp := http.get('${memory_server.address}/gc') or {
 		assert false, 'Failed to trigger GC: ${err}'
 		return
 	}
@@ -81,11 +115,11 @@ fn test_gc_collect_endpoint_works() {
 }
 
 fn test_multipart_upload_does_not_expand_heap_excessively() {
-	http.get('http://${localserver}/gc') or {
+	http.get('${memory_server.address}/gc') or {
 		assert false, 'Failed to trigger GC before measuring heap: ${err}'
 		return
 	}
-	before_resp := http.get('http://${localserver}/heap') or {
+	before_resp := http.get('${memory_server.address}/heap') or {
 		assert false, 'Failed to get baseline heap usage: ${err}'
 		return
 	}
@@ -97,7 +131,7 @@ fn test_multipart_upload_does_not_expand_heap_excessively() {
 		content_type: 'application/octet-stream'
 		data:         'X'.repeat(payload_size)
 	}
-	resp := http.post_multipart_form('http://${localserver}/upload', http.PostMultipartFormConfig{
+	resp := http.post_multipart_form('${memory_server.address}/upload', http.PostMultipartFormConfig{
 		files: {
 			'file': files
 		}
@@ -107,15 +141,51 @@ fn test_multipart_upload_does_not_expand_heap_excessively() {
 	}
 	assert resp.status_code == 200
 	assert resp.body == payload_size.str()
-	http.get('http://${localserver}/gc') or {
+	http.get('${memory_server.address}/gc') or {
 		assert false, 'Failed to trigger GC after upload: ${err}'
 		return
 	}
-	after_resp := http.get('http://${localserver}/heap') or {
+	after_resp := http.get('${memory_server.address}/heap') or {
 		assert false, 'Failed to get post-upload heap usage: ${err}'
 		return
 	}
 	after_heap := after_resp.body.i64()
 	heap_growth := if after_heap > before_heap { after_heap - before_heap } else { i64(0) }
 	assert heap_growth < 8 * 1024 * 1024, 'Multipart upload grew heap by ${heap_growth} bytes'
+}
+
+// index returns a basic response from the memory test server.
+pub fn (mut app MemoryTestApp) index(mut ctx MemoryTestContext) veb.Result {
+	return ctx.text('OK')
+}
+
+// heap reports the server process's GC heap size.
+@['/heap']
+pub fn (mut app MemoryTestApp) heap(mut ctx MemoryTestContext) veb.Result {
+	usage := gc_heap_usage()
+	return ctx.text('${usage.heap_size}')
+}
+
+// gc_collect triggers a collection in the server process.
+@['/gc']
+pub fn (mut app MemoryTestApp) gc_collect(mut ctx MemoryTestContext) veb.Result {
+	gc_collect()
+	return ctx.text('GC collected')
+}
+
+// large returns a response with a 100 KiB body.
+@['/large']
+pub fn (mut app MemoryTestApp) large(mut ctx MemoryTestContext) veb.Result {
+	data := 'X'.repeat(100 * 1024)
+	return ctx.text(data)
+}
+
+// upload reports the number of bytes received for the multipart file.
+@['/upload'; post]
+pub fn (mut app MemoryTestApp) upload(mut ctx MemoryTestContext) veb.Result {
+	if 'file' !in ctx.files || ctx.files['file'].len == 0 {
+		ctx.res.set_status(.bad_request)
+		return ctx.text('no file')
+	}
+	return ctx.text(ctx.files['file'][0].data.len.str())
 }

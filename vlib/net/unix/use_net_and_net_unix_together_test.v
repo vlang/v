@@ -1,5 +1,6 @@
 // vtest build: !gcc-windows && !gcc-windows-self-tests // too flaky on these CIs
 // vtest retry: 3
+import io
 import os
 import time
 import net.unix
@@ -24,41 +25,24 @@ fn testsuite_end() {
 }
 
 fn test_that_net_and_net_unix_can_be_imported_together_without_conflicts() {
-	mut l := unix.listen_stream(test_port) or { panic(err) }
-	spawn echo_server(mut l)
-	defer {
-		l.close() or {}
-	}
+	mut listener := unix.listen_stream(test_port)!
+	defer { listener.close() or {} }
+	listener.set_accept_timeout(2 * time.second)
 
-	mut c := unix.connect_stream(test_port)!
-	defer {
-		c.close() or {}
-	}
+	mut client := unix.connect_stream(test_port)!
+	defer { client.close() or {} }
+	mut server := listener.accept()!
+	defer { server.close() or {} }
+	client.set_read_timeout(2 * time.second)
+	server.set_read_timeout(2 * time.second)
 
 	data := 'Hello from vlib/net!'
-	c.write_string(data)!
-	mut buf := []u8{len: 100}
-	assert c.read(mut buf)! == data.len
-	eprintln('< client read back buf: |${buf[0..data.len].bytestr()}|')
-	assert buf[0..data.len] == data.bytes()
-}
+	client.write_string(data)!
+	mut request := []u8{len: data.len}
+	io.read_exact(mut server, mut request)!
+	server.write(request)!
 
-fn perror(s string) ! {
-	println(s)
-}
-
-fn handle_conn(mut c unix.StreamConn) ! {
-	for {
-		mut buf := []u8{len: 100, init: 0}
-		read := c.read(mut buf) or { return perror('Server: connection dropped') }
-		eprintln('> server read ${read:3}, buf: |${buf.bytestr()}|')
-		c.write(buf[..read]) or { return perror('Server: connection dropped') }
-	}
-}
-
-fn echo_server(mut l unix.StreamListener) ! {
-	for {
-		mut new_conn := l.accept() or { continue }
-		handle_conn(mut new_conn) or {}
-	}
+	mut response := []u8{len: data.len}
+	io.read_exact(mut client, mut response)!
+	assert response == data.bytes()
 }

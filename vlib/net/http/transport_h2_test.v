@@ -28,6 +28,23 @@ const h2t_key_path = @VEXEROOT +
 
 const h2t_body = 'h2 pool hello'
 
+struct H2ResponseGate {
+	stream_id u32
+	arrived   chan bool = chan bool{cap: 1}
+	release   chan bool = chan bool{}
+}
+
+fn (gate H2ResponseGate) wait_for_request() ! {
+	select {
+		_ := <-gate.arrived {
+			return
+		}
+		5 * time.second {
+		}
+	}
+	return error('server did not receive HEADERS for stream ${gate.stream_id}')
+}
+
 @[heap]
 struct H2PoolSrv {
 mut:
@@ -40,11 +57,9 @@ mut:
 	// connection right before responding to its first request, so the pooled
 	// client connection is retired while otherwise fully healthy.
 	goaway_after_first bool
-	// respond_delay: sleep this long after receiving a request's HEADERS
-	// before sending the response, so a test can observe the client-side
-	// stream while it is still in flight (refs held above the pool's own
-	// baseline reference).
+	// respond_delay simulates a stalled response for the request timeout test.
 	respond_delay time.Duration
+	response_gate ?&H2ResponseGate
 	// Hold h1 responses until every concurrent fallback request has arrived.
 	hold_h1_responses bool
 	h1_requests       chan bool = chan bool{cap: 4}
@@ -179,6 +194,12 @@ fn h2_pool_srv_serve(mut s H2PoolSrv, mut conn mbedtls.SSLConn) {
 				if s.respond_delay > 0 {
 					time.sleep(s.respond_delay)
 				}
+				if gate := s.response_gate {
+					if sid == gate.stream_id {
+						gate.arrived <- true
+						_ := <-gate.release
+					}
+				}
 				block := enc.encode([
 					H2HeaderField{':status', '200'},
 					H2HeaderField{'content-length', h2t_body.len.str()},
@@ -247,15 +268,26 @@ fn h2t_fetch_worker(port int, path string) int {
 	return resp.status_code
 }
 
-// h2t_slow_round_trip runs one request through a specific (non-default)
-// Transport instance, so a test can hold an h2 connection busy
-// (active_streams > 0) on that transport's own pool for the duration of a
-// spawned thread.
-fn h2t_slow_round_trip(mut t Transport, port int, path string) {
-	req := prepare(url: 'https://127.0.0.1:${port}${path}', validate: false, enable_http2: true) or {
-		return
+fn h2t_pool_round_trip(mut t Transport, port int, path string) !Response {
+	req := prepare(url: 'https://127.0.0.1:${port}${path}', validate: false, enable_http2: true)!
+	return t.round_trip(req, .get, 'https', '127.0.0.1', port, path, '', req.header)
+}
+
+fn h2t_find_pooled_conn(mut t Transport, req &Request, port int) !&H2MuxConn {
+	key := transport_pool_key(req, 'https', '127.0.0.1', port)
+	t.mu.lock()
+	defer {
+		t.mu.unlock()
 	}
-	t.round_trip(req, .get, 'https', '127.0.0.1', port, path, '', req.header) or {}
+	return t.h2_conns[key] or { error('expected a pooled h2 connection for port ${port}') }
+}
+
+fn h2t_expire_pooled_conn(mut t Transport, req &Request, port int) !&H2MuxConn {
+	mut conn := h2t_find_pooled_conn(mut t, req, port)!
+	conn.smu.lock()
+	conn.idle_since = time.now().add(-2 * t.idle_timeout)
+	conn.smu.unlock()
+	return conn
 }
 
 // h2t_h1only_srv_serve is a minimal HTTP/1.1 responder for a listener that
@@ -711,80 +743,54 @@ fn test_h2_pool_evicts_h1_idle_to_make_room_for_h2() {
 // unrelated BUSY h2 connection, and gets evicted even though the real idle
 // count is within max_idle_conns (Codex P3, vlang/v#27643
 // pullrequestreview-4631763931, discussion 3525390899).
-fn test_h2_pool_idle_cap_excludes_busy_h2_conn() {
+fn test_h2_pool_idle_cap_excludes_busy_h2_conn() ! {
 	mut t := new_transport()
 	t.max_idle_conns = 2
 
 	mut h1_srv := &H2PoolSrv{}
-	h1_port, mut h1_listener, h1_th := start_h2t_h1only_srv(mut h1_srv) or {
-		assert false, 'h1 server: ${err}'
-		return
+	h1_port, mut h1_listener, h1_th := start_h2t_h1only_srv(mut h1_srv)!
+	defer {
+		stop_h2_pool_srv(mut h1_listener, h1_th)
 	}
-	h1_req := prepare(url: 'https://127.0.0.1:${h1_port}/warm', validate: false, enable_http2: true) or {
-		assert false, 'prepare h1: ${err}'
-		return
-	}
-	h1_resp := t.round_trip(h1_req, .get, 'https', '127.0.0.1', h1_port, '/warm', '', h1_req.header) or {
-		assert false, 'round_trip h1: ${err}'
-		return
-	}
-	assert h1_resp.status_code == 200
 
+	// Stream 1 warms up the connection. Hold the next request through eviction.
+	gate := &H2ResponseGate{
+		stream_id: 3
+	}
 	mut h2_srv := &H2PoolSrv{
-		respond_delay: 500 * time.millisecond
+		response_gate: gate
 	}
-	h2_port, mut h2_listener, h2_th := start_h2_pool_srv(mut h2_srv) or {
-		assert false, 'h2 server: ${err}'
-		return
+	h2_port, mut h2_listener, h2_th := start_h2_pool_srv(mut h2_srv)!
+	defer {
+		stop_h2_pool_srv(mut h2_listener, h2_th)
 	}
-	// Warm up the h2 connection so it is registered and idle before the busy
-	// phase below.
-	warm_req := prepare(
-		url:          'https://127.0.0.1:${h2_port}/warm'
-		validate:     false
-		enable_http2: true
-	) or {
-		assert false, 'prepare h2 warm: ${err}'
-		return
-	}
-	warm_resp := t.round_trip(warm_req, .get, 'https', '127.0.0.1', h2_port, '/warm', '',
-		warm_req.header) or {
-		assert false, 'round_trip h2 warm: ${err}'
-		return
-	}
-	assert warm_resp.status_code == 200
-
-	// Make the h2 connection BUSY (active_streams > 0) for respond_delay, then
-	// dial a third, fresh h2 origin while it is still in flight -- that
-	// dial's own registration-time eviction check is where the miscount
-	// would fire.
-	slow_th := spawn h2t_slow_round_trip(mut t, h2_port, '/slow')
-	time.sleep(150 * time.millisecond)
-
 	mut c_srv := &H2PoolSrv{}
-	c_port, mut c_listener, c_th := start_h2_pool_srv(mut c_srv) or {
-		assert false, 'c server: ${err}'
-		return
+	c_port, mut c_listener, c_th := start_h2_pool_srv(mut c_srv)!
+	defer {
+		stop_h2_pool_srv(mut c_listener, c_th)
 	}
-	c_req := prepare(url: 'https://127.0.0.1:${c_port}/fresh', validate: false, enable_http2: true) or {
-		assert false, 'prepare c: ${err}'
-		return
+
+	defer {
+		t.close_idle()
 	}
-	c_resp := t.round_trip(c_req, .get, 'https', '127.0.0.1', c_port, '/fresh', '', c_req.header) or {
-		assert false, 'round_trip c: ${err}'
-		return
+	assert h2t_pool_round_trip(mut t, h1_port, '/warm')!.status_code == 200
+	assert h2t_pool_round_trip(mut t, h2_port, '/warm')!.status_code == 200
+
+	slow_th := spawn h2t_pool_round_trip(mut t, h2_port, '/slow')
+	defer {
+		gate.release.close()
+		slow_th.wait() or {}
 	}
+	gate.wait_for_request()!
+	// The fresh dial's registration checks the combined idle count while the
+	// gated stream is still active.
+	c_resp := h2t_pool_round_trip(mut t, c_port, '/fresh')!
 	assert c_resp.status_code == 200
 
 	t.mu.lock()
 	h1_idle_count := t.total_idle_locked()
 	t.mu.unlock()
 
-	slow_th.wait()
-	t.close_idle()
-	stop_h2_pool_srv(mut h1_listener, h1_th)
-	stop_h2_pool_srv(mut h2_listener, h2_th)
-	stop_h2_pool_srv(mut c_listener, c_th)
 	assert h1_idle_count == 1, 'expected the idle h1 connection to survive (a busy h2 connection must not count toward the idle cap), got ${h1_idle_count} idle h1 connections'
 }
 
@@ -794,49 +800,24 @@ fn test_h2_pool_idle_cap_excludes_busy_h2_conn() {
 // the connection had been idle, unlike Transport.checkout's h1_idle expiry
 // check (Codex P2, vlang/v#27643 pullrequestreview-4631763931, discussion
 // 3525390896).
-fn test_h2_pool_respects_idle_timeout() {
+fn test_h2_pool_respects_idle_timeout() ! {
 	mut t := new_transport()
-	t.idle_timeout = 100 * time.millisecond
-
+	t.idle_timeout = 5 * time.second
 	mut srv := &H2PoolSrv{}
-	port, mut listener, th := start_h2_pool_srv(mut srv) or {
-		assert false, 'server: ${err}'
-		return
+	port, mut listener, th := start_h2_pool_srv(mut srv)!
+	defer {
+		t.close_idle()
+		stop_h2_pool_srv(mut listener, th)
 	}
-	req1 := prepare(url: 'https://127.0.0.1:${port}/first', validate: false, enable_http2: true) or {
-		assert false, 'prepare 1: ${err}'
-		return
-	}
-	resp1 := t.round_trip(req1, .get, 'https', '127.0.0.1', port, '/first', '', req1.header) or {
-		assert false, 'round_trip 1: ${err}'
-		return
-	}
+
+	req := prepare(url: 'https://127.0.0.1:${port}/first', validate: false, enable_http2: true)!
+	resp1 := t.round_trip(req, .get, 'https', '127.0.0.1', port, '/first', '', req.header)!
 	assert resp1.status_code == 200
 
-	// Let the connection sit idle well past idle_timeout before the next
-	// request.
-	time.sleep(250 * time.millisecond)
-
-	req2 := prepare(url: 'https://127.0.0.1:${port}/second', validate: false, enable_http2: true) or {
-		assert false, 'prepare 2: ${err}'
-		return
-	}
-	resp2 := t.round_trip(req2, .get, 'https', '127.0.0.1', port, '/second', '', req2.header) or {
-		assert false, 'round_trip 2: ${err}'
-		return
-	}
+	h2t_expire_pooled_conn(mut t, req, port)!
+	resp2 := h2t_pool_round_trip(mut t, port, '/second')!
 	assert resp2.status_code == 200
-
-	t.close_idle()
-	stop_h2_pool_srv(mut listener, th)
 	assert srv.accept_count() == 2, 'expected the expired idle connection to be retired and a fresh one dialed, got ${srv.accept_count()} accepts'
-}
-
-fn h2t_race_idle_evict(mut t Transport, port int, path string) {
-	req := prepare(url: 'https://127.0.0.1:${port}${path}', validate: false, enable_http2: true) or {
-		return
-	}
-	t.round_trip(req, .get, 'https', '127.0.0.1', port, path, '', req.header) or {}
 }
 
 // Two concurrent requests racing an idle-expired pooled h2 connection must
@@ -845,46 +826,31 @@ fn h2t_race_idle_evict(mut t Transport, port int, path string) {
 // idempotent like shutdown_when_idle() -- a second, unconditional release()
 // over-decrements it). Self-caught in review, vlang/v#27643
 // pullrequestreview-4636271901.
-fn test_h2_pool_idle_evict_race_does_not_double_release() {
-	mut srv := &H2PoolSrv{}
-	port, mut listener, th := start_h2_pool_srv(mut srv) or {
-		assert false, 'server: ${err}'
-		return
-	}
+fn test_h2_pool_idle_evict_race_does_not_double_release() ! {
 	mut t := new_transport()
-	t.idle_timeout = 100 * time.millisecond
-
-	req1 := prepare(url: 'https://127.0.0.1:${port}/first', validate: false, enable_http2: true) or {
-		assert false, 'prepare 1: ${err}'
-		return
+	t.idle_timeout = 5 * time.second
+	mut srv := &H2PoolSrv{}
+	port, mut listener, th := start_h2_pool_srv(mut srv)!
+	defer {
+		t.close_idle()
+		stop_h2_pool_srv(mut listener, th)
 	}
-	resp1 := t.round_trip(req1, .get, 'https', '127.0.0.1', port, '/first', '', req1.header) or {
-		assert false, 'round_trip 1: ${err}'
-		return
-	}
-	assert resp1.status_code == 200
 
-	key := transport_pool_key(req1, 'https', '127.0.0.1', port)
-	t.mu.lock()
-	pooled := t.h2_conns[key] or {
-		t.mu.unlock()
-		assert false, 'expected a pooled h2 connection to be registered'
-		return
-	}
-	t.mu.unlock()
+	req := prepare(url: 'https://127.0.0.1:${port}/first', validate: false, enable_http2: true)!
+	resp := t.round_trip(req, .get, 'https', '127.0.0.1', port, '/first', '', req.header)!
+	assert resp.status_code == 200
 
-	// Let the connection sit idle well past idle_timeout, then have two
-	// requests race its eviction.
-	time.sleep(250 * time.millisecond)
+	mut pooled := h2t_expire_pooled_conn(mut t, req, port)!
+	th1 := spawn h2t_pool_round_trip(mut t, port, '/second')
+	th2 := spawn h2t_pool_round_trip(mut t, port, '/third')
+	resp2 := th1.wait() or { Response{} }
+	resp3 := th2.wait() or { Response{} }
+	assert resp2.status_code == 200 && resp3.status_code == 200
 
-	th1 := spawn h2t_race_idle_evict(mut t, port, '/second')
-	th2 := spawn h2t_race_idle_evict(mut t, port, '/third')
-	th1.wait()
-	th2.wait()
-
-	t.close_idle()
-	stop_h2_pool_srv(mut listener, th)
-	assert pooled.refs == 0, 'expected refs to be retired exactly once (== 0), got ${pooled.refs}: double-release detected'
+	pooled.smu.lock()
+	refs := pooled.refs
+	pooled.smu.unlock()
+	assert refs == 0, 'expected refs to be retired exactly once, got ${refs}'
 }
 
 // Sequential requests to the same h2 origin must reuse the pooled multiplexed
@@ -1183,60 +1149,37 @@ fn test_h2_pool_dial_failure_preserves_error_code() {
 // stream is still active) rather than inferred indirectly through the
 // in-flight fetch's eventual outcome, which depends on unrelated timing
 // between the teardown and the reader thread noticing it.
-fn test_h2_pool_close_idle_release_is_idempotent() {
-	mut srv := &H2PoolSrv{
-		respond_delay: 800 * time.millisecond
+fn test_h2_pool_close_idle_release_is_idempotent() ! {
+	gate := &H2ResponseGate{
+		stream_id: 1
 	}
-	port, mut listener, th := start_h2_pool_srv(mut srv) or {
-		assert false, 'server: ${err}'
-		return
+	mut srv := &H2PoolSrv{
+		response_gate: gate
+	}
+	port, mut listener, th := start_h2_pool_srv(mut srv)!
+	defer {
+		stop_h2_pool_srv(mut listener, th)
 	}
 	mut t := default_transport()
+	req := prepare(url: 'https://127.0.0.1:${port}/slow', validate: false, enable_http2: true)!
 	status := spawn h2t_fetch_worker(port, '/slow')
-	// Wait until the pooled h2 connection is actually registered (dial +
-	// ALPN negotiation + stream admission all complete) before racing
-	// close_idle against the in-flight stream — a blind sleep is fragile
-	// under scheduling jitter, and racing too early would just find nothing
-	// to release on either call.
-	// Registration into t.h2_conns (transport_h2.v) happens before the
-	// dialer calls conn.do() (h2_mux_conn.v), which is what actually
-	// increments active_streams — orphan release, cap eviction, and do_h2's
-	// own dispatch all run in between. Waiting only for registration and
-	// then checking active_streams once let the test race ahead of
-	// admission; wait for both conditions in the same poll loop instead.
-	mut conn := &H2MuxConn(unsafe { nil })
-	mut active := 0
-	for _ in 0 .. 500 {
-		t.mu.lock()
-		for _, mut c in t.h2_conns {
-			conn = c
-		}
-		t.mu.unlock()
-		if conn != unsafe { nil } {
-			conn.smu.lock()
-			active = conn.active_streams
-			conn.smu.unlock()
-			if active > 0 {
-				break
-			}
-		}
-		time.sleep(5 * time.millisecond)
+	defer {
+		gate.release.close()
+		status.wait()
 	}
-	assert conn != unsafe { nil }, 'pooled h2 connection was never registered before the delayed response arrived'
-	assert active > 0, 'stream was not yet admitted — test raced ahead of do()'
-	// Two close_idle calls while the stream is still in flight: on buggy code
-	// the second one finds the connection still registered and re-releases
-	// it, over-decrementing refs below the number of genuinely live
-	// references (the pool's own + the active stream's).
+
+	// Receiving HEADERS proves the stream was admitted. Keep the response
+	// gated while both calls attempt to release the pool's reference.
+	gate.wait_for_request()!
+	mut conn := h2t_find_pooled_conn(mut t, req, port)!
 	close_idle_connections()
 	close_idle_connections()
 	conn.smu.lock()
 	refs_after := conn.refs
 	active_after := conn.active_streams
 	conn.smu.unlock()
+	assert active_after > 0, 'expected the gated stream to stay active'
 	assert refs_after >= active_after, 'close_idle_connections() released the pool reference ${refs_after - active_after} time(s) too many while ${active_after} stream(s) were still active (refs=${refs_after})'
-	status.wait()
-	stop_h2_pool_srv(mut listener, th)
 }
 
 // close_idle_connections() must tear the pooled h2 connection all the way
@@ -1303,13 +1246,14 @@ fn test_h2_pool_disable_reuse_opt_out() {
 
 // --- H2PooledTransport adapter-level concurrency ---
 
-fn h2t_echo_conn(mut conn mbedtls.SSLConn) {
+fn h2t_echo_peer(mut listener mbedtls.SSLListener) {
+	mut conn := listener.accept() or { return }
 	defer {
 		conn.shutdown() or {}
 	}
 	conn.set_read_timeout(10 * time.second)
+	mut buf := []u8{len: 4096}
 	for {
-		mut buf := []u8{len: 4096}
 		n := conn.read(mut buf) or { return }
 		if n <= 0 {
 			return
@@ -1318,17 +1262,11 @@ fn h2t_echo_conn(mut conn mbedtls.SSLConn) {
 	}
 }
 
-fn h2t_echo_loop(mut listener mbedtls.SSLListener) {
-	for {
-		mut conn := listener.accept() or { return }
-		spawn h2t_echo_conn(mut conn)
-	}
-}
-
-fn h2t_hammer_reader(mut pt H2PooledTransport) int {
+fn h2t_hammer_reader(mut pt H2PooledTransport, echoed chan bool) int {
+	echo_goal := 4 * 1024
 	mut total := 0
+	mut buf := []u8{len: 2048}
 	for {
-		mut buf := []u8{len: 2048}
 		n := pt.read(mut buf) or {
 			// Mirror the real consumer (H2MuxConn.read_loop): timeout errors
 			// are benign wake-ups to re-poll on; anything else ends the read
@@ -1338,6 +1276,9 @@ fn h2t_hammer_reader(mut pt H2PooledTransport) int {
 				continue
 			}
 			return total
+		}
+		if total < echo_goal && total + n >= echo_goal {
+			echoed <- true
 		}
 		total += n
 	}
@@ -1394,7 +1335,7 @@ fn test_h2_pooled_transport_idle_reader_allows_write_and_close() ! {
 	mut sconn := ssl.new_ssl_conn(validate: false)!
 	sconn.dial('127.0.0.1', port)!
 	mut pt := new_h2_pooled_transport(mut sconn)
-	reader := spawn h2t_hammer_reader(mut pt)
+	reader := spawn h2t_hammer_reader(mut pt, chan bool{cap: 1})
 	// Start the writer while the reader owns the TLS context, rather than
 	// letting the write finish before the first read has even started.
 	deadline := time.now().add(2 * time.second)
@@ -1473,7 +1414,7 @@ fn test_h2_pooled_transport_concurrent_read_write_close() {
 			assert false, 'listener: ${err}'
 			return
 		}
-		th := spawn h2t_echo_loop(mut listener)
+		th := spawn h2t_echo_peer(mut listener)
 		mut sconn := ssl.new_ssl_conn(validate: false) or {
 			assert false, 'ssl conn: ${err}'
 			return
@@ -1483,17 +1424,26 @@ fn test_h2_pooled_transport_concurrent_read_write_close() {
 			return
 		}
 		mut pt := new_h2_pooled_transport(mut sconn)
-		rt := spawn h2t_hammer_reader(mut pt)
+		echoed := chan bool{cap: 1}
+		rt := spawn h2t_hammer_reader(mut pt, echoed)
 		wt := spawn h2t_hammer_writer(mut pt)
-		time.sleep(200 * time.millisecond)
+		mut exchanged := false
+		select {
+			_ := <-echoed {
+				exchanged = true
+			}
+			5 * time.second {
+			}
+		}
 		pt.close()
 		writes := wt.wait()
 		reads := rt.wait()
-		assert writes >= 0 && reads >= 0, 'round ${round}: hammer threads must terminate cleanly'
 		// A second close must be a no-op, not a double-free.
 		pt.close()
-		listener.shutdown() or {}
 		th.wait()
+		listener.shutdown() or {}
+		assert writes >= 0 && reads >= 0, 'round ${round}: hammer threads must terminate cleanly'
+		assert exchanged, 'round ${round}: reader did not receive enough echoed data'
 	}
 }
 
@@ -1535,14 +1485,18 @@ fn test_h2_pooled_transport_write_survives_stall_past_io_timeout() {
 		assert false, 'listener: ${err}'
 		return
 	}
+	defer {
+		listener.shutdown() or {}
+	}
 	// Server: complete the handshake, then go captive -- never read again,
 	// simulating a healthy-but-slow peer that has stopped draining its
 	// receive buffer (not a dead or closed one).
-	th := spawn fn (mut l mbedtls.SSLListener) {
+	release := chan bool{cap: 1}
+	th := spawn fn (mut l mbedtls.SSLListener, release chan bool) {
 		mut sconn := l.accept() or { return }
-		time.sleep(2 * time.second)
+		_ := <-release
 		sconn.shutdown() or {}
-	}(mut listener)
+	}(mut listener, release)
 
 	mut sconn := ssl.new_ssl_conn(validate: false) or {
 		assert false, 'ssl conn: ${err}'
@@ -1563,7 +1517,7 @@ fn test_h2_pooled_transport_write_survives_stall_past_io_timeout() {
 	payload := []u8{len: 512 * 1024, init: u8(0xab)}
 
 	write_done := chan bool{cap: 1}
-	spawn fn [mut pt, payload, write_done] () {
+	writer := spawn fn [mut pt, payload, write_done] () {
 		pt.write(payload) or {}
 		write_done <- true
 	}()
@@ -1575,16 +1529,20 @@ fn test_h2_pooled_transport_write_survives_stall_past_io_timeout() {
 	// multiple of that interval must still find the write in flight: that is
 	// only possible if it is retrying against something much longer than
 	// 50ms.
+	mut returned_early := false
 	select {
 		_ := <-write_done {
-			assert false, 'write() returned within 250ms even though the peer never disconnected -- it must be retrying against the write stall budget, not the short read-poll interval'
+			returned_early = true
 		}
 		250 * time.millisecond {
 			// still in flight, as expected on fixed code
 		}
 	}
 
+	// The write can hold the I/O lock until the peer disconnects.
+	release <- true
 	pt.close()
-	_ := <-write_done
+	writer.wait()
 	th.wait()
+	assert !returned_early, 'write() returned within 250ms while the peer was still connected'
 }

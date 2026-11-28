@@ -5,9 +5,6 @@ fn test_flat_payload_table_atomic_slot_has_a_c_compatible_pointer_type() {
 	root := os.join_path(os.vtmp_dir(), 'flat_payload_pointer_abi_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	saved_fallback := os.getenv('V_MACOS_V3_NO_FALLBACK')
-	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
-	defer { os.setenv('V_MACOS_V3_NO_FALLBACK', saved_fallback, true) }
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'import v.flat
 fn main() {

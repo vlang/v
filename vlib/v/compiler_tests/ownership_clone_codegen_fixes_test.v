@@ -1,111 +1,26 @@
 import os
+import v.cmdexec
+import v.tempname
 
-const occf_vexe = @VEXE
-const occf_tests_dir = os.dir(@FILE)
-const occf_v3_dir = os.dir(occf_tests_dir)
-const occf_vlib_dir = os.dir(occf_v3_dir)
-const occf_v3_src = os.join_path(occf_v3_dir, 'v.v')
-
-fn occf_build_v3(tag string) string {
-	pid := os.getpid()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_${tag}_${pid}')
-	build :=
-		os.exec([occf_vexe, '-gc', 'none', '-d', 'ownership', '-path',
-			'${occf_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, occf_v3_src])
-	assert build.exit_code == 0, build.output
-	return v3_bin
-}
-
-fn occf_compile_and_run(v3_bin string, tag string, source string) {
-	pid := os.getpid()
-	src := os.join_path(os.temp_dir(), 'v3_${tag}_${pid}.v')
-	out := os.join_path(os.temp_dir(), 'v3_${tag}_prog_${pid}')
-	defer {
-		os.rm(src) or {}
-		os.rm(out) or {}
-		os.rm(out + '.c') or {}
+fn test_ownership_clone_specialization_and_moves() {
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	v3_src := os.join_path(os.dir(@FILE), '../v.v')
+	compiler := if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(v3_src) {
+		os.real_path(shared)
+	} else {
+		@VEXE
 	}
-	os.write_file(src, source) or { panic(err) }
-	compile := os.exec([v3_bin, '${src}', '-d', 'ownership', '-b', 'c', '-o', '${out}'])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-}
-
-// Reassigning an `?string` field via the drop-before-assign lowering must keep
-// the optional storage type; the temp used to hold the (auto-wrapped) value must
-// be `__v_option_string`, not the unwrapped `string` smartcast.
-fn test_optional_drop_before_assign_keeps_optional_temp() {
-	v3_bin := occf_build_v3('opt_drop_assign')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'opt_drop_assign', 'module main
-
-fn f(input ?string) ?string {
-	mut preprocessor := ?string(none)
-	if value := input {
-		preprocessor = value.clone()
-	}
-	return preprocessor
-}
-
-fn main() {
-	assert (f("hello") or { "none" }) == "hello"
-}
-')
-}
-
-// The final synthetic store in drop-before-assign lowering may be visited by
-// transform again. It must not destroy the same old field value a second time.
-fn test_owned_field_assignment_drops_replaced_value_once() {
-	v3_bin := occf_build_v3('field_assign_one_drop')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'field_assign_one_drop', 'module main
-
-struct Owned implements Drop {
-	drops &int
-}
-
-fn (mut value Owned) drop() {
-	unsafe {
-		*value.drops += 1
-	}
-}
-
-struct Holder {
-mut:
-	value Owned
-}
-
-fn main() {
-	mut drops := 0
-	mut holder := Holder{
-		value: Owned{
-			drops: &drops
-		}
-	}
-	holder.value = Owned{
-		drops: &drops
-	}
-	assert drops == 1
-}
-')
-}
-
-// `.clone()` on an array reached through a method that already returns a pointer
-// (`arc.Arc[[]T].get()` returns `&[]T`) must not take the address again.
-fn test_array_clone_on_pointer_returning_receiver() {
-	v3_bin := occf_build_v3('arc_get_clone')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'arc_get_clone', 'module main
+	root := os.join_path(os.vtmp_dir(), 'v3_ownership_clone_${tempname.unique_token()}')
+	os.mkdir(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	src := os.join_path(root, 'main.v')
+	out := os.join_path(root, 'program')
+	os.write_file(src, 'module main
 
 import sync.arc
 
+// Arc.get() already returns &[]T, so cloning must not take its address again.
 fn f() []string {
 	a := arc.new(["x", "y"])
 	return a.get().clone()
@@ -115,23 +30,70 @@ fn length(values []string) int {
 	return values.len
 }
 
-fn main() {
+fn check_arc_array_clone() {
 	assert f().len == 2
 	a := arc.new(["x", "y"])
 	assert length(a.get()) == 2
 }
-')
+
+// A Drop type that implements IClone can use structural cloning for cloneable fields.
+struct Owned implements IClone, Drop {
+mut:
+	value string
 }
 
-// A concrete generic-interface application uses the base interface's runtime
-// box while retaining its specialized method parameter types.
-fn test_generic_interface_parameter_uses_base_runtime_box() {
-	v3_bin := occf_build_v3('generic_interface_parameter')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'generic_interface_parameter', 'module main
+fn (mut x Owned) drop() {
+	x.value = ""
+}
 
+fn check_drop_type_clone() {
+	first := Owned{
+		value: "hello".to_owned()
+	}
+	second := first.clone()
+	assert first.value == "hello"
+	assert second.value == "hello"
+}
+
+struct Record implements IClone {
+	name string
+	arg  ?string
+}
+
+// The loop clones each element before binding it so the array keeps its storage.
+fn check_array_iteration_clone() {
+	records := [Record{
+		name: "after-context".to_owned()
+		arg:  "5".to_owned()
+	}]
+	for record in records {
+		assert record.name == "after-context"
+		assert record.arg or { "" } == "5"
+	}
+	assert records[0].name == "after-context"
+	assert records[0].arg or { "" } == "5"
+}
+
+struct Item {
+	value int
+}
+
+// Captured function literals retain their declared parameter types during checking, so
+// generic builtin methods can validate them against the specialized element
+// type instead of falling back to `fn (voidptr, voidptr)`.
+fn check_captured_sort_compare() {
+	reverse := true
+	mut items := [Item{value: 1}, Item{value: 2}]
+	items.sort_with_compare(fn [reverse] (a &Item, b &Item) int {
+		if reverse {
+			return b.value - a.value
+		}
+		return a.value - b.value
+	})
+	assert items[0].value == 2
+}
+
+// A concrete generic interface uses the base runtime box with specialized parameters.
 interface CaptureFinder[T] {
 	captures_at(mut caps T) bool
 }
@@ -153,111 +115,12 @@ fn captures[T](matcher &CaptureFinder[T], mut caps T) bool {
 	return matcher.captures_at(mut caps)
 }
 
-fn main() {
+fn check_generic_interface_box() {
 	matcher := Matcher{}
 	mut caps := Captures{}
 	assert captures(matcher, mut caps)
 	assert caps.count == 1
 }
-')
-}
-
-// `Drop` does not prevent Rust from deriving `Clone`. An ownership type that
-// explicitly implements both markers can use the compiler's structural clone
-// as long as each ownership-bearing field is itself cloneable.
-fn test_default_clone_is_available_for_drop_type() {
-	v3_bin := occf_build_v3('clone_drop_type')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'clone_drop_type', 'module main
-
-struct Owned implements IClone, Drop {
-mut:
-	value string
-}
-
-fn (mut x Owned) drop() {
-	x.value = ""
-}
-
-fn main() {
-	first := Owned{
-		value: "hello".to_owned()
-	}
-	second := first.clone()
-	assert first.value == "hello"
-	assert second.value == "hello"
-}
-')
-}
-
-// Array iteration binds elements by value. Ownership-bearing elements must be
-// structurally cloned before the loop body so dropping a binding cannot free
-// storage still owned by the source array.
-fn test_array_for_in_clones_ownership_bearing_elements() {
-	v3_bin := occf_build_v3('array_for_in_clone')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'array_for_in_clone', 'module main
-
-struct Record implements IClone {
-	name string
-	arg  ?string
-}
-
-fn main() {
-	records := [Record{
-		name: "after-context".to_owned()
-		arg:  "5".to_owned()
-	}]
-	for record in records {
-		assert record.name == "after-context"
-		assert record.arg or { "" } == "5"
-	}
-	assert records[0].name == "after-context"
-	assert records[0].arg or { "" } == "5"
-}
-')
-}
-
-// Captured function literals retain their declared parameter types during checking, so
-// generic builtin methods can validate them against the specialized element
-// type instead of falling back to `fn (voidptr, voidptr)`.
-fn test_captured_sort_compare_keeps_parameter_types() {
-	v3_bin := occf_build_v3('captured_sort_compare')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'captured_sort_compare', 'module main
-
-struct Item {
-	value int
-}
-
-fn main() {
-	reverse := true
-	mut items := [Item{value: 1}, Item{value: 2}]
-	items.sort_with_compare(fn [reverse] (a &Item, b &Item) int {
-		if reverse {
-			return b.value - a.value
-		}
-		return a.value - b.value
-	})
-	assert items[0].value == 2
-}
-')
-}
-
-// Generic specialization keeps the checker's implicit reference conversion
-// when a concrete value is passed to a borrowed interface parameter.
-fn test_generic_method_accepts_value_for_borrowed_interface_parameter() {
-	v3_bin := occf_build_v3('generic_borrowed_interface_arg')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'generic_borrowed_interface_arg', 'module main
 
 interface Reader {
 	value() int
@@ -294,7 +157,8 @@ fn (worker Worker[T]) run(value &int) int {
 	return worker.searcher.search(borrowed)
 }
 
-fn main() {
+// Specialization keeps the implicit reference conversion for borrowed interfaces.
+fn check_borrowed_interface_parameter() {
 	n := 42
 	worker := Worker[int]{
 		value: 1
@@ -302,62 +166,6 @@ fn main() {
 	}
 	assert worker.run(&n) == 42
 }
-')
-}
-
-// Consuming an aggregate call argument moves its base and owned descendants as
-// one value instead of treating the descendant metadata as a second use.
-fn test_call_consumes_owned_aggregate_and_descendants_once() {
-	v3_bin := occf_build_v3('call_owned_aggregate')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'call_owned_aggregate', 'module main
-
-struct Owned implements Drop {
-mut:
-	value string
-}
-
-fn (mut value Owned) drop() {
-	value.value = ""
-}
-
-struct Wrapper[T] {
-	value T
-}
-
-fn wrap[T](value T) Wrapper[T] {
-	return Wrapper[T]{
-		value: value
-	}
-}
-
-fn consume[T](first Owned, second Wrapper[T]) int {
-	return first.value.len + second.value.value.len
-}
-
-fn main() {
-	first := Owned{
-		value: "a".to_owned()
-	}
-	second := Owned{
-		value: "b".to_owned()
-	}
-	assert consume(first, wrap(second)) == 2
-}
-')
-}
-
-// Reannotation rebuilds local scopes after generic specialization. Mutable
-// declarations must keep their mutability there so chained generic receiver
-// calls are not diagnosed as calls on immutable values.
-fn test_chained_generic_mut_receiver_keeps_mutable_local() {
-	v3_bin := occf_build_v3('generic_mut_receiver')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'generic_mut_receiver', 'module main
 
 struct Inner[T] {
 mut:
@@ -377,7 +185,8 @@ fn (mut outer Outer[T]) inner_mut() &Inner[T] {
 	return &outer.inner
 }
 
-fn main() {
+// Rebuilding local scopes after specialization must preserve mutability.
+fn check_chained_mut_receiver() {
 	mut outer := Outer[int]{
 		inner: Inner[int]{
 			value: 42
@@ -386,21 +195,84 @@ fn main() {
 	value := outer.inner_mut().get_mut()
 	assert *value == 42
 }
-')
+
+// The drop-before-assign temporary keeps ?string storage after the smartcast.
+fn assign_optional_string(input ?string) ?string {
+	mut preprocessor := ?string(none)
+	if value := input {
+		preprocessor = value.clone()
+	}
+	return preprocessor
 }
 
-// Moving a destructible aggregate leaves its source storage uninitialized.
-// A later assignment must initialize that storage directly instead of dropping
-// the old bits, which now belong to the move destination. The same rule applies
-// when the move destination is an optional.
-fn test_moved_aggregate_reassignment_skips_stale_drop() {
-	v3_bin := occf_build_v3('moved_reassign')
-	defer {
-		os.rm(v3_bin) or {}
-	}
-	occf_compile_and_run(v3_bin, 'moved_reassign', 'module main
+fn check_optional_assignment() {
+	assert (assign_optional_string("hello") or { "none" }) == "hello"
+}
 
-struct Owned implements Drop {
+struct FieldOwned implements Drop {
+	drops &int
+}
+
+fn (mut value FieldOwned) drop() {
+	unsafe {
+		*value.drops += 1
+	}
+}
+
+struct Holder {
+mut:
+	value FieldOwned
+}
+
+// A second transform of the synthetic store must still drop the replaced field once.
+fn check_owned_field_assignment() {
+	mut drops := 0
+	mut holder := Holder{
+		value: FieldOwned{
+			drops: &drops
+		}
+	}
+	holder.value = FieldOwned{
+		drops: &drops
+	}
+	assert drops == 1
+}
+
+struct CallOwned implements Drop {
+mut:
+	value string
+}
+
+fn (mut value CallOwned) drop() {
+	value.value = ""
+}
+
+struct Wrapper[T] {
+	value T
+}
+
+fn wrap[T](value T) Wrapper[T] {
+	return Wrapper[T]{
+		value: value
+	}
+}
+
+fn consume[T](first CallOwned, second Wrapper[T]) int {
+	return first.value.len + second.value.value.len
+}
+
+// A consuming call transfers the aggregate and its owned descendants together.
+fn check_consuming_call() {
+	first := CallOwned{
+		value: "a".to_owned()
+	}
+	second := CallOwned{
+		value: "b".to_owned()
+	}
+	assert consume(first, wrap(second)) == 2
+}
+
+struct MovedValue implements Drop {
 mut:
 	value string
 	drops &int
@@ -412,23 +284,24 @@ struct BorrowedAggregate {
 }
 
 struct WrappedOwned {
-	value Owned
+	value MovedValue
 }
 
-fn (mut value Owned) drop() {
+fn (mut value MovedValue) drop() {
 	unsafe {
 		*value.drops += 1
 	}
 	value.value = ""
 }
 
+// Reassigning a moved-from aggregate initializes the source without a stale drop.
 fn direct_move(drops &int) {
-	mut current := Owned{
+	mut current := MovedValue{
 		value: "old".to_owned()
 		drops: drops
 	}
 	saved := current
-	current = Owned{
+	current = MovedValue{
 		value: "new".to_owned()
 		drops: drops
 	}
@@ -440,13 +313,13 @@ fn direct_move(drops &int) {
 }
 
 fn optional_move(drops &int) {
-	mut current := Owned{
+	mut current := MovedValue{
 		value: "old".to_owned()
 		drops: drops
 	}
-	mut previous := ?Owned(none)
-	previous = ?Owned(current)
-	current = Owned{
+	mut previous := ?MovedValue(none)
+	previous = ?MovedValue(current)
+	current = MovedValue{
 		value: "new".to_owned()
 		drops: drops
 	}
@@ -460,13 +333,13 @@ fn optional_move(drops &int) {
 }
 
 fn nested_array_append_move(drops &int) {
-	mut outer := [][]Owned{}
-	mut inner := [Owned{
+	mut outer := [][]MovedValue{}
+	mut inner := [MovedValue{
 		value: "nested".to_owned()
 		drops: drops
 	}]
 	outer << inner
-	inner = []Owned{}
+	inner = []MovedValue{}
 	unsafe {
 		assert *drops == 0
 	}
@@ -490,7 +363,7 @@ fn borrowed_scalar_field_is_copy(value &BorrowedAggregate) string {
 	return unsafe { u8(value.tag).ascii_str() }
 }
 
-fn wrap_owned(value Owned) WrappedOwned {
+fn wrap_owned(value MovedValue) WrappedOwned {
 	return WrappedOwned{
 		value: value
 	}
@@ -501,14 +374,14 @@ fn consume_wrapped(value WrappedOwned) bool {
 }
 
 fn nested_call_moves_source_once(drops &int) {
-	value := Owned{
+	value := MovedValue{
 		value: "nested call".to_owned()
 		drops: drops
 	}
 	assert consume_wrapped(wrap_owned(value))
 }
 
-fn main() {
+fn check_moved_aggregate_reassignment() {
 	mut direct_drops := 0
 	direct_move(&direct_drops)
 	assert direct_drops == 2
@@ -528,5 +401,27 @@ fn main() {
 	nested_call_moves_source_once(&nested_call_drops)
 	assert nested_call_drops == 1
 }
-')
+
+fn main() {
+	check_arc_array_clone()
+	check_drop_type_clone()
+	check_array_iteration_clone()
+	check_captured_sort_compare()
+	check_generic_interface_box()
+	check_borrowed_interface_parameter()
+	check_chained_mut_receiver()
+	check_optional_assignment()
+	check_owned_field_assignment()
+	check_consuming_call()
+	check_moved_aggregate_reassignment()
+}
+') or { panic(err) }
+	compile := cmdexec.run_in_merged_with_env(compiler, [src, '-d', 'ownership', '-b', 'c', '-o',
+		out], '', {
+		'VFLAGS':               ''
+		'VTOOLS_CACHE_VERBOSE': ''
+	})
+	assert compile.exit_code == 0, compile.output
+	run := os.exec([out])
+	assert run.exit_code == 0, run.output
 }

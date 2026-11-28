@@ -4,6 +4,8 @@ import os
 import os.filelock
 import time
 
+const timeout_direct_child_ms = i64(200)
+
 // assert_no_unreaped_child fails when the run that just finished left a child
 // process behind. `waitpid(-1, WNOHANG)` returns -1/ECHILD when this process has
 // no children at all, 0 when it has children that are all still running, and a
@@ -23,26 +25,26 @@ fn test_run_with_timeout_kills_a_child_that_never_finishes() {
 		assert true
 	} $else {
 		sw := time.new_stopwatch()
-		result := run_with_timeout('sleep', ['300'], 500)
+		// A missed deadline should fail the test after the child exits successfully.
+		result := run_with_timeout('sleep', ['2'], timeout_direct_child_ms)
 		elapsed := sw.elapsed().milliseconds()
 		assert result.exit_code != 0
+		assert elapsed >= timeout_direct_child_ms
 		assert elapsed < 60000, 'run_with_timeout waited ${elapsed}ms, instead of giving up'
 		assert_no_unreaped_child('a timed out quiet child')
 	}
 }
 
 fn test_run_with_timeout_kills_a_child_that_keeps_writing() {
-	$if windows {
-		assert true
-	} $else {
-		sw := time.new_stopwatch()
-		result := run_with_timeout('sh', ['-c', 'while :; do echo v-cmdexec-timeout-stream; done'], 500)
-		elapsed := sw.elapsed().milliseconds()
-		assert result.exit_code != 0
-		assert elapsed < 60000, 'run_with_timeout waited ${elapsed}ms for a child that keeps writing'
-		assert result.output.contains('v-cmdexec-timeout-stream')
-		assert_no_unreaped_child('a timed out chatty child')
-	}
+	sw := time.new_stopwatch()
+	result := run_with_timeout(os.executable(), [timeout_pipe_probe, 'chatty', '', ''],
+		timeout_direct_child_ms)
+	elapsed := sw.elapsed().milliseconds()
+	assert result.exit_code != 0
+	assert elapsed >= timeout_direct_child_ms
+	assert elapsed < 60000, 'run_with_timeout waited ${elapsed}ms for a child that keeps writing'
+	assert result.output.contains('v-cmdexec-timeout-stream')
+	assert_no_unreaped_child('a timed out chatty child')
 }
 
 fn test_run_with_timeout_kills_descendants_that_hold_the_pipes() {
@@ -139,6 +141,15 @@ fn testsuite_begin() {
 		time.sleep(2500 * time.millisecond)
 		exit(0)
 	}
+	if mode == 'chatty' {
+		unbuffer_stdout()
+		sw := time.new_stopwatch()
+		// A regression that ignores busy pipes must still let the probe finish.
+		for sw.elapsed() < 2 * time.second {
+			println('v-cmdexec-timeout-stream')
+		}
+		exit(0)
+	}
 	exit(2)
 }
 
@@ -189,7 +200,10 @@ fn test_run_with_timeout_preserves_fast_child_status_and_both_streams() {
 }
 
 fn test_run_with_timeout_does_not_confuse_empty_open_pipes_with_eof() {
-	result := run_with_timeout(os.executable(), [timeout_pipe_probe, 'quiet', '', ''], 500)
+	sw := time.new_stopwatch()
+	result := run_with_timeout(os.executable(), [timeout_pipe_probe, 'quiet', '', ''],
+		timeout_direct_child_ms)
 	assert result.exit_code != 0, result.output
+	assert sw.elapsed().milliseconds() >= timeout_direct_child_ms
 	assert_no_unreaped_child('a quiet native child')
 }

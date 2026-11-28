@@ -1,29 +1,43 @@
 module ownership
 
 import os
+import v.tempname
 
 const ownership_tests_dir = os.dir(@FILE)
 const ownership_v3_dir = os.dir(os.dir(ownership_tests_dir))
 const ownership_vlib_dir = os.dir(ownership_v3_dir)
 const ownership_v3_src = os.join_path(ownership_v3_dir, 'v.v')
 const ownership_vexe = @VEXE
+const ownership_work_dir = os.join_path(os.temp_dir(), 'v3_ownership_test_${tempname.unique_token()}')
+const ownership_shared_v3 = find_ownership_shared_v3()
+const ownership_compiler = if ownership_shared_v3 != '' {
+	ownership_shared_v3
+} else {
+	os.join_path(ownership_work_dir, 'compiler') + $if windows { '.exe' } $else { '' }
+}
 
-fn ownership_build_v3() string {
-	cache_path := os.join_path(os.temp_dir(), 'v3_ownership_test_${os.getpid()}.path')
-	if cached := os.read_file(cache_path) {
-		cached_bin := cached.trim_space()
-		if cached_bin.len > 0 && os.exists(cached_bin) {
-			return cached_bin
-		}
+fn find_ownership_shared_v3() string {
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(ownership_v3_src) {
+		return os.real_path(shared)
 	}
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ownership_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	return ''
+}
+
+fn testsuite_begin() {
+	os.mkdir(ownership_work_dir) or { panic(err) }
+	if ownership_shared_v3 != '' {
+		return
+	}
 	build :=
 		os.exec([ownership_vexe, '-gc', 'none', '-d', 'ownership', '-path', ownership_vlib_dir,
-			'-o', v3_bin, '${ownership_v3_src}'])
+			'-o', ownership_compiler, ownership_v3_src])
 	assert build.exit_code == 0, build.output
-	os.write_file(cache_path, v3_bin) or {}
-	return v3_bin
+}
+
+fn testsuite_end() {
+	os.rmdir_all(ownership_work_dir) or {}
 }
 
 fn run_ownership_check(v3_bin string, name string, code string) os.Result {
@@ -31,7 +45,7 @@ fn run_ownership_check(v3_bin string, name string, code string) os.Result {
 }
 
 fn run_ownership_check_with_flags(v3_bin string, name string, code string, flags []string) os.Result {
-	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}')
+	tmp_dir := os.join_path(ownership_work_dir, name)
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir) or { panic(err) }
 	src := os.join_path(tmp_dir, 'main.v')
@@ -41,7 +55,7 @@ fn run_ownership_check_with_flags(v3_bin string, name string, code string, flags
 }
 
 fn run_autofree_check(v3_bin string, name string, code string) os.Result {
-	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}')
+	tmp_dir := os.join_path(ownership_work_dir, name)
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir) or { panic(err) }
 	src := os.join_path(tmp_dir, 'main.v')
@@ -51,7 +65,7 @@ fn run_autofree_check(v3_bin string, name string, code string) os.Result {
 }
 
 fn run_ownership_check_c_only(v3_bin string, name string, code string) os.Result {
-	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}')
+	tmp_dir := os.join_path(ownership_work_dir, name)
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir) or { panic(err) }
 	src := os.join_path(tmp_dir, 'main.v')
@@ -61,7 +75,7 @@ fn run_ownership_check_c_only(v3_bin string, name string, code string) os.Result
 }
 
 fn run_autofree_check_c_only(v3_bin string, name string, code string) os.Result {
-	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}')
+	tmp_dir := os.join_path(ownership_work_dir, name)
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir) or { panic(err) }
 	src := os.join_path(tmp_dir, 'main.v')
@@ -71,7 +85,7 @@ fn run_autofree_check_c_only(v3_bin string, name string, code string) os.Result 
 }
 
 fn run_ownership_check_with_module(v3_bin string, name string, main_code string, module_name string, module_code string) os.Result {
-	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}')
+	tmp_dir := os.join_path(ownership_work_dir, name)
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir) or { panic(err) }
 	module_dir := os.join_path(tmp_dir, module_name)
@@ -85,7 +99,7 @@ fn run_ownership_check_with_module(v3_bin string, name string, main_code string,
 }
 
 fn test_ownership_build_define_is_isolated_and_mode_defines_target() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	plain := run_ownership_check_with_flags(v3_bin, 'build_define_not_forwarded', r'
 $if ownership ? {
 	$compile_error("compiler build define leaked into target")
@@ -106,7 +120,7 @@ fn main() {}
 }
 
 fn test_ownership_prescan_converges_for_long_acyclic_call_chains() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	for reverse in [false, true] {
 		mut declarations := ['struct ChainNode { name string }',
 			'fn link_0(p &ChainNode) &ChainNode { return p }']
@@ -124,7 +138,7 @@ fn test_ownership_prescan_converges_for_long_acyclic_call_chains() {
 }
 
 fn test_autofree_main_enum_symbols_are_namespaced() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	name := 'main_enum_namespace'
 	result := run_autofree_check_c_only(v3_bin, name, '
 enum Cursor {
@@ -137,7 +151,7 @@ fn main() {
 }
 ')
 	assert result.exit_code == 0, result.output
-	c_path := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out.c')
+	c_path := os.join_path(ownership_work_dir, name, 'out.c')
 	c_source := os.read_file(c_path) or { panic(err) }
 	assert c_source.contains('main__Cursor__block'), c_source
 	assert c_source.contains('string Cursor__autostr(main__Cursor it)'), c_source
@@ -146,7 +160,7 @@ fn main() {
 }
 
 fn test_non_mut_reference_parameter_requires_addressable_value() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	ok := run_ownership_check(v3_bin, 'borrow_named_value', '
 fn borrowed_len(value &string) int {
 	return value.len
@@ -173,7 +187,7 @@ fn main() {
 }
 
 fn test_ownership_move_on_assign_and_clone_escape() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	fail := run_ownership_check(v3_bin, 'move_assign', "
 fn main() {
 	s1 := 'hello'.to_owned()
@@ -686,7 +700,7 @@ pub __global g = Resource{id: 1}
 }
 
 fn test_ownership_plain_reassignment_clears_owned_state() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	ok := run_ownership_check(v3_bin, 'plain_reassign', "
 fn main() {
 	mut s := 'hello'.to_owned()
@@ -1026,7 +1040,7 @@ fn main() {
 }
 
 fn test_ownership_fn_literal_uses_isolated_frame() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	ok_shadow_param := run_ownership_check(v3_bin, 'fn_literal_shadow_param_return', "
 fn main() {
 	s := 'hello'.to_owned()
@@ -1138,7 +1152,7 @@ fn main() {
 }
 
 fn test_ownership_scoped_owned_locals_do_not_poison_outer() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	ok := run_ownership_check(v3_bin, 'scoped_owned_local', "
 fn main() {
 	cond := true
@@ -1211,7 +1225,7 @@ fn main() {
 }
 
 fn test_ownership_rejects_local_shadowing() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	for i, body in [
 		'if true { s := "inner".to_owned(); _ = s }',
 		'if s := maybe_string() { _ = s }',
@@ -1232,7 +1246,7 @@ fn main() {
 }
 
 fn test_ownership_reassigned_reference_releases_old_borrow() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	ok := run_ownership_check(v3_bin, 'reassign_ref_releases_borrow', "
 fn main() {
 	mut s := 's'.to_owned()
@@ -1329,7 +1343,7 @@ fn main() {
 }
 
 fn test_ownership_move_on_call_and_borrowed_call_ok() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	fail := run_ownership_check(v3_bin, 'move_call', "
 fn take(s string) {
 	_ = s
@@ -1453,7 +1467,7 @@ fn main() {
 }
 
 fn test_ownership_duplicate_moves_in_one_expression() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	fail_call := run_ownership_check(v3_bin, 'duplicate_call_move', "
 fn take(a string, b string) {
 	println(a)
@@ -1480,7 +1494,7 @@ fn main() {
 }
 
 fn test_ownership_returning_owned_value_and_param() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	fail_owned := run_ownership_check(v3_bin, 'return_owned', "
 fn make() string {
 	return 'hello'.to_owned()
@@ -2204,7 +2218,7 @@ fn main() {
 }
 
 fn test_ownership_static_call_return_metadata_reaches_wrapper() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	fail := run_ownership_check(v3_bin, 'static_call_return_metadata', "
 struct Factory {}
 
@@ -2250,7 +2264,7 @@ fn main() {
 }
 
 fn test_ownership_assignment_to_storage_consumes_rhs() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	fail_field := run_ownership_check(v3_bin, 'assign_field', '
 struct Holder {
 mut:
@@ -2855,117 +2869,77 @@ fn main() {
 	assert fail_map_dynamic_index_read.output.contains('use of moved value: `m[k]`'), fail_map_dynamic_index_read.output
 }
 
-fn test_ownership_array_pop_call_arguments_update_storage() {
-	v3_bin := ownership_build_v3()
+fn ownership_array_pop_runtime_fixture() string {
+	mut source := ''
+	mut calls := []string{cap: 8}
 	for method in ['pop', 'pop_left'] {
-		name := 'array_${method}_call_arg_storage'
-		ok := run_ownership_check(v3_bin, name, '
-fn sink(s string, original &u8) {
+		pointers := if method == 'pop' {
+			['last_ptr', 'first_ptr']
+		} else {
+			['first_ptr', 'last_ptr']
+		}
+		// Use a distinct sink for each case so its other call sites cannot affect ownership inference.
+		source += '
+fn sink_${method}_storage(s string, original &u8) {
 	assert s.str == original
 	assert s == "item"
 }
 
-fn main() {
+fn check_${method}_storage() {
 	value := "item".to_owned()
 	original := value.str
 	mut arr := [value]
-	sink(arr.${method}(), original)
+	sink_${method}_storage(arr.${method}(), original)
 	arr << "literal"
 	x := arr[0]
 	y := x
 	assert x == "literal"
 	_ = y
 }
-')
-		assert ok.exit_code == 0, ok.output
-		binary := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
-		run := os.exec([binary])
-		assert run.exit_code == 0, run.output
-		assert run.output.trim_space() == '', run.output
 
-		remaining := run_ownership_check(v3_bin, 'array_${method}_call_arg_retains_other_owner', '
-fn sink(s string) {
-	_ = s
-}
-
-fn main() {
-	mut arr := ["first".to_owned(), "last".to_owned()]
-	sink(arr.${method}())
-	x := arr[0]
-	y := x
-	println(x)
-	_ = y
-}
-')
-		assert remaining.exit_code != 0
-		assert remaining.output.contains('use of moved value: `x`'), remaining.output
-	}
-
-	for method in ['pop', 'pop_left'] {
-		name := 'array_${method}_literal_call_arg_clone'
-		code := '
-fn sink(s string) {
+fn sink_${method}_literal(s string) {
 	assert s == "seed" || s == "literal"
 }
 
-fn main() {
-	sink("seed".to_owned())
+fn check_${method}_literal() {
+	sink_${method}_literal("seed".to_owned())
 	mut arr := ["literal"]
-	sink(arr.${method}())
+	sink_${method}_literal(arr.${method}())
 	assert arr.len == 0
 }
-'
-		cloned := run_ownership_check_c_only(v3_bin, name, code)
-		assert cloned.exit_code == 0, cloned.output
-		cloned_c_path := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out.c')
-		cloned_c := os.read_file(cloned_c_path) or { panic(err) }
-		assert cloned_c.contains('sink(string__clone(')
-		compiled := run_ownership_check(v3_bin, name, code)
-		assert compiled.exit_code == 0, compiled.output
-		binary := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
-		run := os.exec([binary])
-		assert run.exit_code == 0, run.output
-		assert run.output.trim_space() == '', run.output
 
-		unknown := run_ownership_check(v3_bin, 'array_${method}_unknown_length_call_arg', '
-fn count() int {
+fn count_${method}() int {
 	return 0
 }
 
-fn sink(s string, original &u8) {
+fn sink_${method}_unknown_length(s string, original &u8) {
 	assert s.str == original
 	assert s == "item"
 }
 
-fn main() {
+fn check_${method}_unknown_length() {
 	value := "item".to_owned()
 	original := value.str
-	mut arr := []string{len: count()}
+	mut arr := []string{len: count_${method}()}
 	arr << value
-	sink(arr.${method}(), original)
+	sink_${method}_unknown_length(arr.${method}(), original)
 	assert arr.len == 0
 }
-')
-		assert unknown.exit_code == 0, unknown.output
-		unknown_binary := os.join_path(os.temp_dir(), 'v3_ownership_array_${method}_unknown_length_call_arg_${os.getpid()}', 'out')
-		unknown_run := os.exec([unknown_binary])
-		assert unknown_run.exit_code == 0, unknown_run.output
 
-		consecutive := run_ownership_check(v3_bin, 'array_${method}_consecutive_call_args', '
-fn sink(s string, original &u8) {
+fn sink_${method}_consecutive(s string, original &u8) {
 	assert s.str == original
 	assert s == "first" || s == "last"
 }
 
-fn main() {
+fn check_${method}_consecutive() {
 	first := "first".to_owned()
 	last := "last".to_owned()
 	first_ptr := first.str
 	last_ptr := last.str
 	mut arr := [first, last]
-	sink(arr.${method}(), ${if method == 'pop' { 'last_ptr' } else { 'first_ptr' }})
+	sink_${method}_consecutive(arr.${method}(), ${pointers[0]})
 	assert arr.len == 1
-	sink(arr.${method}(), ${if method == 'pop' { 'first_ptr' } else { 'last_ptr' }})
+	sink_${method}_consecutive(arr.${method}(), ${pointers[1]})
 	assert arr.len == 0
 	arr << "literal"
 	x := arr[0]
@@ -2973,34 +2947,72 @@ fn main() {
 	assert x == "literal"
 	_ = y
 }
-')
-		assert consecutive.exit_code == 0, consecutive.output
-		consecutive_binary := os.join_path(os.temp_dir(), 'v3_ownership_array_${method}_consecutive_call_args_${os.getpid()}', 'out')
-		consecutive_run := os.exec([consecutive_binary])
-		assert consecutive_run.exit_code == 0, consecutive_run.output
+'
+		for case in ['storage', 'literal', 'unknown_length', 'consecutive'] {
+			calls << '\tcheck_${method}_${case}()'
+		}
 	}
+	return source + '\nfn main() {\n${calls.join('\n')}\n}\n'
+}
 
-	shifted := run_ownership_check(v3_bin, 'array_pop_left_cloned_call_arg_shifts_owner', '
-fn sink(s string) {
+fn test_ownership_array_pop_call_arguments_update_storage() {
+	v3_bin := ownership_compiler
+	name := 'array_pop_call_arguments'
+	compiled := run_ownership_check(v3_bin, name, ownership_array_pop_runtime_fixture())
+	assert compiled.exit_code == 0, compiled.output
+	binary := os.join_path(ownership_work_dir, name, 'out')
+	generated := os.read_file(binary + '.c') or { panic(err) }
+	for method in ['pop', 'pop_left'] {
+		assert generated.contains('sink_${method}_literal(string__clone('), 'missing literal clone for ${method}'
+	}
+	run := os.exec([binary])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '', run.output
+
+	check_ownership_array_pop_rejections(v3_bin)
+}
+
+fn check_ownership_array_pop_rejections(v3_bin string) {
+	mut source := ''
+	mut calls := []string{cap: 3}
+	mut rejected_lines := map[int]string{}
+	for case in ['pop', 'pop_left', 'pop_left_shifted'] {
+		shifted := case == 'pop_left_shifted'
+		method := if shifted { 'pop_left' } else { case }
+		setup := if shifted {
+			'\tsink_${case}("seed".to_owned())\n\tmut arr := ["literal", "owned".to_owned()]'
+		} else {
+			'\tmut arr := ["first".to_owned(), "last".to_owned()]'
+		}
+		source += '
+fn sink_${case}(s string) {
 	_ = s
 }
 
-fn main() {
-	sink("seed".to_owned())
-	mut arr := ["literal", "owned".to_owned()]
-	sink(arr.pop_left())
+fn reject_${case}() {
+${setup}
+	sink_${case}(arr.${method}())
 	x := arr[0]
 	y := x
-	println(x)
+'
+		rejected_lines[source.count('\n') + 1] = case
+		source += '\tprintln(x)
 	_ = y
 }
-')
-	assert shifted.exit_code != 0
-	assert shifted.output.contains('use of moved value: `x`'), shifted.output
+'
+		calls << '\treject_${case}()'
+	}
+	source += '\nfn main() {\n${calls.join('\n')}\n}\n'
+	result := run_ownership_check(v3_bin, 'array_pop_rejections', source)
+	assert result.exit_code != 0, result.output
+	diagnostics := result.output.split_into_lines().filter(it.contains(': error: use of moved value: `x`'))
+	for line, case in rejected_lines {
+		assert diagnostics.any(it.contains('main.v:${line}:')), '${case}: ${result.output}'
+	}
 }
 
 fn test_ownership_array_alias_builtin_method_keeps_receiver() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	ok := run_ownership_check(v3_bin, 'array_alias_insert_keeps_receiver', '
 type Strings = []string
 
@@ -3025,7 +3037,7 @@ fn main() {
 }
 
 fn test_ownership_aggregate_borrows_block_overlapping_reassignment() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	fail_field_borrow := run_ownership_check(v3_bin, 'field_borrow_blocks_whole_assign', '
 struct Holder {
 mut:
@@ -3080,7 +3092,7 @@ fn main() {
 }
 
 fn test_ownership_unsafe_expression_does_not_shift_scope_drops() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	ok := run_ownership_check(v3_bin, 'unsafe_expression_scope_drop', '
 fn use_owned(flag bool, pointer voidptr) {
 	if pointer == unsafe { nil } {
@@ -3102,7 +3114,7 @@ fn main() {
 }
 
 fn test_ownership_defer_in_unsafe_block_stays_unsafe_at_scope_exits() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	ok := run_ownership_check(v3_bin, 'defer_in_unsafe_block', '
 fn fill(n int) u8 {
 	mut last := u8(0)
@@ -3147,7 +3159,7 @@ fn main() {
 }
 
 fn test_ownership_returned_pointer_moves_aggregate_drop_state() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	ok := run_autofree_check(v3_bin, 'returned_pointer_aggregate_drop', '
 struct HeapBox {
 	err IError = none
@@ -3167,7 +3179,7 @@ fn main() {
 }
 
 fn test_autofree_nested_aggregate_transfer_moves_cleanup_owner_forward() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	ok := run_autofree_check(v3_bin, 'nested_aggregate_transfer', '
 struct Data {
 	value ?string
@@ -3186,7 +3198,7 @@ fn main() {
 }
 
 fn test_ownership_collapsed_struct_field_arguments() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	fail_fields := run_ownership_check(v3_bin, 'collapsed_struct_owned_fields', '
 @[params]
 struct ParamsCfg {
@@ -3291,7 +3303,7 @@ fn main() {
 }
 
 fn test_ownership_callee_params_are_order_independent() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	fail := run_ownership_check(v3_bin, 'callee_before_owned_call', "
 fn sink(s string) {
 	t := s
@@ -3447,7 +3459,7 @@ fn main() {
 }
 
 fn test_ownership_deferred_call_seeds_param_fixed_point() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	fail := run_ownership_check(v3_bin, 'deferred_call_param_fixed_point', "
 fn forward(s string) int {
 	sink(s)
@@ -3473,7 +3485,7 @@ fn main() {
 }
 
 fn test_ownership_expression_statement_call_seeds_param_fixed_point() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	fail := run_ownership_check(v3_bin, 'expression_statement_call_param_fixed_point', "
 fn forward(s string) int {
 	sink(s)
@@ -3497,7 +3509,7 @@ fn main() {
 }
 
 fn test_ownership_assert_call_seeds_param_fixed_point() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	fail := run_ownership_check(v3_bin, 'assert_call_param_fixed_point', "
 fn forward(s string) bool {
 	sink(s)
@@ -3521,7 +3533,7 @@ fn main() {
 }
 
 fn test_ownership_branch_moves_are_isolated_between_siblings() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	distinct_field_moves := run_ownership_check(v3_bin, 'branch_distinct_field_moves', '
 interface Drop {
 mut:
@@ -3567,7 +3579,7 @@ fn main() {
 }
 ')
 	assert distinct_field_moves.exit_code == 0, distinct_field_moves.output
-	distinct_field_binary := os.join_path(os.temp_dir(), 'v3_ownership_branch_distinct_field_moves_${os.getpid()}', 'out')
+	distinct_field_binary := os.join_path(ownership_work_dir, 'branch_distinct_field_moves', 'out')
 	distinct_field_run := os.exec([distinct_field_binary])
 	assert distinct_field_run.exit_code == 0, distinct_field_run.output
 	dropped_ids := distinct_field_run.output.fields()
@@ -3814,7 +3826,7 @@ fn main() {
 }
 
 fn test_ownership_veb_implicit_context_arg_moves() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	fail := run_ownership_check_with_module(v3_bin, 'veb_implicit_ctx_arg_move', '
 import veb
 
@@ -3853,7 +3865,7 @@ pub struct Result {}
 }
 
 fn test_ownership_struct_marker_and_copy_marker() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	fail := run_ownership_check(v3_bin, 'owned_struct', '
 struct Resource implements Owned {
 	id int
@@ -3975,7 +3987,7 @@ fn main() {
 }
 
 fn test_autofree_literal_only_program_keeps_ierror_destructors() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	ok_multi := run_autofree_check(v3_bin, 'literal_only_mixed_output', "
 fn main() {
 	print('a')
@@ -3999,11 +4011,121 @@ const shape_coverage_programs = {
 }
 
 fn test_ownership_and_autofree_build_every_program_shape() {
-	v3_bin := ownership_build_v3()
+	v3_bin := ownership_compiler
 	for name, code in shape_coverage_programs {
 		dropped := run_ownership_check(v3_bin, 'shape_drop_${name}', code)
 		assert dropped.exit_code == 0, '${name} under -ownership:\n${dropped.output}'
 		freed := run_autofree_check(v3_bin, 'shape_free_${name}', code)
 		assert freed.exit_code == 0, '${name} under -autofree:\n${freed.output}'
+	}
+}
+
+fn test_ownership_reads_scalar_fields_and_pointers_through_borrowed_projections() {
+	v3_bin := ownership_compiler
+	res := run_ownership_check(v3_bin, 'copy_borrowed_projections', r'
+struct Item {
+	value int
+	text string
+}
+
+fn main() {
+	items := [Item{value: 42, text: "hello".to_owned()}]
+	item := &items[0]
+	alias := item
+	value := u8(alias.value)
+	mut out := [0]
+	out[0] = alias.value
+	assert value == 42
+	assert out[0] == 42
+	unsafe {
+		bytes := alias.text.str
+		assert bytes[0] == `h`
+	}
+}
+')
+	assert res.exit_code == 0, res.output
+}
+
+fn test_ownership_projected_pointer_loans_reject_invalid_uses() {
+	source := r'
+struct ProjectionItem {
+mut:
+	text string
+}
+
+fn check_projection_mutation() {
+	mut items := [ProjectionItem{text: "hello".to_owned()}]
+	mut bytes := unsafe { &u8(nil) }
+	unsafe {
+		item := &items[0]
+		bytes = item.text.str
+	}
+	items[0].text = "changed".to_owned()
+	unsafe { assert bytes[0] == `h` }
+}
+
+struct EscapeItem {
+	text string
+}
+
+fn escape() &u8 {
+	items := [EscapeItem{text: "hello".to_owned()}]
+	mut bytes := unsafe { &u8(nil) }
+	unsafe {
+		item := &items[0]
+		bytes = item.text.str
+	}
+	return bytes
+}
+
+fn check_projection_return() {
+	println(escape())
+}
+
+struct BranchItem {
+mut:
+	text string
+}
+
+fn check(pick_right bool) {
+	mut left := [BranchItem{text: "left".to_owned()}]
+	mut right := [BranchItem{text: "right".to_owned()}]
+	mut bytes := unsafe { &u8(nil) }
+	unsafe {
+		mut item := &left[0]
+		if pick_right {
+			item = &right[0]
+		}
+		bytes = item.text.str
+	}
+	left[0].text = "changed".to_owned()
+	right[0].text = "changed".to_owned()
+	unsafe { println(bytes[0]) }
+}
+
+fn check_projection_branches() {
+	check(false)
+}
+
+fn main() {
+	check_projection_mutation()
+	check_projection_return()
+	check_projection_branches()
+}
+'
+	res := run_ownership_check(ownership_compiler, 'borrowed_pointer_projection_rejections', source)
+	assert res.exit_code != 0, res.output
+	expected := {
+		'items[0].text = "changed".to_owned()': 'because `items[0].text.str` is borrowed by `bytes`'
+		'return bytes':                         'cannot return a reference to local storage `items`'
+		'left[0].text = "changed".to_owned()':  'because `left[0].text.str` is borrowed by `bytes`'
+		'right[0].text = "changed".to_owned()': 'because `right[0].text.str` is borrowed by `bytes`'
+	}
+	lines := source.split_into_lines()
+	diagnostics := res.output.split_into_lines().filter(it.contains(': error: '))
+	for statement, message in expected {
+		line := lines.index('\t${statement}') + 1
+		assert line > 0, statement
+		assert diagnostics.any(it.contains('main.v:${line}:') && it.contains(message)), '${statement}: ${res.output}'
 	}
 }

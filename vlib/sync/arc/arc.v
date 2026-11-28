@@ -1,4 +1,5 @@
 // Module arc provides atomically reference-counted shared ownership.
+// Arc keeps a value alive. Weak keeps its allocation available for an upgrade.
 module arc
 
 import sync.stdatomic
@@ -7,7 +8,9 @@ import sync.stdatomic
 struct ArcInner[T] {
 mut:
 	strong u64
-	value  T
+	// Includes one reference held by the strong owners until `value` is destroyed.
+	weak  u64
+	value T
 }
 
 // new moves `value` into a new atomically reference-counted allocation.
@@ -15,6 +18,7 @@ pub fn new[T](value T) Arc[T] {
 	return Arc[T]{
 		inner: &ArcInner[T]{
 			strong: 1
+			weak:   1
 			value:  value
 		}
 	}
@@ -47,10 +51,17 @@ pub fn (mut a Arc[T]) drop() {
 		return
 	}
 	if stdatomic.fetch_sub_u64(&a.inner.strong, 1) == 1 {
-		// The last owner has exclusive access to the allocation and its payload.
+		// A zero strong count prevents upgrades while the last owner destroys the payload.
 		mut inner := unsafe { a.inner }
 		drop_owned(inner.value)
-		unsafe { free(inner) }
+		inner.release_weak()
 	}
 	a.inner = unsafe { nil }
+}
+
+fn (mut inner ArcInner[T]) release_weak() {
+	if stdatomic.fetch_sub_u64(&inner.weak, 1) == 1 {
+		// The last weak reference can reclaim the allocation after payload destruction.
+		unsafe { free(inner) }
+	}
 }

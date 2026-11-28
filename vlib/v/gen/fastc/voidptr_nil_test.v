@@ -65,10 +65,9 @@ fn test_fastc_voidptr_fields_and_locals_can_be_reset_to_nil() {
 	program := os.join_path(root, 'program')
 	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-nocache', '-gc', 'none', '-o',
 		program, root], os.real_path(os.join_path(@DIR, '../../../..')), {
-		'VEXE':                   @VEXE
-		'VFLAGS':                 ''
-		'VOSARGS':                ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
+		'VEXE':    @VEXE
+		'VFLAGS':  ''
+		'VOSARGS': ''
 	})
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])

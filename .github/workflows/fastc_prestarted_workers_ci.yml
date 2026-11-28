@@ -1,0 +1,61 @@
+name: FastC cross-platform worker and dispatch regressions
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/gen/fastc/prestarted_workers_test.v'
+      - 'vlib/v/gen/fastc/dispatch_gate_test.v'
+      - '.github/workflows/fastc_prestarted_workers_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: 'true'
+      - name: Format and run original macOS worker inheritance test
+        run: |
+          ./v fmt -verify vlib/v/gen/fastc/prestarted_workers_test.v
+          ./v -cc clang -no-retry-compilation -silent vlib/v/gen/fastc/prestarted_workers_test.v
+          ./v fmt -verify vlib/v/gen/fastc/dispatch_gate_test.v
+          ./v -cc clang -no-retry-compilation -silent vlib/v/gen/fastc/dispatch_gate_test.v
+
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+      - name: Build V
+        uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Format and compile original test with MSVC and TCC
+        shell: pwsh
+        run: |
+          .\v.exe fmt -verify vlib/v/gen/fastc/prestarted_workers_test.v
+          if ($LASTEXITCODE -ne 0) { throw "V format check failed" }
+          .\v.exe -cc msvc -no-retry-compilation -silent vlib/v/gen/fastc/prestarted_workers_test.v
+          if ($LASTEXITCODE -ne 0) { throw "MSVC worker regression failed" }
+          .\v.exe -cc tcc -no-retry-compilation -silent vlib/v/gen/fastc/prestarted_workers_test.v
+          if ($LASTEXITCODE -ne 0) { throw "TCC worker regression failed" }
+          .\v.exe fmt -verify vlib/v/gen/fastc/dispatch_gate_test.v
+          if ($LASTEXITCODE -ne 0) { throw "FastC dispatch gate V format check failed" }
+          .\v.exe -cc tcc -no-retry-compilation -silent vlib/v/gen/fastc/dispatch_gate_test.v
+          if ($LASTEXITCODE -ne 0) { throw "TCC FastC dispatch-gate WinMain regression failed" }

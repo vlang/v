@@ -57,6 +57,14 @@ pub fn load_u64(ptr &u64) u64 {
 	return C.atomic_load_u64(voidptr(ptr))
 }
 
+// compare_and_swap_u64 stores `new` if the atomic value equals `expected`.
+// It reports whether the exchange succeeded.
+@[inline]
+pub fn compare_and_swap_u64(ptr &u64, expected u64, new u64) bool {
+	mut current := expected
+	return C.atomic_compare_exchange_strong_u64(voidptr(ptr), &current, new)
+}
+
 // atomicall set a value
 @[inline]
 pub fn store_i64(ptr &i64, val i64) {
@@ -74,7 +82,18 @@ pub struct AtomicVal[T] {
 	val T
 }
 
-// new_atomic creates a new atomic value of `T` type
+// atomic_value initializes an atomic value for storage inside another owner.
+@[inline]
+pub fn atomic_value[T](val T) AtomicVal[T] {
+	$if T is $int || T is bool || T is voidptr {
+		return AtomicVal[T]{ val: val }
+	} $else {
+		$compile_error('atomic: only support number, bool, and voidptr types')
+	}
+	return AtomicVal[T]{}
+}
+
+// new_atomic creates a new atomic value of `T` type.
 @[inline]
 pub fn new_atomic[T](val T) &AtomicVal[T] {
 	$if T is $int {

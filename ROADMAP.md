@@ -67,7 +67,7 @@ For a list of all features and fixes, check out the changelog.
 - [ ] Cross compilation of C
 - [ ] Big remaining bugs fixed
 - [ ] More powerful comptime
-- [ ] Constraints for generics
+- [x] Constraints for generics
 - [ ] Coroutines on Windows
 - [ ] Autofree memory management option ready for production
 - [ ] C2V supporting entire C99 standard

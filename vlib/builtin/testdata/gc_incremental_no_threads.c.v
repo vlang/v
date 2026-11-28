@@ -1,4 +1,4 @@
-// Reports whether the collector runs in incremental mode. gc_handle_fork_test.v builds it with
+// Reports whether the collector runs in incremental mode. gc_production_test.v builds it with
 // `-prod -gc boehm_incr -d no_gc_threads`: without GC threads the bundled `gc.c` must not get
 // HANDLE_FORK, because on macOS that makes it refuse incremental mode, with a `GC Warning`.
 fn C.GC_is_incremental_mode() i32

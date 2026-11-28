@@ -1,16 +1,13 @@
 // vtest ownership
 import os
+import v.cmdexec
+import v.tempname
 
 const capture_root = os.dir(os.dir(os.dir(os.dir(@FILE))))
-const capture_tmp = os.join_path(os.vtmp_dir(), 'ownership_capture_${os.getpid()}')
-const capture_compiler = os.join_path(capture_tmp, 'v-ownership')
+const capture_tmp = os.join_path(os.vtmp_dir(), 'ownership_capture_${tempname.unique_token()}')
 
 fn testsuite_begin() {
 	os.mkdir_all(capture_tmp) or { panic(err) }
-	vlib := os.join_path(capture_root, 'vlib')
-	build := os.exec([@VEXE, '-gc', 'none', '-d', 'ownership', '-path', '${vlib}|@vlib|@vmodules',
-		'-o', capture_compiler, os.join_path(capture_root, 'vlib', 'v', 'v.v')])
-	assert build.exit_code == 0, build.output
 }
 
 fn testsuite_end() {
@@ -24,29 +21,45 @@ fn check_capture(name string, code string, serial bool) os.Result {
 fn check_capture_in_mode(name string, code string, serial bool, mode string) os.Result {
 	source := os.join_path(capture_tmp, '${name}.v')
 	os.write_file(source, code) or { panic(err) }
-	vlib := os.join_path(capture_root, 'vlib')
-	mut command := [capture_compiler, '-nocache', mode, '-d', 'ownership', '-path',
-		'${vlib}|@vlib|@vmodules']
-	if serial {
-		command << '-no-parallel'
-	}
-	command << ['run', source]
-	return os.exec(command)
+	return run_capture(source, serial, mode)
 }
 
-fn test_nested_array_lambda_capture_can_be_regenerated_for_assertions() {
-	code := r'fn invoke(callback fn () string) string { return callback() }
-fn main() {
+fn run_capture(source string, serial bool, mode string, flags ...string) os.Result {
+	shared := os.getenv('V3_TEST_UNIT_SHARED_V3_OWNERSHIP')
+	v3_src := os.join_path(os.dir(@FILE), '../v.v')
+	compiler := if os.is_file(shared) && os.is_executable(shared)
+		&& os.real_path(os.getenv('V3_TEST_UNIT_V3_SRC')) == os.real_path(v3_src) {
+		os.real_path(shared)
+	} else {
+		@VEXE
+	}
+	vlib := os.join_path(capture_root, 'vlib')
+	mut args := ['-nocache', mode, '-d', 'ownership', '-path', '${vlib}|@vlib|@vmodules']
+	if serial {
+		args << '-no-parallel'
+	}
+	args << [...flags, 'run', source]
+	return cmdexec.run_in_merged_with_env(compiler, args, '', {
+		'VFLAGS':               ''
+		'VTOOLS_CACHE_VERBOSE': ''
+	})
+}
+
+fn nested_array_lambda_capture(name string) string {
+	return 'fn ${name}() {
  first := [["one".to_owned()], ["two".to_owned()]]
  assert invoke(|| first[0][0] + first[1][0]) == "onetwo"
  second := [["three".to_owned()], ["four".to_owned()]]
  assert invoke(|| second[0][0] + second[1][0]) == "threefour"
 }'
+}
+
+fn test_autofree_nested_array_lambda_capture_can_be_regenerated_for_assertions() {
+	code := 'fn invoke(callback fn () string) string { return callback() }\n' +
+		nested_array_lambda_capture('main')
 	for serial in [true, false] {
-		for mode in ['-ownership', '-autofree'] {
-			result := check_capture_in_mode('nested_array_lambda', code, serial, mode)
-			assert result.exit_code == 0, '${mode}: ${result.output}'
-		}
+		result := check_capture_in_mode('nested_array_lambda', code, serial, '-autofree')
+		assert result.exit_code == 0, result.output
 	}
 }
 
@@ -56,42 +69,53 @@ fn take_map(entries map[string][]string) { assert entries.len == 2 }
 fn take_items(items []string) { assert items.len == 1 }
 fn invoke(callback fn () string) string { return callback() }
 '
-	for serial in [true, false] {
-		for lambda in [false, true] {
-			capture := if lambda {
-				'assert invoke(|| entries["one"][0]) == "one"'
-			} else {
-				'callback := fn [entries] () string { return entries["one"][0] }
+	mut accepted := declarations
+	mut calls := []string{}
+	mut rejections := []CaptureRejection{}
+	for lambda in [false, true] {
+		capture := if lambda {
+			'assert invoke(|| entries["one"][0]) == "one"'
+		} else {
+			'callback := fn [entries] () string { return entries["one"][0] }
 assert callback() == "one"'
+		}
+		for kind, before in ['', 'take_map(entries)', 'take_items(entries["one"])',
+			'borrowed := &entries', ''] {
+			after := match kind {
+				3 { 'assert borrowed.len == 2' }
+				4 { 'assert entries.len == 2' }
+				else { '' }
 			}
-			for kind, before in ['', 'take_map(entries)', 'take_items(entries["one"])',
-				'borrowed := &entries', ''] {
-				after := match kind {
-					3 { 'assert borrowed.len == 2' }
-					4 { 'assert entries.len == 2' }
-					else { '' }
-				}
-				code := declarations + '\nfn main() {
-entries := {"one": ["one".to_owned()], "two": ["two".to_owned()]}
+			body := 'entries := {"one": ["one".to_owned()], "two": ["two".to_owned()]}
 ${before}
 ${capture}
-${after}
-}\n'
-				result := check_capture('source_${lambda}_${kind}', code, serial)
-				if kind == 0 {
-					assert result.exit_code == 0, result.output
-				} else {
-					assert result.exit_code != 0, result.output
-					expected := if kind == 3 {
-						'cannot move `entries` because it is borrowed by `borrowed`'
-					} else {
-						'use of moved value: `entries'
-					}
-					assert result.output.contains(expected), result.output
-				}
+${after}'
+			if kind == 0 {
+				name := if lambda { 'check_lambda_capture' } else { 'check_literal_capture' }
+				accepted += '\nfn ${name}() {\n${body}\n}\n'
+				calls << '\t${name}()'
+				continue
 			}
+			expected := if kind == 3 {
+				'cannot move `entries` because it is borrowed by `borrowed`'
+			} else {
+				'use of moved value: `entries'
+			}
+			rejections << CaptureRejection{'source_${lambda}_${kind}', body, expected}
 		}
 	}
+	accepted += '\n' + nested_array_lambda_capture('check_nested_array_lambda_capture') + '\n'
+	calls << '\tcheck_nested_array_lambda_capture()'
+	accepted += '\nfn main() {\n${calls.join('\n')}\n}\n'
+	for serial in [true, false] {
+		result := check_capture('aggregate_capture', accepted, serial)
+		assert result.exit_code == 0, result.output
+	}
+	rejections << capture_descendant_rejections()
+	check_capture_rejections(declarations + '
+struct Bundle { values []string }
+fn invoke_int(callback fn () int) int { return callback() }
+', rejections)!
 }
 
 fn test_captured_aggregate_descendants_are_released_once() {
@@ -153,58 +177,72 @@ fn main() {
 	}
 }
 
-fn test_capture_rejects_the_last_moved_descendant() {
-	declarations := 'struct Bundle { values []string }\nfn take_items(items []string) { assert items.len == 1 }\nfn invoke(callback fn () int) int { return callback() }\n'
-	for serial in [true, false] {
-		for lambda in [false, true] {
-			for map_root in [false, true] {
-				initial := if map_root {
-					'{"one": ["one".to_owned()]}'
-				} else {
-					'Bundle{["one".to_owned()]}'
-				}
-				member := if map_root { 'entries["one"]' } else { 'entries.values' }
-				capture := if lambda {
-					'assert invoke(|| ${member}.len) == 1'
-				} else {
-					// Explicitly capture without reading the moved child inside the body.
-					'callback := fn [entries] () {}\ncallback()'
-				}
-				result := check_capture('last_descendant_${lambda}_${map_root}', declarations + '\nfn main() {\nentries := ${initial}\ntake_items(${member})\n${capture}\n}', serial)
-				assert result.exit_code != 0, result.output
-				assert result.output.contains('use of moved value: `entries'), result.output
-				assert result.output.count(': error:') == 1, result.output
-			}
-		}
-	}
+struct CaptureRejection {
+	name     string
+	body     string
+	expected string
 }
 
-fn test_capture_rejects_borrowed_descendants_and_a_second_capture() {
-	for serial in [true, false] {
-		for lambda in [false, true] {
-			capture := if lambda {
-				'assert invoke(|| entries.values.len) == 1'
+fn capture_descendant_rejections() []CaptureRejection {
+	mut cases := []CaptureRejection{}
+	for lambda in [false, true] {
+		for map_root in [false, true] {
+			initial := if map_root {
+				'{"one": ["one".to_owned()]}'
 			} else {
+				'Bundle{["one".to_owned()]}'
+			}
+			member := if map_root { 'entries["one"]' } else { 'entries.values' }
+			capture := if lambda {
+				'assert invoke_int(|| ${member}.len) == 1'
+			} else {
+				// Explicitly capture without reading the moved child inside the body.
 				'callback := fn [entries] () {}\ncallback()'
 			}
-			for borrowed in [false, true] {
-				before := if borrowed {
-					'borrowed := &entries.values'
-				} else {
-					capture.replace('callback', 'first')
-				}
-				after := if borrowed { 'assert borrowed.len == 1' } else { '' }
-				code := 'struct Bundle { values []string }\nfn invoke(callback fn () int) int { return callback() }\nfn main() {\nentries := Bundle{["one".to_owned()]}\n${before}\n${capture}\n${after}\n}'
-				result := check_capture('overlap_${lambda}_${borrowed}', code, serial)
-				assert result.exit_code != 0, result.output
-				expected := if borrowed {
-					'is borrowed by `borrowed`'
-				} else {
-					'use of moved value: `entries'
-				}
-				assert result.output.contains(expected), result.output
-				assert result.output.count(': error:') == 1, result.output
+			body := 'entries := ${initial}\ntake_items(${member})\n${capture}'
+			cases << CaptureRejection{'last_descendant_${lambda}_${map_root}', body, 'use of moved value: `entries'}
+		}
+		capture := if lambda {
+			'assert invoke_int(|| entries.values.len) == 1'
+		} else {
+			'callback := fn [entries] () {}\ncallback()'
+		}
+		for borrowed in [false, true] {
+			before := if borrowed {
+				'borrowed := &entries.values'
+			} else {
+				capture.replace('callback', 'first')
 			}
+			after := if borrowed { 'assert borrowed.len == 1' } else { '' }
+			body := 'entries := Bundle{["one".to_owned()]}\n${before}\n${capture}\n${after}'
+			expected := if borrowed {
+				'is borrowed by `borrowed`'
+			} else {
+				'use of moved value: `entries'
+			}
+			cases << CaptureRejection{'overlap_${lambda}_${borrowed}', body, expected}
+		}
+	}
+	return cases
+}
+
+fn check_capture_rejections(declarations string, cases []CaptureRejection) ! {
+	batch := os.join_path(capture_tmp, 'rejections')
+	os.mkdir(batch)!
+	mut calls := []string{cap: cases.len}
+	for case in cases {
+		os.write_file(os.join_path(batch, '${case.name}.v'), 'module main\n\nfn ${case.name}() {\n${case.body}\n}\n')!
+		calls << '\t${case.name}()'
+	}
+	os.write_file(os.join_path(batch, 'main.v'), 'module main\n\n${declarations}\nfn main() {\n${calls.join('\n')}\n}\n')!
+	for serial in [true, false] {
+		result := run_capture(batch, serial, '-ownership', '-nocolor')
+		assert result.exit_code != 0, result.output
+		diagnostics := result.output.split_into_lines().filter(it.contains(': error: '))
+		assert diagnostics.len == cases.len, result.output
+		for case in cases {
+			assert diagnostics.any(it.all_before(': error: ').contains('${case.name}.v:')
+				&& it.all_after(': error: ').contains(case.expected)), '${case.name}: ${result.output}'
 		}
 	}
 }

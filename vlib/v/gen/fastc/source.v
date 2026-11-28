@@ -34,7 +34,7 @@ fn fastc_preferences_for_entry_paths(paths []string, prefs &pref.Preferences) pr
 fn fastc_builtin_file_excluded(path string, prefs &pref.Preferences) bool {
 	name := os.file_name(path)
 	// V3 uses the pointer-sized map implementation selected by `v3_backend`.
-	// The legacy layout in map.v belongs to the compatibility compiler.
+	// The portable bootstrap still uses the layout in map.v.
 	if name == 'map.v' && 'v3_backend' in prefs.user_defines {
 		return true
 	}
@@ -141,7 +141,6 @@ fn fastc_expand_entry_paths(paths []string, prefs &pref.Preferences) ![]FastcEnt
 
 fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) string {
 	mut result := raw
-	origin_file := if source_file.len > 0 { os.real_path(source_file) } else { source_file }
 	if result.contains('@VEXEROOT') && vroot.len > 0 {
 		result = result.replace('@VEXEROOT', vroot)
 	}
@@ -151,29 +150,55 @@ fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) st
 	if result.contains('@VMODROOT') {
 		result = result.replace('@VMODROOT', fastc_vmod_root_for_file(source_file))
 	}
-	if result.contains('@DIR') {
-		dir := if origin_file.len > 0 { os.dir(origin_file) } else { os.getwd() }
-		result = result.replace('@DIR', os.real_path(dir))
-	}
 	// A quoted C include is relative to the V file that declared it. FastC hoists
 	// directives into one generated C file, so preserve that original include base
 	// by making the path absolute before hoisting.
-	if result.starts_with('include "') || result.starts_with('insert "')
-		|| result.starts_with('preinclude "') {
+	if result.starts_with('include ') || result.starts_with('insert ')
+		|| result.starts_with('preinclude ') {
 		quote_start := result.index_u8(`"`)
 		quote_end := result.last_index_u8(`"`)
 		if quote_start >= 0 && quote_end > quote_start {
 			include_path := result[quote_start + 1..quote_end]
-			if !os.is_abs_path(include_path) {
-				dir := if origin_file.len > 0 { os.dir(origin_file) } else { os.getwd() }
-				resolved := os.join_path(os.real_path(dir), include_path)
-				if os.exists(resolved) {
-					result = result[..quote_start + 1] + resolved + result[quote_end..]
+			if include_path != '' && !os.is_abs_path(include_path) {
+				resolved := fastc_local_c_include_path(include_path, source_file)
+				if include_path.starts_with('@DIR/') || os.exists(resolved) {
+					return result[..quote_start + 1] + resolved + result[quote_end..]
 				}
 			}
 		}
 	}
+	if result.contains('@DIR') {
+		dir := if source_file.len > 0 { os.dir(os.real_path(source_file)) } else { os.getwd() }
+		result = result.replace('@DIR', os.real_path(dir))
+	}
 	return result
+}
+
+// fastc_local_c_include_path prefers companion headers staged beside a symlinked
+// V source, while still finding headers beside its original file.
+fn fastc_local_c_include_path(path string, source_file string) string {
+	if os.is_abs_path(path) {
+		return path
+	}
+	name := path.trim_string_left('@DIR/')
+	if source_file == '' {
+		return os.join_path(os.getwd(), name)
+	}
+	source := if os.is_abs_path(source_file) { source_file } else { os.abs_path(source_file) }
+	source_dir := os.dir(source)
+	origin_file := os.real_path(source)
+	if source == origin_file {
+		// The single-source API also accepts paths to files that do not exist.
+		return os.join_path(os.real_path(source_dir), name)
+	}
+	origin_dir := os.dir(origin_file)
+	if source_dir != origin_dir {
+		staged := os.join_path(os.real_path(source_dir), name)
+		if os.exists(staged) {
+			return staged
+		}
+	}
+	return os.join_path(origin_dir, name)
 }
 
 fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
@@ -1228,6 +1253,53 @@ fn fastc_store_resolve_memo(memo_path string, previous_text string, sources []Fa
 	os.mv(staged, memo_path) or {
 		os.rm(staged) or {}
 		return
+	}
+	fastc_prune_resolve_memos(memo_path, fastc_resolve_memo_limit)
+}
+
+// fastc_resolve_memo_limit is how many resolve memos a VTMP keeps. Each one names an entry set and
+// a build configuration, and its source blob is as large as the program's sources (~23 MB for the
+// compiler), so memos of builds that are not repeated would otherwise fill the disk.
+const fastc_resolve_memo_limit = 16
+
+struct FastcMemoFile {
+	path  string
+	mtime i64
+}
+
+// fastc_prune_resolve_memos removes the least recently written resolve memos beside `keep`, and
+// their source blobs, so that at most `limit` remain. A build that loses its memo meanwhile finds
+// no matching blob and resolves its sources again.
+fn fastc_prune_resolve_memos(keep string, limit int) {
+	dir := os.dir(keep)
+	mut memos := []FastcMemoFile{}
+	for name in os.ls(dir) or { return } {
+		if !name.starts_with('fastc_resolve_') || !name.ends_with('.memo') {
+			continue
+		}
+		path := os.join_path_single(dir, name)
+		if path != keep {
+			memos << FastcMemoFile{
+				path:  path
+				mtime: os.file_last_mod_unix(path)
+			}
+		}
+	}
+	if memos.len < limit {
+		return
+	}
+	memos.sort_with_compare(fn (a &FastcMemoFile, b &FastcMemoFile) int {
+		return if a.mtime > b.mtime {
+			-1
+		} else if a.mtime < b.mtime {
+			1
+		} else {
+			0
+		}
+	})
+	for memo in memos[int_max(limit - 1, 0)..] {
+		os.rm(memo.path) or {}
+		os.rm(fastc_memo_blob_path(memo.path)) or {}
 	}
 }
 
