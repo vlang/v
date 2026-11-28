@@ -1398,13 +1398,22 @@ fn test_a_server_child_that_grew_answers_its_last_question_and_leaves() {
 	assert p.code == 0
 }
 
-fn test_a_constrained_value_has_the_members_of_its_constraint() {
-	text := constraints_program.split('\n')[19]
+fn test_constraint_members_names_and_compile_time_branches() {
+	lines := constraints_program.split('\n')
 	answers := ask_answers(os.join_path(work_dir, 'constraints'), [
 		'23:11',
-		word_question(text, 'hv^', 20, 'name', 0),
-		word_question(text, 'gd^', 20, 'name', 0),
+		word_question(lines[19], 'hv^', 20, 'name', 0),
+		word_question(lines[19], 'gd^', 20, 'name', 0),
 		'28:11',
+		word_question(lines[49], 'hv^', 50, 'name', 0),
+		word_question(lines[49], 'gd^', 50, 'name', 0),
+		'50:29',
+		word_question(lines[26], 'gd^', 27, 'Number', 0),
+		word_question(lines[26], 'hv^', 27, 'Number', 0),
+		word_question(lines[16], 'gd^', 17, 'Number', 0),
+		word_question(lines[18], 'gd^', 19, 'Named', 0),
+		word_question(lines[36], 'hv^', 37, 'Number', 0),
+		word_question(lines[38], 'gd^', 39, 'x', 0),
 	])
 	// `a.zz` in `longest[T Named]`: what `Named` declares.
 	members := completion_details(answers[0]).map('${it.kind} ${it.label} ${it.detail}')
@@ -1416,6 +1425,25 @@ fn test_a_constrained_value_has_the_members_of_its_constraint() {
 	labels := completion_details(answers[3]).map(it.label)
 	assert 'str' in labels, labels.str()
 	assert 'hex' !in labels, labels.str()
+
+	// `b.item.name` in `fn (b Box[T]) label()`, `item T` of `Box[T Named]`.
+	assert answers[4] == hover_of('name string')
+	assert answers[5] == 'main.v:4:1'
+	field_members := completion_details(answers[6]).map('${it.kind} ${it.label} ${it.detail}')
+	assert field_members == ['2 greet string', '5 name string'], field_members.str()
+
+	// `Number` in `describe[T Number]`: the sum type, `type Number = int | f64`.
+	assert answers[7] == 'main.v:17:5'
+	assert answers[8] == hover_of('type Number = int | f64')
+	// On the name it declares: that declaration.
+	assert answers[9] == 'main.v:17:5'
+	// `Named` in `longest[T Named]`: the interface, as any type written there.
+	assert answers[10] == 'main.v:3:10'
+
+	// `$if T is f64 {` in `half[T Number]`: the walk of the body narrows `T` in
+	// each branch, and the program still answers the editor's queries.
+	assert answers[11] == hover_of('type Number = int | f64')
+	assert answers[12] == 'main.v:37:18'
 }
 
 fn closure_members(answer string) []string {
@@ -1441,6 +1469,12 @@ fn test_the_implicit_variables_and_lambdas_of_a_constrained_body_have_its_member
 		word_question(lines[19], 'hv^', 20, 'it', 0),
 		word_question(lines[18], 'hv^', 19, 'a', 0),
 		word_question(lines[20], 'hv^', 21, 'x', 1),
+		// The parameter of a lambda is where its uses are declared, in any body.
+		word_question(lines[20], 'gd^', 21, 'x', 1),
+		word_question(lines[25], 'gd^', 26, 'u', 1),
+		word_question(lines[25], 'hv^', 26, 'u', 1),
+		// `err` of an `or {}` in a generic body: an `IError`.
+		'37:14',
 	]
 	answers := ask_answers(dir, questions)
 	named := ['2 greet string', '5 name string']
@@ -1450,62 +1484,11 @@ fn test_the_implicit_variables_and_lambdas_of_a_constrained_body_have_its_member
 	assert answers[3] == hover_of('it T\\nT: implements main.Named')
 	assert answers[4] == hover_of('a T\\nT: implements main.Named')
 	assert answers[5] == hover_of('x T\\nT: implements main.Named')
-	binding_answers := ask_answers(dir, [
-		// The parameter of a lambda is where its uses are declared, in any body.
-		word_question(lines[20], 'gd^', 21, 'x', 1),
-		word_question(lines[25], 'gd^', 26, 'u', 1),
-		word_question(lines[25], 'hv^', 26, 'u', 1),
-		// `err` of an `or {}` in a generic body: an `IError`.
-		'37:14',
-	])
-	assert binding_answers[0] == 'main.v:21:16'
-	assert binding_answers[1] == 'main.v:26:20'
-	assert binding_answers[2] == hover_of('u main.User')
-	errs := closure_members(binding_answers[3]).map(it.all_after(' ').all_before(' '))
+	assert answers[6] == 'main.v:21:16'
+	assert answers[7] == 'main.v:26:20'
+	assert answers[8] == hover_of('u main.User')
+	errs := closure_members(answers[9]).map(it.all_after(' ').all_before(' '))
 	assert 'msg' in errs && 'code' in errs, errs.str()
-}
-
-fn test_a_field_of_a_constrained_type_has_the_members_of_its_constraint() {
-	// `b.item.name` in `fn (b Box[T]) label()`, `item T` of `Box[T Named]`.
-	text := constraints_program.split('\n')[49]
-	answers := ask_answers(os.join_path(work_dir, 'constraints'), [
-		word_question(text, 'hv^', 50, 'name', 0),
-		word_question(text, 'gd^', 50, 'name', 0),
-		'50:29',
-	])
-	assert answers[0] == hover_of('name string')
-	assert answers[1] == 'main.v:4:1'
-	members := completion_details(answers[2]).map('${it.kind} ${it.label} ${it.detail}')
-	assert members == ['2 greet string', '5 name string'], members.str()
-}
-
-fn test_a_constraint_name_has_a_definition_and_a_hover() {
-	lines := constraints_program.split('\n')
-	answers := ask_answers(os.join_path(work_dir, 'constraints'), [
-		word_question(lines[26], 'gd^', 27, 'Number', 0),
-		word_question(lines[26], 'hv^', 27, 'Number', 0),
-		word_question(lines[16], 'gd^', 17, 'Number', 0),
-		word_question(lines[18], 'gd^', 19, 'Named', 0),
-	])
-	// `Number` in `describe[T Number]`: the sum type, `type Number = int | f64`.
-	assert answers[0] == 'main.v:17:5'
-	assert answers[1] == hover_of('type Number = int | f64')
-	// On the name it declares: that declaration.
-	assert answers[2] == 'main.v:17:5'
-	// `Named` in `longest[T Named]`: the interface, as any type written there.
-	assert answers[3] == 'main.v:3:10'
-}
-
-fn test_a_compile_time_branch_in_a_constrained_body_leaves_the_queries_working() {
-	// `$if T is f64 {` in `half[T Number]`: the walk of the body narrows `T` in
-	// each branch, and the program still answers the editor's queries.
-	lines := constraints_program.split('\n')
-	answers := ask_answers(os.join_path(work_dir, 'constraints'), [
-		word_question(lines[36], 'hv^', 37, 'Number', 0),
-		word_question(lines[38], 'gd^', 39, 'x', 0),
-	])
-	assert answers[0] == hover_of('type Number = int | f64')
-	assert answers[1] == 'main.v:37:18'
 }
 
 fn test_many_compile_time_branches_in_constrained_bodies_leave_the_queries_working() {
@@ -1567,8 +1550,18 @@ fn named[T Named](a T) {
 fn main() {}
 '
 	dir := program_dir('comptime_members', source)
-	answers := ask_answers(dir, ['16:16', '18:16', '21:16', '23:16', '30:12', '33:12'])
-	labels := answers.map(completion_details(it).map(it.label))
+	lines := source.split('\n')
+	answers := ask_answers(dir, [
+		'16:16',
+		'18:16',
+		'21:16',
+		'23:16',
+		'30:12',
+		'33:12',
+		word_question(lines[30], 'gd^', 31, 'name', 0),
+		word_question(lines[33], 'gd^', 34, 'name', 0),
+	])
+	labels := answers[..6].map(completion_details(it).map(it.label))
 	floats := ['eq_epsilon', 'str', 'strg', 'strlong', 'strsci']
 	assert labels[0] == floats
 	assert labels[1] == ['hex', 'hex_full', 'str']
@@ -1576,12 +1569,7 @@ fn main() {}
 	assert labels[3] == ['hex', 'hex2', 'hex_full', 'str']
 	assert labels[4] == ['age', 'name']
 	assert labels[5] == ['name']
-	lines := source.split('\n')
-	definitions := ask_answers(dir, [
-		word_question(lines[30], 'gd^', 31, 'name', 0),
-		word_question(lines[33], 'gd^', 34, 'name', 0),
-	])
-	assert definitions == ['main.v:8:1', 'main.v:4:1']
+	assert answers[6..] == ['main.v:8:1', 'main.v:4:1']
 }
 
 // functions_line is the 1-based number of the line of functions_program that
