@@ -276,7 +276,7 @@ fn (mut b Builder) run_function_jobs(mut jobs []FunctionJob) {
 	thread_count := b.function_worker_count(jobs.len)
 	if thread_count == 0 {
 		for job in jobs {
-			b.build_function(b.a.nodes[job.node_index], job.module_name)
+			b.build_function(b.a.nodes[job.node_index], job.module_name, job.node_index)
 		}
 		return
 	}
@@ -356,7 +356,7 @@ fn (mut worker FunctionWorker) build_job(job FunctionJob) FunctionFragment {
 	m.fragment_value_start = m.values.len
 	m.function_consts.clear()
 	b.spawn_counter = 0
-	b.build_function(b.a.nodes[job.node_index], job.module_name)
+	b.build_function(b.a.nodes[job.node_index], job.module_name, job.node_index)
 	if m.target.ptr_size == 8 {
 		// Per function work that only touches the function's own range belongs
 		// in the worker instead of a serial pass over the whole program.

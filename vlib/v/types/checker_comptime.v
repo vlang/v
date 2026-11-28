@@ -10128,7 +10128,8 @@ fn (mut tc TypeChecker) record_invalid_enum_infix(id flat.NodeId, node flat.Node
 	tc.record_error_at(.assignment_mismatch, message, id, tc.infix_operator_pos(node, op))
 }
 
-fn (tc &TypeChecker) expr_is_inside_unsafe_block(id flat.NodeId) bool {
+// expr_is_inside_unsafe_block reports whether the expression is inside an unsafe block.
+pub fn (tc &TypeChecker) expr_is_inside_unsafe_block(id flat.NodeId) bool {
 	// The walk below stops at the function declaration, so a node of a function
 	// without any `unsafe` block is outside of one.
 	if tc.node_outside_unsafe_blocks(int(id)) {

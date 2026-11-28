@@ -14623,11 +14623,13 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			mut m := ssa.build_with_options(a, config.used_fns, pre_tc, ssa.BuildOptions{
-				target:         ssa.TargetData{ ptr_size: 4 }
-				track_uses:     is_prod
-				exact_used_fns: true
-				source_modules: config.source_modules
-				source_imports: config.source_imports
+				target:                ssa.TargetData{ ptr_size: 4 }
+				track_uses:            is_prod
+				no_bounds_checking:    'no_bounds_checking' in prefs.user_defines
+				force_bounds_checking: prefs.force_bounds_checking
+				exact_used_fns:        true
+				source_modules:        config.source_modules
+				source_imports:        config.source_imports
 			})
 			b.step('ssa build')
 			if is_prod {
@@ -14700,13 +14702,15 @@ pub fn run(args []string) {
 			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
 				// The optimizer rebuilds use lists once before consuming them.
 				// Incremental tracking is quadratic for large generic functions.
-				track_uses:           false
-				thread_stack_size:    prefs.thread_stack_size
-				test_files:           test_files
-				test_run_only:        run_only
-				exact_used_fns:       true
-				use_native_c_sources: true
-				target:               ssa.TargetData{
+				track_uses:            false
+				thread_stack_size:     prefs.thread_stack_size
+				test_files:            test_files
+				test_run_only:         run_only
+				exact_used_fns:        true
+				use_native_c_sources:  true
+				no_bounds_checking:    'no_bounds_checking' in prefs.user_defines
+				force_bounds_checking: prefs.force_bounds_checking
+				target:                ssa.TargetData{
 					os:   prefs.target.os
 					arch: 'amd64'
 				}
@@ -14929,18 +14933,20 @@ pub fn run(args []string) {
 			}
 			// SSA + ARM64 native backend
 			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
-				literal_output:       trivial_literal_output
-				track_uses:           false // optimize() rebuilds them
-				thread_stack_size:    prefs.thread_stack_size
-				test_files:           test_files
-				test_run_only:        run_only
-				hot_fn:               prefs.hot_fn
+				literal_output:        trivial_literal_output
+				track_uses:            false // optimize() rebuilds them
+				thread_stack_size:     prefs.thread_stack_size
+				test_files:            test_files
+				test_run_only:         run_only
+				hot_fn:                prefs.hot_fn
+				no_bounds_checking:    'no_bounds_checking' in prefs.user_defines
+				force_bounds_checking: prefs.force_bounds_checking
 				// The system linker brings the C side of the program, so the
 				// V-shipped C helpers are linked instead of SSA replacements.
-				use_native_c_sources: arm64_link_mode == .external
-				c_constants:          arm64_ssa_c_constants
-				c_struct_layouts:     arm64_ssa_c_struct_layouts
-				target:               ssa.TargetData{
+				use_native_c_sources:  arm64_link_mode == .external
+				c_constants:           arm64_ssa_c_constants
+				c_struct_layouts:      arm64_ssa_c_struct_layouts
+				target:                ssa.TargetData{
 					os:   prefs.target.os
 					arch: 'arm64'
 				}
