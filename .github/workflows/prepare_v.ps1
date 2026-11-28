@@ -56,7 +56,25 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "The optimized compiler failed its version check (exit $LASTEXITCODE)"
     }
-    Move-Item -LiteralPath $production -Destination '.\v.exe' -Force
+    # A just-executed compiler or a scanner may briefly hold an executable.
+    # Replace on the same volume without deleting the destination first.
+    $destination = Join-Path (Get-Location) 'v.exe'
+    for ($attempt = 1; ; $attempt++) {
+        try {
+            [IO.File]::Move($production, $destination, $true)
+            break
+        } catch {
+            $cause = $_.Exception
+            while ($cause.InnerException) { $cause = $cause.InnerException }
+            $code = $cause.HResult -band 0xffff
+            # ERROR_SHARING_VIOLATION / ERROR_LOCK_VIOLATION only.
+            if ($cause -isnot [IO.IOException] -or $code -notin @(32, 33) -or $attempt -ge 20) {
+                throw
+            }
+            Write-Warning "Compiler publication sharing violation (Win32 $code), retry $attempt/19"
+            Start-Sleep -Milliseconds 250
+        }
+    }
 } finally {
     [Environment]::SetEnvironmentVariable('VFLAGS', $savedVFlags, 'Process')
     [Environment]::SetEnvironmentVariable('VEXE', $savedVExe, 'Process')

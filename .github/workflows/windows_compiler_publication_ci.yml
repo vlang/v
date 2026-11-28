@@ -1,0 +1,45 @@
+name: Windows compiler publication regression
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/prepare_v.ps1'
+      - '.github/workflows/prepare_v_windows_test.py'
+      - '.github/workflows/windows_compiler_publication_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-sharing:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    env:
+      VFLAGS: -cc msvc
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Fetch the exact historical failing source
+        shell: pwsh
+        run: |
+          git fetch --depth=1 origin 3f2fd2c984cf742306fe83d2f27f579d1545e249
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch baseline' }
+          $blob = git rev-parse '3f2fd2c984cf742306fe83d2f27f579d1545e249:.github/workflows/prepare_v.ps1'
+          if ($LASTEXITCODE -ne 0 -or $blob -cne '8e65a457996f47821a308c12ac4d31f212914260') {
+            throw 'Baseline script differs from the historical failure'
+          }
+      - name: Build optimized V
+        uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: 'false'
+          symlink: 'false'
+      - name: Reproduce a real sharing lock and verify safe publication
+        shell: pwsh
+        run: python .github/workflows/prepare_v_windows_test.py
+      - name: Verify installed compiler can build a V program
+        shell: pwsh
+        run: |
+          .\v.exe -silent vlib/v/tests/builtin_maps/call_result_map_lookup_order_test.v
+          if ($LASTEXITCODE -ne 0) { throw 'Focused compiler test failed' }
