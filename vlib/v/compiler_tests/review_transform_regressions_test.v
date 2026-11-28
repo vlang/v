@@ -1139,9 +1139,8 @@ fn main() {
 	])
 }
 
-fn test_interface_storage_conversions_and_smartcasts() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'interface_storage_conversions_and_smartcasts', [
+fn review_interface_storage_fixtures() []TransformFixture {
+	return [
 		TransformFixture{'interface_field_receiver_smartcast', 'interface Reader {
 	read() int
 }
@@ -1347,7 +1346,7 @@ fn main() {
 	println(named.name)
 }
 ', 'Ada\nAda'},
-	])
+	]
 }
 
 fn test_result_c_payload_does_not_use_colliding_interface() {
@@ -2197,9 +2196,10 @@ fn main() {
 	assert out == '0'
 }
 
-fn test_mut_interface_smartcast_field_assignment_uses_storage_interface() {
+fn test_review_value_and_call_runtime() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'mut_interface_smartcast_field_assignment', 'interface Base {
+	mut cases := [
+		TransformFixture{'mut_interface_smartcast_field_assignment', 'interface Base {
 mut:
 	x int
 }
@@ -2232,8 +2232,209 @@ fn main() {
 		println(int_str(base.y))
 	}
 }
-')
-	assert out == '9'
+', '9'},
+		TransformFixture{'escaped_pointer_receiver_addressable_local', 'struct Foo {
+mut:
+	value int
+}
+
+fn (foo &Foo) read() int {
+	return foo.value
+}
+
+fn make(value int) fn () int {
+	foo := Foo{
+		value: value
+	}
+	return unsafe { foo.read }
+}
+
+fn make_via_pointer_alias(value int) fn () int {
+	foo := Foo{
+		value: value
+	}
+	p := &foo
+	cb := unsafe { p.read }
+	return cb
+}
+
+fn make_from_pointer(foo &Foo) fn () int {
+	return unsafe { foo.read }
+}
+
+fn overwrite_stack() {
+	mut values := [512]int{}
+	for i in 0 .. values.len {
+		values[i] = i
+	}
+}
+
+fn main() {
+	first := make(11)
+	second := make(22)
+	aliased := make_via_pointer_alias(55)
+	mut durable := &Foo{
+		value: 33
+	}
+	third := make_from_pointer(durable)
+	durable.value = 44
+	for _ in 0 .. 100 {
+		overwrite_stack()
+	}
+	println(int_str(first()))
+	println(int_str(second()))
+	println(int_str(third()))
+	println(int_str(aliased()))
+}
+', '11\n22\n44\n55'},
+		TransformFixture{'mut_fixed_array_capture_shared_storage', 'fn main() {
+	mut values := [2]int{}
+	update := fn [mut values] () int {
+		values[0]++
+		return values[0]
+	}
+	assert update() == 1
+	assert values[0] == 1
+	values[0] = 41
+	assert update() == 42
+	assert values[0] == 42
+	println("ok")
+}
+', 'ok'},
+		TransformFixture{'smartcast_sum_direct_array_literal', 'type Value = int | string
+
+fn first(values []Value) Value {
+	return values[0]
+}
+
+fn roundtrip(value Value) Value {
+	return match value {
+		int { first([value]) }
+		string { first([value]) }
+	}
+}
+
+fn main() {
+	println(roundtrip(Value(42)))
+	println(roundtrip(Value("ok")))
+}
+', "Value(42)\nValue('ok')"},
+		TransformFixture{'empty_interface_raw_container_type_idx', 'interface Value {}
+
+fn box[T](value T) Value {
+	return value
+}
+
+fn main() {
+	array_value := box([1, 2])
+	map_value := box({
+		"a": 3
+	})
+	int_value := Value(1)
+	println(array_value.type_idx() != 0)
+	println(map_value.type_idx() != 0)
+	println(array_value.type_idx() != map_value.type_idx())
+	println(array_value.type_idx() != int_value.type_idx())
+}
+', 'true\ntrue\ntrue\ntrue'},
+		TransformFixture{'array_branch_selected_function_values', 'fn is_even(value int) bool {
+	return value % 2 == 0
+}
+
+fn is_odd(value int) bool {
+	return value % 2 != 0
+}
+
+fn double(value int) int {
+	return value * 2
+}
+
+fn increment(value int) int {
+	return value + 1
+}
+
+fn main() {
+	use_even := true
+	filtered := [1, 2, 3, 4].filter(if use_even { is_even } else { is_odd })
+	mode := 1
+	mapped := [1, 2, 3].map(match mode {
+		1 { double }
+		else { increment }
+	})
+	assert filtered == [2, 4]
+	assert mapped == [2, 4, 6]
+	println(int_str(filtered.len + mapped[2]))
+}
+', '8'},
+		TransformFixture{'array_sort_pointer_value_comparator_expression_shapes', 'struct Thing {
+	value int
+}
+
+fn compare_thing_values(a &Thing, b &Thing) int {
+	return a.value - b.value
+}
+
+fn get_thing_comparator() fn (&Thing, &Thing) int {
+	return compare_thing_values
+}
+
+struct ThingComparators {
+	compare fn (&Thing, &Thing) int
+}
+
+type ThingCompare = fn (&Thing, &Thing) int
+
+fn sorted_values(items []&Thing) string {
+	return items.map(it.value.str()).join(",")
+}
+
+fn main() {
+	mut local_items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
+	local_compare := compare_thing_values
+	local_items.sort_with_compare(local_compare)
+	println(sorted_values(local_items))
+
+	mut call_items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
+	call_items.sort_with_compare(get_thing_comparator())
+	println(sorted_values(call_items))
+
+	mut selector_items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
+	comparators := ThingComparators{
+		compare: compare_thing_values
+	}
+	selector_items.sort_with_compare(comparators.compare)
+	println(sorted_values(selector_items))
+
+	mut alias_items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
+	alias_compare := ThingCompare(compare_thing_values)
+	alias_items.sort_with_compare(alias_compare)
+	println(sorted_values(alias_items))
+}
+', '1,2,3\n1,2,3\n1,2,3\n1,2,3'},
+		TransformFixture{'generic_method_none_argument', 'struct Item {
+	value string
+}
+
+struct Mapper {}
+
+fn (mapper Mapper) is_none[T](value ?T) bool {
+	return value == none
+}
+
+fn forward_none[T]() bool {
+	mapper := Mapper{}
+	return mapper.is_none[T](none)
+}
+
+fn main() {
+	println(forward_none[Item]())
+}
+', 'true'},
+	]
+	cases << review_interface_storage_fixtures()
+	cases << review_closure_result_fixtures()
+	cases << review_clone_method_fixtures()
+	run_good_module_batch(v3_bin, 'review_value_and_call_runtime', cases)
 }
 
 fn test_nested_generic_main_type_does_not_emit_imported_homonym_specialization() {
@@ -4223,9 +4424,8 @@ fn test_immediately_invoked_closure_keeps_aliased_integer_capture_address_alive(
 	assert out == '42'
 }
 
-fn test_closure_results_and_callback_receiver_identity() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'closure_results_and_callback_receiver_identity', [
+fn review_closure_result_fixtures() []TransformFixture {
+	return [
 		TransformFixture{'immediate_closure_aliased_result_error', 'struct CaptureError {
 	Error
 	ptr &int
@@ -4307,7 +4507,7 @@ fn main() {
 	println(int_str(counter.value))
 }
 ', '1\n1'},
-	])
+	]
 }
 
 fn test_immediately_invoked_closure_keeps_aliased_string_result_alive() {
@@ -4939,66 +5139,6 @@ pub:
 	assert out == 'base 3,base 4,base 3'
 }
 
-fn test_escaping_pointer_receiver_method_value_copies_addressable_local() {
-	v3_bin := build_v3_review_transform()
-	source := 'struct Foo {
-mut:
-	value int
-}
-
-fn (foo &Foo) read() int {
-	return foo.value
-}
-
-fn make(value int) fn () int {
-	foo := Foo{
-		value: value
-	}
-	return unsafe { foo.read }
-}
-
-fn make_via_pointer_alias(value int) fn () int {
-	foo := Foo{
-		value: value
-	}
-	p := &foo
-	cb := unsafe { p.read }
-	return cb
-}
-
-fn make_from_pointer(foo &Foo) fn () int {
-	return unsafe { foo.read }
-}
-
-fn overwrite_stack() {
-	mut values := [512]int{}
-	for i in 0 .. values.len {
-		values[i] = i
-	}
-}
-
-fn main() {
-	first := make(11)
-	second := make(22)
-	aliased := make_via_pointer_alias(55)
-	mut durable := &Foo{
-		value: 33
-	}
-	third := make_from_pointer(durable)
-	durable.value = 44
-	for _ in 0 .. 100 {
-		overwrite_stack()
-	}
-	println(int_str(first()))
-	println(int_str(second()))
-	println(int_str(third()))
-	println(int_str(aliased()))
-}
-'
-	out := run_good(v3_bin, 'escaped_pointer_receiver_addressable_local', source)
-	assert out == '11\n22\n44\n55'
-}
-
 fn test_stored_pointer_receiver_method_value_keeps_local_pointee_alive() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct Foo {
@@ -5099,26 +5239,6 @@ fn main() {
 	assert body.len > 0, c_source
 	assert !body.contains('memdup(&__esc'), body
 	assert out == '42'
-}
-
-fn test_mut_fixed_array_capture_shares_durable_outer_storage() {
-	v3_bin := build_v3_review_transform()
-	source := 'fn main() {
-	mut values := [2]int{}
-	update := fn [mut values] () int {
-		values[0]++
-		return values[0]
-	}
-	assert update() == 1
-	assert values[0] == 1
-	values[0] = 41
-	assert update() == 42
-	assert values[0] == 42
-	println("ok")
-}
-'
-	out := run_good(v3_bin, 'mut_fixed_array_capture_shared_storage', source)
-	assert out == 'ok'
 }
 
 fn test_mutable_method_call_rejects_constant_receiver() {
@@ -5791,29 +5911,6 @@ fn main() {
 	assert out == "Value([1, 2])\nValue(['x'])\ntrue"
 }
 
-fn test_empty_interface_type_idx_maps_raw_containers() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'empty_interface_raw_container_type_idx', 'interface Value {}
-
-fn box[T](value T) Value {
-	return value
-}
-
-fn main() {
-	array_value := box([1, 2])
-	map_value := box({
-		"a": 3
-	})
-	int_value := Value(1)
-	println(array_value.type_idx() != 0)
-	println(map_value.type_idx() != 0)
-	println(array_value.type_idx() != map_value.type_idx())
-	println(array_value.type_idx() != int_value.type_idx())
-}
-')
-	assert out == 'true\ntrue\ntrue\ntrue'
-}
-
 fn test_boxed_container_runtime_type_indexes_resolve_hash_collisions() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'boxed_container_runtime_type_index_hash_collisions', 'interface Value {}
@@ -6244,41 +6341,6 @@ fn main() {
 	assert main_body.contains('closure__closure_try_destroy(__filter_callback_'), main_body
 	assert main_body.contains('closure__closure_try_destroy(__map_callback_'), main_body
 	assert out == '860000'
-}
-
-fn test_array_filter_and_map_invoke_branch_selected_function_values() {
-	v3_bin := build_v3_review_transform()
-	source := 'fn is_even(value int) bool {
-	return value % 2 == 0
-}
-
-fn is_odd(value int) bool {
-	return value % 2 != 0
-}
-
-fn double(value int) int {
-	return value * 2
-}
-
-fn increment(value int) int {
-	return value + 1
-}
-
-fn main() {
-	use_even := true
-	filtered := [1, 2, 3, 4].filter(if use_even { is_even } else { is_odd })
-	mode := 1
-	mapped := [1, 2, 3].map(match mode {
-		1 { double }
-		else { increment }
-	})
-	assert filtered == [2, 4]
-	assert mapped == [2, 4, 6]
-	println(int_str(filtered.len + mapped[2]))
-}
-'
-	out := run_good(v3_bin, 'array_branch_selected_function_values', source)
-	assert out == '8'
 }
 
 fn test_array_map_drops_temporary_source_after_transient_element_address() {
@@ -11717,57 +11779,6 @@ fn main() {
 	assert out == 'external'
 }
 
-fn test_array_sort_pointer_value_comparator_expression_shapes() {
-	v3_bin := build_v3_review_transform()
-	source := 'struct Thing {
-	value int
-}
-
-fn compare_thing_values(a &Thing, b &Thing) int {
-	return a.value - b.value
-}
-
-fn get_thing_comparator() fn (&Thing, &Thing) int {
-	return compare_thing_values
-}
-
-struct ThingComparators {
-	compare fn (&Thing, &Thing) int
-}
-
-type ThingCompare = fn (&Thing, &Thing) int
-
-fn sorted_values(items []&Thing) string {
-	return items.map(it.value.str()).join(",")
-}
-
-fn main() {
-	mut local_items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
-	local_compare := compare_thing_values
-	local_items.sort_with_compare(local_compare)
-	println(sorted_values(local_items))
-
-	mut call_items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
-	call_items.sort_with_compare(get_thing_comparator())
-	println(sorted_values(call_items))
-
-	mut selector_items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
-	comparators := ThingComparators{
-		compare: compare_thing_values
-	}
-	selector_items.sort_with_compare(comparators.compare)
-	println(sorted_values(selector_items))
-
-	mut alias_items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
-	alias_compare := ThingCompare(compare_thing_values)
-	alias_items.sort_with_compare(alias_compare)
-	println(sorted_values(alias_items))
-}
-'
-	out := run_good(v3_bin, 'array_sort_pointer_value_comparator_expression_shapes', source)
-	assert out == '1,2,3\n1,2,3\n1,2,3\n1,2,3'
-}
-
 fn test_json_map_sort_ignores_pointer_names_in_the_caller() {
 	v3_bin := build_v3_review_transform()
 	source := 'import json2
@@ -11939,31 +11950,6 @@ fn main() {
 	assert out == '1250025000'
 }
 
-fn test_none_forwarded_to_specialized_generic_method_stays_none() {
-	v3_bin := build_v3_review_transform()
-	source := 'struct Item {
-	value string
-}
-
-struct Mapper {}
-
-fn (mapper Mapper) is_none[T](value ?T) bool {
-	return value == none
-}
-
-fn forward_none[T]() bool {
-	mapper := Mapper{}
-	return mapper.is_none[T](none)
-}
-
-fn main() {
-	println(forward_none[Item]())
-}
-'
-	out := run_good(v3_bin, 'generic_method_none_argument', source)
-	assert out == 'true'
-}
-
 fn test_generic_mut_parameter_typeof_keeps_pointer_shape() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'generic_mut_parameter_typeof', 'struct Item {}
@@ -12063,29 +12049,6 @@ fn main() {
 }
 ')
 	assert out == '1\nok\ntrue\n1\n1'
-}
-
-fn test_smartcast_sum_value_in_direct_array_literal_is_reboxed() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'smartcast_sum_direct_array_literal', 'type Value = int | string
-
-fn first(values []Value) Value {
-	return values[0]
-}
-
-fn roundtrip(value Value) Value {
-	return match value {
-		int { first([value]) }
-		string { first([value]) }
-	}
-}
-
-fn main() {
-	println(roundtrip(Value(42)))
-	println(roundtrip(Value("ok")))
-}
-')
-	assert out == "Value(42)\nValue('ok')"
 }
 
 fn test_sum_variant_field_does_not_become_same_named_method_value() {
@@ -12928,9 +12891,8 @@ fn main() {
 	assert out == 'route'
 }
 
-fn test_clone_method_selection() {
-	v3_bin := build_v3_review_transform()
-	run_good_module_batch(v3_bin, 'clone_method_selection', [
+fn review_clone_method_fixtures() []TransformFixture {
+	return [
 		TransformFixture{'incompatible_user_clone_method', 'struct Item {
 mut:
 	name string
@@ -12971,7 +12933,7 @@ fn main() {
 	println(items[1].name)
 }
 ', 'ok\ncustom:ok'},
-	])
+	]
 }
 
 fn test_generic_inference_prefers_local_over_same_named_function() {
