@@ -686,27 +686,48 @@ fn hover(line int, word string, nth int) string {
 }
 
 fn test_hover_writes_declarations_as_v1_did() {
-	assert ask(work_dir, 'hv^', 35, 'p', 0) == '{"contents":{"kind":"markdown","value":"```v\\np main.Point\\n```"}}'
-	assert hover(35, 'Point', 0) == 'struct Point'
-	assert hover(40, 'Color', 0) == 'enum Color'
-	// An enum value, with its value: the next one, or the bit of a flag.
-	assert hover(40, 'blue', 0) == 'Color.blue = 6'
-	assert hover(14, 'red', 0) == 'Color.red = 0'
-	assert hover(62, 'write', 0) == 'Perm.write = 0b10 (2)'
-	assert hover(68, 'write', 0) == 'Perm.write = 0b10 (2)'
+	lines := program.split('\n')
+	type_hovers := ask_answers(work_dir, [
+		word_question(lines[34], 'hv^', 35, 'p', 0),
+		word_question(lines[34], 'hv^', 35, 'Point', 0),
+		word_question(lines[39], 'hv^', 40, 'Color', 0),
+		// An enum value, with its value: the next one, or the bit of a flag.
+		word_question(lines[39], 'hv^', 40, 'blue', 0),
+		word_question(lines[13], 'hv^', 14, 'red', 0),
+		word_question(lines[61], 'hv^', 62, 'write', 0),
+		word_question(lines[67], 'hv^', 68, 'write', 0),
+	])
+	assert type_hovers == [
+		hover_of('p main.Point'),
+		hover_of('struct Point'),
+		hover_of('enum Color'),
+		hover_of('Color.blue = 6'),
+		hover_of('Color.red = 0'),
+		hover_of('Perm.write = 0b10 (2)'),
+		hover_of('Perm.write = 0b10 (2)'),
+	]
 	assert hover(41, 'sum', 0) == 'fn sum() int'
 	assert hover(44, 'limit', 0) == 'const limit int'
 	assert hover(57, 'total', 0) == 'fn total(base int, nums ...int) int'
 	assert hover(59, 'new_builder', 0) == 'fn new_builder(initial_size int) strings.Builder'
 	assert hover(60, 'write_string', 0) == 'fn write_string(s string)'
 	assert hover(58, 'args', 0) == 'const args []string'
-	// A field, and a field named in a struct literal.
-	assert hover(56, 'x', 0) == 'x int'
-	assert hover(37, 'y', 0) == 'y int'
-	// The variables the language declares: `err`, `it`, and a guard's own.
-	assert hover(54, 'err', 0) == 'err IError'
-	assert hover(56, 'it', 0) == 'it main.Point'
-	assert hover(51, 'v', 0) == 'v int'
+	field_and_local_hovers := ask_answers(work_dir, [
+		// A field, and a field named in a struct literal.
+		word_question(lines[55], 'hv^', 56, 'x', 0),
+		word_question(lines[36], 'hv^', 37, 'y', 0),
+		// The variables the language declares: `err`, `it`, and a guard's own.
+		word_question(lines[53], 'hv^', 54, 'err', 0),
+		word_question(lines[55], 'hv^', 56, 'it', 0),
+		word_question(lines[50], 'hv^', 51, 'v', 0),
+	])
+	assert field_and_local_hovers == [
+		hover_of('x int'),
+		hover_of('y int'),
+		hover_of('err IError'),
+		hover_of('it main.Point'),
+		hover_of('v int'),
+	]
 }
 
 fn test_definition_prints_the_position_of_the_declaration() {
