@@ -3,12 +3,27 @@ import v.cmdexec
 
 const scope_review_program = 'module main\n\nstruct T {\n\tvalue int\n}\n\nfn identity[T](x T) T {\n\treturn x\n}\n\n__global number T = T{}\n\nstruct Holder[T] {\n\titem T\n}\n\n__global after_struct T = T{}\n\ntype Values[T] = []T\n\n__global after_alias T = T{}\n\nfn consume(x T) T {\n\treturn x\n}\n\nfn main() {\n\tprintln(number.value)\n}\n'
 
-fn scope_review_query(path string, position string, method string) string {
-	query := '${path}:${position.all_before(':')}:${method}^${position.all_after(':')}'
+fn scope_review_output(path string, query string) string {
 	result := cmdexec.run(@VEXE, ['-no-memory-limit', '-enable-globals', '-check', '-vls-mode',
 		'-line-info', query, path])
 	assert result.exit_code == 0, result.output
 	return result.output.trim_space()
+}
+
+fn scope_review_query(path string, position string, method string) string {
+	query := '${path}:${position.all_before(':')}:${method}^${position.all_after(':')}'
+	return scope_review_output(path, query)
+}
+
+fn scope_review_hover_and_definition(path string, position string) (string, string) {
+	prefix := '${path}:${position.all_before(':')}:'
+	column := position.all_after(':')
+	query := '${prefix}hv^${column}\t${prefix}gd^${column}'
+	answers := scope_review_output(path, query).split_into_lines()
+	assert answers.len == 2, answers.str()
+	assert answers[0].starts_with('0\t'), answers[0]
+	assert answers[1].starts_with('1\t'), answers[1]
+	return answers[0][2..], answers[1][2..]
 }
 
 fn test_type_parameter_hover_and_definition_stay_in_their_declaration_scope() {
@@ -18,21 +33,24 @@ fn test_type_parameter_hover_and_definition_stay_in_their_declaration_scope() {
 	path := os.join_path(root, 'scope.v')
 	os.write_file(path, scope_review_program)!
 	for position in ['11:16', '17:22', '21:21', '23:13'] {
-		hover := scope_review_query(path, position, 'hv')
+		hover, definition := scope_review_hover_and_definition(path, position)
 		assert hover.contains('struct T'), hover
 		assert !hover.contains('[T]'), hover
-		assert scope_review_query(path, position, 'gd') == '${path}:3:7'
+		assert definition == '${path}:3:7'
 	}
 	for position in ['7:12', '7:17', '7:20'] {
-		assert scope_review_query(path, position, 'hv').contains('[T]')
-		assert scope_review_query(path, position, 'gd') == '${path}:7:12'
+		hover, definition := scope_review_hover_and_definition(path, position)
+		assert hover.contains('[T]')
+		assert definition == '${path}:7:12'
 	}
 	for position in ['13:14', '14:6'] {
-		assert scope_review_query(path, position, 'hv').contains('[T]')
-		assert scope_review_query(path, position, 'gd') == '${path}:13:14'
+		hover, definition := scope_review_hover_and_definition(path, position)
+		assert hover.contains('[T]')
+		assert definition == '${path}:13:14'
 	}
-	assert scope_review_query(path, '19:19', 'hv').contains('[T]')
-	assert scope_review_query(path, '19:19', 'gd') == '${path}:19:12'
+	hover, definition := scope_review_hover_and_definition(path, '19:19')
+	assert hover.contains('[T]')
+	assert definition == '${path}:19:12'
 }
 
 // receiver_scope_layouts put right before a method of `Box[T]` each kind of
