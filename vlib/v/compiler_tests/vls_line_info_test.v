@@ -1485,18 +1485,15 @@ fn main() {}
 ') or {
 		panic(err)
 	}
-	labels := fn [dir] (line int, col int) []string {
-		answer := ask_at(dir, '${line}:${col}')
-		assert answer != '', '${line}:${col}'
-		return (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details.map(it.label)
-	}
+	answers := ask_answers(dir, ['16:16', '18:16', '21:16', '23:16', '30:12', '33:12'])
+	labels := answers.map(completion_details(it).map(it.label))
 	floats := ['eq_epsilon', 'str', 'strg', 'strlong', 'strsci']
-	assert labels(16, 16) == floats
-	assert labels(18, 16) == ['hex', 'hex_full', 'str']
-	assert labels(21, 16) == floats
-	assert labels(23, 16) == ['hex', 'hex2', 'hex_full', 'str']
-	assert labels(30, 12) == ['age', 'name']
-	assert labels(33, 12) == ['name']
+	assert labels[0] == floats
+	assert labels[1] == ['hex', 'hex_full', 'str']
+	assert labels[2] == floats
+	assert labels[3] == ['hex', 'hex2', 'hex_full', 'str']
+	assert labels[4] == ['age', 'name']
+	assert labels[5] == ['name']
 	assert ask(dir, 'gd^', 31, 'name', 0) == 'main.v:8:1'
 	assert ask(dir, 'gd^', 34, 'name', 0) == 'main.v:4:1'
 }
