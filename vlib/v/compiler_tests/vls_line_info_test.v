@@ -1339,16 +1339,11 @@ fn test_a_constrained_value_has_the_members_of_its_constraint() {
 	assert 'hex' !in labels, labels.str()
 }
 
-fn closure(code string, line int, word string, nth int) string {
-	return ask(os.join_path(work_dir, 'closures'), code, line, word, nth)
-}
-
-fn closure_completion(line int, col int) []string {
-	answer := ask_at(os.join_path(work_dir, 'closures'), '${line}:${col}')
+fn closure_members(answer string) []string {
 	if answer == '' {
 		return []
 	}
-	return (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details.map('${it.kind} ${it.label} ${it.detail}')
+	return completion_details(answer).map('${it.kind} ${it.label} ${it.detail}')
 }
 
 fn hover_of(text string) string {
@@ -1358,19 +1353,30 @@ fn hover_of(text string) string {
 fn test_the_implicit_variables_and_lambdas_of_a_constrained_body_have_its_members() {
 	// `it`, `a` and `b` of an array method over a `[]T`, and the parameter of a
 	// lambda there, are values of `T`: they have what `Named` declares.
+	dir := os.join_path(work_dir, 'closures')
+	lines := closures_program.split('\n')
+	questions := [
+		'18:19',
+		'19:20',
+		'21:21',
+		word_question(lines[19], 'hv^', 20, 'it', 0),
+		word_question(lines[18], 'hv^', 19, 'a', 0),
+		word_question(lines[20], 'hv^', 21, 'x', 1),
+	]
+	answers := ask_answers(dir, questions)
 	named := ['2 greet string', '5 name string']
-	assert closure_completion(18, 19) == named
-	assert closure_completion(19, 20) == named
-	assert closure_completion(21, 21) == named
-	assert closure('hv^', 20, 'it', 0) == hover_of('it T\\nT: implements main.Named')
-	assert closure('hv^', 19, 'a', 0) == hover_of('a T\\nT: implements main.Named')
-	assert closure('hv^', 21, 'x', 1) == hover_of('x T\\nT: implements main.Named')
+	for i, answer in answers[..3] {
+		assert closure_members(answer) == named, questions[i]
+	}
+	assert answers[3] == hover_of('it T\\nT: implements main.Named')
+	assert answers[4] == hover_of('a T\\nT: implements main.Named')
+	assert answers[5] == hover_of('x T\\nT: implements main.Named')
 	// The parameter of a lambda is where its uses are declared, in any body.
-	assert closure('gd^', 21, 'x', 1) == 'main.v:21:16'
-	assert closure('gd^', 26, 'u', 1) == 'main.v:26:20'
-	assert closure('hv^', 26, 'u', 1) == hover_of('u main.User')
+	assert ask(dir, 'gd^', 21, 'x', 1) == 'main.v:21:16'
+	assert ask(dir, 'gd^', 26, 'u', 1) == 'main.v:26:20'
+	assert ask(dir, 'hv^', 26, 'u', 1) == hover_of('u main.User')
 	// `err` of an `or {}` in a generic body: an `IError`.
-	errs := closure_completion(37, 14).map(it.all_after(' ').all_before(' '))
+	errs := closure_members(ask_at(dir, '37:14')).map(it.all_after(' ').all_before(' '))
 	assert 'msg' in errs && 'code' in errs, errs.str()
 }
 
