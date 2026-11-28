@@ -78,7 +78,8 @@ pub fn harmonic_mean[T](data []T) T {
 	}
 }
 
-// median returns the middlemost value of the given input array ( input array is assumed to be sorted )
+// median returns the middle value of an ascending sorted array.
+// For even lengths it averages the two middle values, rounding integer results toward zero.
 // Based on
 // https://www.mathsisfun.com/data/central-measures.html
 pub fn median[T](sorted_data []T) T {
@@ -87,7 +88,27 @@ pub fn median[T](sorted_data []T) T {
 	}
 	if sorted_data.len % 2 == 0 {
 		mid := (sorted_data.len / 2) - 1
-		return (sorted_data[mid] + sorted_data[mid + 1]) / T(2)
+		left := sorted_data[mid]
+		right := sorted_data[mid + 1]
+		$if T.unaliased_typ is $int {
+			// Average the shared and differing bits to get the floor without overflowing.
+			differing := left ^ right
+			floor := (left & right) + (differing >> 1)
+			if floor < T(0) && differing & T(1) != T(0) {
+				// Division truncates a negative odd sum toward zero.
+				return floor + T(1)
+			}
+			return floor
+		} $else {
+			sum := left + right
+			$if T.unaliased_typ is $float {
+				// The sum can overflow to infinity even when its average is finite.
+				if math.is_inf(f64(sum), 0) {
+					return left / T(2) + right / T(2)
+				}
+			}
+			return sum / T(2)
+		}
 	} else {
 		return sorted_data[((sorted_data.len - 1) / 2)]
 	}
