@@ -3176,13 +3176,16 @@ fn main() {
 }
 "
 
-fn test_a_value_of_a_type_parameter_shows_what_the_type_parameter_is_there() {
+fn test_hovers_of_type_parameters_and_narrowed_values() {
+	half := 'fn half[T Number3](x T, y T, xs []T) f64 {'
+	half_line := line_of(narrowing_program, half)
 	number3 := 'T: int | i64 | f64'
 	named := 'T: implements main.Named'
-	assert_hovers('narrowing', narrowing_program, [
+	all := '[T Number3]\\n${number3}'
+	checks := [
 		// Outside the `$if`s that decide it, a type parameter stays, with what it
 		// can be on a line of its own.
-		HoverExpectation{'fn half[T Number3](x T, y T, xs []T) f64 {', 'x', 'x T\\n${number3}'},
+		HoverExpectation{half, 'x', 'x T\\n${number3}'},
 		HoverExpectation{'\tsame := x', 'same', 'same T\\n${number3}'},
 		// In the branch of `$if T is f64 {` it is `f64`, for every value of it.
 		HoverExpectation{'\t\tprintln(xs)', 'xs', 'xs []f64'},
@@ -3208,7 +3211,39 @@ fn test_a_value_of_a_type_parameter_shows_what_the_type_parameter_is_there() {
 		HoverExpectation{'\t\treturn y.age + mine.len + all.len', 'age', 'age int'},
 		HoverExpectation{'\t\treturn y.age + mine.len + all.len', 'mine', 'mine []main.User'},
 		HoverExpectation{'\treturn all.len', 'all', 'all []T\\n${named}'},
-	])
+		// The type parameter itself, where it is declared, tested, and narrowed.
+		HoverExpectation{half, 'T', all},
+		HoverExpectation{'\t\$if T is f64 {', 'T', all},
+		HoverExpectation{'\t\tzero := T(0)', 'T', '[T Number3]\\nT: f64'},
+		// A function writes its type parameters, with their constraints.
+		HoverExpectation{'\tprintln(half(1.0, 2.0, [3.0]))', 'half', 'fn half[T Number3](x T, y T, xs []T) f64'},
+		// A condition sees what earlier tests have left of each value's type.
+		HoverExpectation{'\t\t\$if t is f64 {', 't', 't T\\nT: i64 | f64'},
+		HoverExpectation{'\t\$if y is User {', 'y', 'y T\\n${named}'},
+		HoverExpectation{'\t\$if x is f64 {', 'x', 'x T\\n${number3}'},
+		// Run-time tests narrow parameters in if and match branches.
+		HoverExpectation{'\t\treturn s.r', 's', 's main.Circle'},
+		HoverExpectation{'\t\tSquare { s.side }', 's', 's main.Square'},
+		// An interface narrowed to a struct refers to the object the interface holds
+		// (master's #29058): `if n is User {` makes `n` a `&User`.
+		HoverExpectation{'\t\treturn n.age', 'n', 'n &main.User'},
+		// Where it is declared, and outside those branches, its declared type.
+		HoverExpectation{'fn area(s Shape) f64 {', 's', 's main.Shape'},
+		HoverExpectation{'\treturn match s {', 's', 's main.Shape'},
+	]
+	comment := '\t// the value of t'
+	mut questions := checks.map(word_question(it.line, 'hv^', line_of(narrowing_program, it.line),
+		it.word, 0))
+	questions << word_question(half, 'hv^', half_line, 'T', 3)
+	questions << word_question(comment, 'hv^', line_of(narrowing_program, comment), 't', 0)
+	answers := ask_answers(program_dir('narrowing', narrowing_program), questions)
+	for i, check in checks {
+		assert answers[i] == hover_of(check.text), '${check.line}: ${check.word}'
+	}
+	// A use in a parameter's type refers to the declared type parameter.
+	assert answers[checks.len] == hover_of(all)
+	// The same word in a comment is no value.
+	assert answers[checks.len + 1] == ''
 }
 
 fn test_a_type_parameter_of_an_unknown_constraint_says_nothing_more() {
@@ -3220,89 +3255,30 @@ fn test_a_type_parameter_of_an_unknown_constraint_says_nothing_more() {
 	])
 }
 
-fn test_a_type_parameter_shows_its_constraint_and_what_it_is_there() {
-	half := 'fn half[T Number3](x T, y T, xs []T) f64 {'
-	half_line := line_of(narrowing_program, half)
-	condition := '\t\$if T is f64 {'
-	branch := '\t\tzero := T(0)'
-	call := '\tprintln(half(1.0, 2.0, [3.0]))'
-	answers := ask_answers(program_dir('narrowing', narrowing_program), [
-		word_question(half, 'hv^', half_line, 'T', 0),
-		word_question(half, 'hv^', half_line, 'T', 3),
-		word_question(condition, 'hv^', line_of(narrowing_program, condition), 'T', 0),
-		word_question(branch, 'hv^', line_of(narrowing_program, branch), 'T', 0),
-		word_question(call, 'hv^', line_of(narrowing_program, call), 'half', 0),
-	])
-	all := '[T Number3]\\nT: int | i64 | f64'
-	// Where it is declared, in the types of the parameters and in a `$if`.
-	assert answers[0] == hover_of(all)
-	assert answers[1] == hover_of(all)
-	assert answers[2] == hover_of(all)
-	// In the branch of that `$if`, `f64`.
-	assert answers[3] == hover_of('[T Number3]\\nT: f64')
-	// A function writes its type parameters, with their constraints.
-	assert answers[4] == hover_of('fn half[T Number3](x T, y T, xs []T) f64')
-}
-
-fn test_a_value_in_the_condition_of_a_compile_time_if_is_a_value_there() {
-	t_check := '\t\t\$if t is f64 {'
-	y_check := '\t\$if y is User {'
-	x_check := '\t\$if x is f64 {'
-	comment := '\t// the value of t'
-	answers := ask_answers(program_dir('narrowing', narrowing_program), [
-		word_question(t_check, 'hv^', line_of(narrowing_program, t_check), 't', 0),
-		word_question(y_check, 'hv^', line_of(narrowing_program, y_check), 'y', 0),
-		word_question(x_check, 'hv^', line_of(narrowing_program, x_check), 'x', 0),
-		word_question(comment, 'hv^', line_of(narrowing_program, comment), 't', 0),
-	])
-	// The condition keeps `t` as text: it is the parameter, with what the `$if`s
-	// around it leave of `T`, not yet what this one decides.
-	assert answers[0] == hover_of('t T\\nT: i64 | f64')
-	// A local that holds a `T`, and a parameter with no `$if` around it.
-	assert answers[1] == hover_of('y T\\nT: implements main.Named')
-	assert answers[2] == hover_of('x T\\nT: int | i64 | f64')
-	// The same word in a comment is no value.
-	assert answers[3] == ''
-}
-
 fn test_a_type_parameter_is_declared_in_the_list_of_its_declaration() {
 	// `T` of `take[T Named]`, of `plain[T]`, of `Box[T Named]` and of a method of
 	// `Box[T]` is the type parameter, which hides the struct `T` of the module.
 	source := "module main\n\ninterface Named {\n\tname string\n}\n\nstruct T {\n\tname string\n}\n\nfn take[T Named](x T) T {\n\treturn x\n}\n\nfn plain[T](x T) T {\n\treturn x\n}\n\nstruct Box[T Named] {\n\titem T\n}\n\nfn (b Box[T]) get() T {\n\treturn T(b.item)\n}\n\nfn main() {\n\tt := T{\n\t\tname: 'a'\n\t}\n\tprintln(take(t).name)\n\tprintln(plain(t).name)\n}\n"
 	dir := program_dir('type_param_definition', source)
 	lines := source.split('\n')
-	mut questions := []string{cap: 6}
+	mut questions := []string{cap: 10}
 	for nth in 0 .. 3 {
 		questions << word_question(lines[10], 'gd^', 11, 'T', nth)
 		questions << word_question(lines[14], 'gd^', 15, 'T', nth)
 	}
-	answers := ask_answers(dir, questions)
-	for nth in 0 .. 3 {
-		assert answers[2 * nth] == 'main.v:11:8', 'take T occurrence ${nth + 1}'
-		assert answers[2 * nth + 1] == 'main.v:15:9', 'plain T occurrence ${nth + 1}'
-	}
-	type_answers := ask_answers(dir, [
+	questions << [
 		word_question(lines[19], 'gd^', 20, 'T', 0),
 		word_question(lines[22], 'gd^', 23, 'T', 1),
 		word_question(lines[23], 'gd^', 24, 'T', 0),
 		// The struct `T` where a type parameter does not hide it.
 		word_question(lines[27], 'gd^', 28, 'T', 0),
-	])
-	assert type_answers == ['main.v:19:11', 'main.v:23:10', 'main.v:23:10', 'main.v:7:7']
-}
-
-fn test_a_parameter_is_the_type_that_is_or_match_makes_it() {
-	assert_hovers('narrowing', narrowing_program, [
-		// As a local is: `if s is Circle {` and a branch of `match s {`.
-		HoverExpectation{'\t\treturn s.r', 's', 's main.Circle'},
-		HoverExpectation{'\t\tSquare { s.side }', 's', 's main.Square'},
-		// An interface narrowed to a struct refers to the object the interface holds
-		// (master's #29058): `if n is User {` makes `n` a `&User`.
-		HoverExpectation{'\t\treturn n.age', 'n', 'n &main.User'},
-		// Where it is declared, and outside those branches, its declared type.
-		HoverExpectation{'fn area(s Shape) f64 {', 's', 's main.Shape'},
-		HoverExpectation{'\treturn match s {', 's', 's main.Shape'},
-	])
+	]
+	answers := ask_answers(dir, questions)
+	for nth in 0 .. 3 {
+		assert answers[2 * nth] == 'main.v:11:8', 'take T occurrence ${nth + 1}'
+		assert answers[2 * nth + 1] == 'main.v:15:9', 'plain T occurrence ${nth + 1}'
+	}
+	assert answers[6..] == ['main.v:19:11', 'main.v:23:10', 'main.v:23:10', 'main.v:7:7']
 }
 
 const skipped_branches_program = "module main
@@ -4336,6 +4312,7 @@ fn test_a_method_of_an_interface_is_its_member_generic_or_not() {
 	less := '\treturn if a.less(b) { a } else { b }'
 	get := '\treturn s.get()'
 	get_name := '\treturn s.get().name'
+	greeter := '\tgreeter := n.greet'
 	answers := ask_answers(dir, [
 		interface_method_question('hv^', less, 'less'),
 		interface_method_question('gd^', less, 'less'),
@@ -4343,6 +4320,12 @@ fn test_a_method_of_an_interface_is_its_member_generic_or_not() {
 		interface_method_question('gd^', get, 'get'),
 		interface_method_question('hv^', get_name, 'get'),
 		interface_method_question('gd^', get_name, 'get'),
+		// A method named without a call also refers to the interface member.
+		interface_method_question('hv^', greeter, 'greet'),
+		interface_method_question('gd^', greeter, 'greet'),
+		// Calls on the interface or on a type parameter it constrains.
+		interface_method_question('hv^', '\treturn n.greet() + greeter()', 'greet'),
+		interface_method_question('gd^', '\treturn x.greet()', 'greet'),
 	])
 	assert answers[0] == hover_of('fn less(other T) bool')
 	assert answers[1] == 'main.v:${line_of(interface_methods_program, '\tless(other T) bool')}:1'
@@ -4351,16 +4334,7 @@ fn test_a_method_of_an_interface_is_its_member_generic_or_not() {
 	assert answers[3] == get_at
 	assert answers[4] == hover_of('fn get() main.User')
 	assert answers[5] == get_at
-	// A method named without a call also refers to the interface member.
-	greeter := '\tgreeter := n.greet'
 	greet_hover := hover_of('fn greet() string')
 	greet_at := 'main.v:${line_of(interface_methods_program, '\tgreet() string')}:1'
-	greet_answers := ask_answers(dir, [
-		interface_method_question('hv^', greeter, 'greet'),
-		interface_method_question('gd^', greeter, 'greet'),
-		// Calls on the interface or on a type parameter it constrains.
-		interface_method_question('hv^', '\treturn n.greet() + greeter()', 'greet'),
-		interface_method_question('gd^', '\treturn x.greet()', 'greet'),
-	])
-	assert greet_answers == [greet_hover, greet_at, greet_hover, greet_at]
+	assert answers[6..] == [greet_hover, greet_at, greet_hover, greet_at]
 }
