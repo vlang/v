@@ -1,10 +1,21 @@
 module net
 
-// NB: winsock2/ws2tcpip must come first; iphlpapi.h depends on them.
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <iphlpapi.h>
-#flag windows -liphlpapi
+// GetAdaptersAddresses lives in iphlpapi.dll. The bundled TCC ships neither
+// iphlpapi.h nor an import library for it, and this file is part of `net`
+// itself, so including the header here would stop every program that imports
+// `net` from building with TCC. The function is resolved at run time instead,
+// as net.dns does for the same call.
+//
+// 32-bit x86 keeps the header: the function is stdcall there, V does not apply
+// `callconv` to function types yet, and a stdcall function called as cdecl
+// leaves the stack unbalanced.
+$if i386 {
+	// NB: winsock2/ws2tcpip must come first; iphlpapi.h depends on them.
+	#include <winsock2.h>
+	#include <ws2tcpip.h>
+	#include <iphlpapi.h>
+	#flag windows -liphlpapi
+}
 
 // This file reads Windows adapter data through byte offsets into the
 // IP_ADAPTER_ADDRESSES structures, so no SDK struct tags are redeclared
@@ -13,10 +24,38 @@ module net
 // the 64-bit and 32-bit SDK layouts.
 
 fn C.GetAdaptersAddresses(family u32, flags u32, reserved voidptr, addresses voidptr, size voidptr) u32
+fn C.LoadLibraryW(name &u16) voidptr
+fn C.GetProcAddress(handle voidptr, procname &u8) voidptr
+fn C.FreeLibrary(handle voidptr) bool
 fn C.lstrlenW(s voidptr) int
 fn C.WideCharToMultiByte(code_page u32, flags u32, wide voidptr, widelen int, multi voidptr, multilen int, defchar voidptr, used_default voidptr) int
 
+@[callconv: 'stdcall']
+type GetAdaptersAddressesFn = fn (u32, u32, voidptr, voidptr, voidptr) u32
+
 const iface_oper_status_up = 1
+
+// get_adapters_addresses calls GetAdaptersAddresses and returns its result
+// code. It fails only when the function itself cannot be reached.
+fn get_adapters_addresses(family u32, flags u32, addresses voidptr, size voidptr) !u32 {
+	$if i386 {
+		return C.GetAdaptersAddresses(family, flags, unsafe { nil }, addresses, size)
+	} $else {
+		library := C.LoadLibraryW('iphlpapi.dll'.to_wide())
+		if library == unsafe { nil } {
+			return error('net: cannot load iphlpapi.dll')
+		}
+		defer {
+			C.FreeLibrary(library)
+		}
+		symbol := C.GetProcAddress(library, &u8(c'GetAdaptersAddresses'))
+		if symbol == unsafe { nil } {
+			return error('net: iphlpapi.dll has no GetAdaptersAddresses')
+		}
+		call := GetAdaptersAddressesFn(symbol)
+		return call(family, flags, unsafe { nil }, addresses, size)
+	}
+}
 
 // Interface describes one network interface with its addresses.
 pub struct Interface {
@@ -30,23 +69,19 @@ pub:
 pub fn interfaces() ![]Interface {
 	family := u32(0) // AF_UNSPEC
 	mut size := u32(0)
-	unsafe {
-		// The sizing call is expected to fail with
-		// ERROR_BUFFER_OVERFLOW (111) and report the size.
-		rc := C.GetAdaptersAddresses(family, 0, unsafe { nil }, unsafe { nil }, voidptr(&size))
-		if rc != 0 && rc != 111 {
-			return error('net: GetAdaptersAddresses sizing failed with code ${rc}')
-		}
+	// The sizing call is expected to fail with
+	// ERROR_BUFFER_OVERFLOW (111) and report the size.
+	sizing_rc := get_adapters_addresses(family, 0, unsafe { nil }, voidptr(&size))!
+	if sizing_rc != 0 && sizing_rc != 111 {
+		return error('net: GetAdaptersAddresses sizing failed with code ${sizing_rc}')
 	}
 	if size == 0 {
 		return error('net: GetAdaptersAddresses failed')
 	}
 	mut buf := []u8{len: int(size)}
-	unsafe {
-		rc := C.GetAdaptersAddresses(family, 0, unsafe { nil }, voidptr(buf.data), voidptr(&size))
-		if rc != 0 {
-			return error('net: GetAdaptersAddresses failed with code ${rc}')
-		}
+	rc := get_adapters_addresses(family, 0, voidptr(buf.data), voidptr(&size))!
+	if rc != 0 {
+		return error('net: GetAdaptersAddresses failed with code ${rc}')
 	}
 	ps := int(sizeof(voidptr))
 	// Vista+ (LH) layouts, verified against the SDK headers:
