@@ -1810,6 +1810,16 @@ fn run_array_map_escape_batch(cases []ArrayMapEscapeCase) {
 	}
 }
 
+fn gen_c_from_main_fixtures(v3_bin string, name string, sources map[string]string, mut files map[string]string) string {
+	mut calls := []string{cap: sources.len}
+	for case, source in sources {
+		files['${case}.v'] = source.replace_once('fn main() {', 'fn ${case}() {')
+		calls << '\t${case}()'
+	}
+	files['main.v'] = 'module main\n\nfn main() {\n${calls.join('\n')}\n}\n'
+	return gen_c_from_project(v3_bin, name, files, '')
+}
+
 fn gen_c_from_project(v3_bin string, name string, files map[string]string, input string) string {
 	return gen_c_from_project_with_flags(v3_bin, name, '', files, input)
 }
@@ -2661,16 +2671,34 @@ fn main() {
 	run_good_module_batch(v3_bin, 'review_value_and_call_runtime', cases)
 }
 
-fn test_nested_generic_main_type_does_not_emit_imported_homonym_specialization() {
+fn test_import_and_shared_array_codegen() {
 	v3_bin := build_v3_review_transform()
-	generated := gen_c_from_project(v3_bin, 'nested_generic_main_type_collision', {
-		'v.mod':         "Module { name: 'nested_generic_main_type_collision' }\n"
-		'codec/codec.v': 'module codec\n\npub struct Decoder {}\n\npub fn decode[T]() T {\n\tmut result := T{}\n\tdecoder := Decoder{}\n\tdecoder.decode_value(mut result)\n\treturn result\n}\n\nfn (decoder Decoder) decode_value[T](mut value T) {\n\t_ = decoder\n\t_ = value\n}\n'
-		'other/other.v': 'module other\n\npub struct Item {\npub:\n\tname string\n}\n'
-		'main.v':        'module main\n\nimport codec\nimport other\n\nstruct Item {\n\tvalue int\n}\n\nfn main() {\n\t_ := other.Item{}\n\titem := codec.decode[Item]()\n\tprintln(int_str(item.value))\n}\n'
-	}, 'main.v')
-	assert generated.contains('codec__Decoder_Item__decode_value'), generated
-	assert !generated.contains('codec__Decoder_other__Item__decode_value'), generated
+	mut files := {
+		'codec/codec.v':   'module codec\n\npub struct Decoder {}\n\npub fn decode[T]() T {\n\tmut result := T{}\n\tdecoder := Decoder{}\n\tdecoder.decode_value(mut result)\n\treturn result\n}\n\nfn (decoder Decoder) decode_value[T](mut value T) {\n\t_ = decoder\n\t_ = value\n}\n'
+		'other/other.v':   'module other\n\npub struct Item {\npub:\n\tname string\n}\n'
+		'widget/widget.v': 'module widget\n\npub type Callback = fn (int)\n\npub struct Config {\npub:\n\tcallback Callback = unsafe { Callback(0) }\n}\n'
+	}
+	c_source := gen_c_from_main_fixtures(v3_bin, 'import_and_shared_array_codegen', {
+		'nested_generic_main_type_collision':         'module main\n\nimport codec\nimport other\n\nstruct Item {\n\tvalue int\n}\n\nfn main() {\n\t_ := other.Item{}\n\titem := codec.decode[Item]()\n\tprintln(int_str(item.value))\n}\n'
+		'optional_append_to_shared_array_autolock_c': 'fn next_value() ?int {
+	return 7
+}
+
+fn main() {
+	shared values := []int{}
+	values << next_value() or { return }
+}
+'
+		'imported_struct_default_fn_alias':           'module main\n\nimport widget\n\nfn main() {\n\tconfig := widget.Config{}\n\tprintln(config.callback == unsafe { nil })\n}\n'
+	}, mut files)
+	check_nested_generic_main_type_collision(c_source)
+	check_optional_append_to_shared_array_autolock_c(c_source)
+	check_imported_struct_default_fn_alias(c_source)
+}
+
+fn check_nested_generic_main_type_collision(c_source string) {
+	assert c_source.contains('codec__Decoder_Item__decode_value'), c_source
+	assert !c_source.contains('codec__Decoder_other__Item__decode_value'), c_source
 }
 
 fn test_building_v_function_values_keep_plain_and_module_helpers() {
@@ -5326,9 +5354,11 @@ fn main() {
 ', 'cannot modify constant `counter`')
 }
 
-fn test_scalar_return_call_does_not_heap_promote_address_argument() {
+fn test_escape_and_return_codegen() {
 	v3_bin := build_v3_review_transform()
-	c_source := gen_c_from_source(v3_bin, 'scalar_return_address_arg', 'struct Item {
+	mut files := map[string]string{}
+	c_source := gen_c_from_main_fixtures(v3_bin, 'escape_and_return_codegen', {
+		'scalar_return_address_arg':                  'struct Item {
 	value int
 }
 
@@ -5346,16 +5376,8 @@ fn forward() int {
 fn main() {
 	println(int_str(forward()))
 }
-')
-	body := c_fn_body(c_source, 'i64 forward(void) {')
-	assert body.contains('main__Item item ='), body
-	assert !body.contains('main__Item* item ='), body
-	assert !body.contains('memdup(&__esc'), body
-}
-
-fn test_smartcast_selector_return_keeps_existing_sum_box() {
-	v3_bin := build_v3_review_transform()
-	c_source := gen_c_from_source(v3_bin, 'smartcast_selector_sum_return', 'struct First {
+'
+		'smartcast_selector_sum_return':              'struct First {
 	value int
 }
 
@@ -5382,15 +5404,81 @@ fn main() {
 	}
 	println(selected(&holder))
 }
-')
+'
+		'heap_escaping_amp_reassign_source_c':        'fn make() &int {\n\tmut a := 10\n\tmut b := 20\n\tmut p := &a\n\tp = &b\n\treturn p\n}\n\nfn main() {\n\t_ := make()\n}\n'
+		'implicit_voidptr_argument_heap_escape':      'struct State {
+mut:
+	value int
+}
+
+fn retain(_ voidptr) {}
+
+fn register() {
+	mut state := State{}
+	retain(state)
+	state.value = 7
+}
+
+fn main() {
+	register()
+}
+'
+		'shadowed_allocation_helper_fn_value_escape': 'fn pass(p &int) &int {
+	return p
+}
+
+fn make_memdup() &int {
+	local := 41
+	memdup := pass
+	return memdup(&local)
+}
+
+fn make_memdup_noscan() &int {
+	local := 42
+	memdup_noscan := pass
+	return memdup_noscan(&local)
+}
+
+fn make_aligned_memdup() &int {
+	local := 43
+	v3_aligned_memdup := pass
+	return v3_aligned_memdup(&local)
+}
+
+fn make_builtin_memdup() &int {
+	local := 44
+	return unsafe { &int(memdup(&local, int(sizeof(int)))) }
+}
+
+fn main() {
+	println(unsafe { *make_memdup() })
+	println(unsafe { *make_memdup_noscan() })
+	println(unsafe { *make_aligned_memdup() })
+	println(unsafe { *make_builtin_memdup() })
+}
+'
+	}, mut files)
+	check_scalar_return_address_arg(c_source)
+	check_smartcast_selector_sum_return(c_source)
+	check_heap_escaping_amp_reassign_source_c(c_source)
+	check_implicit_voidptr_argument_heap_escape(c_source)
+	check_shadowed_allocation_helper_fn_value_escape(c_source)
+}
+
+fn check_scalar_return_address_arg(c_source string) {
+	body := c_fn_body(c_source, 'i64 forward(void) {')
+	assert body.contains('main__Item item ='), body
+	assert !body.contains('main__Item* item ='), body
+	assert !body.contains('memdup(&__esc'), body
+}
+
+fn check_smartcast_selector_sum_return(c_source string) {
 	body := c_fn_body(c_source, 'Value selected(main__Holder* holder) {')
 	assert body.contains('return holder->value;'), body
 	assert !body.contains('memdup('), body
 }
 
-fn test_heap_escaping_amp_reassignment_moves_current_source() {
-	v3_bin := build_v3_review_transform()
-	c_source := gen_c_from_source(v3_bin, 'heap_escaping_amp_reassign_source_c', 'fn make() &int {\n\tmut a := 10\n\tmut b := 20\n\tmut p := &a\n\tp = &b\n\treturn p\n}\n\nfn main() {\n\t_ := make()\n}\n')
+fn check_heap_escaping_amp_reassign_source_c(c_source string) {
 	body := c_fn_body(c_source, 'i64* make(void) {')
 	assert body.contains('i64* b ='), body
 	assert !body.contains('p = &b;'), body
@@ -6037,19 +6125,8 @@ fn main() {}
 	assert !c_source.contains('#define __V_HEADERLESS_STDINT_H'), c_source
 }
 
-fn test_optional_append_to_shared_array_is_autolocked() {
-	v3_bin := build_v3_review_transform()
-	source := 'fn next_value() ?int {
-	return 7
-}
-
-fn main() {
-	shared values := []int{}
-	values << next_value() or { return }
-}
-'
-	c_source := gen_c_from_source(v3_bin, 'optional_append_to_shared_array_autolock_c', source)
-	body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+fn check_optional_append_to_shared_array_autolock_c(c_source string) {
+	body := c_fn_body(c_source, 'void optional_append_to_shared_array_autolock_c(void) {')
 	push_idx := body.index('array_push(') or { -1 }
 	assert push_idx >= 0, body
 	lock_idx := body[..push_idx].last_index('sync__RwMutex__lock(') or { -1 }
@@ -6070,13 +6147,7 @@ fn test_comptime_field_generic_calls_keep_resolved_field_types() {
 	assert out == '0'
 }
 
-fn test_imported_struct_default_qualifies_function_alias_cast() {
-	v3_bin := build_v3_review_transform()
-	c_source := gen_c_from_project(v3_bin, 'imported_struct_default_fn_alias', {
-		'v.mod':           "Module { name: 'imported_struct_default_fn_alias' }\n"
-		'widget/widget.v': 'module widget\n\npub type Callback = fn (int)\n\npub struct Config {\npub:\n\tcallback Callback = unsafe { Callback(0) }\n}\n'
-		'main.v':          'module main\n\nimport widget\n\nfn main() {\n\tconfig := widget.Config{}\n\tprintln(config.callback == unsafe { nil })\n}\n'
-	}, 'main.v')
+fn check_imported_struct_default_fn_alias(c_source string) {
 	assert !c_source.contains('(Callback)'), c_source
 }
 
@@ -11857,26 +11928,8 @@ fn main() {
 	assert out == '42'
 }
 
-fn test_implicit_voidptr_argument_promotes_local_to_heap() {
-	v3_bin := build_v3_review_transform()
-	generated := gen_c_from_source(v3_bin, 'implicit_voidptr_argument_heap_escape', 'struct State {
-mut:
-	value int
-}
-
-fn retain(_ voidptr) {}
-
-fn register() {
-	mut state := State{}
-	retain(state)
-	state.value = 7
-}
-
-fn main() {
-	register()
-}
-')
-	body := c_fn_body(generated, 'void v_register(void) {')
+fn check_implicit_voidptr_argument_heap_escape(c_source string) {
+	body := c_fn_body(c_source, 'void v_register(void) {')
 	assert body.contains('main__State* state'), body
 	assert body.contains('memdup'), body
 }
@@ -12069,42 +12122,7 @@ fn main() {
 	assert out == '1\n[[1, 2, 9]]\n[[3, 4]]'
 }
 
-fn test_shadowed_allocation_helper_fn_values_preserve_address_escapes() {
-	v3_bin := build_v3_review_transform()
-	c_source := gen_c_from_source(v3_bin, 'shadowed_allocation_helper_fn_value_escape', 'fn pass(p &int) &int {
-	return p
-}
-
-fn make_memdup() &int {
-	local := 41
-	memdup := pass
-	return memdup(&local)
-}
-
-fn make_memdup_noscan() &int {
-	local := 42
-	memdup_noscan := pass
-	return memdup_noscan(&local)
-}
-
-fn make_aligned_memdup() &int {
-	local := 43
-	v3_aligned_memdup := pass
-	return v3_aligned_memdup(&local)
-}
-
-fn make_builtin_memdup() &int {
-	local := 44
-	return unsafe { &int(memdup(&local, int(sizeof(int)))) }
-}
-
-fn main() {
-	println(unsafe { *make_memdup() })
-	println(unsafe { *make_memdup_noscan() })
-	println(unsafe { *make_aligned_memdup() })
-	println(unsafe { *make_builtin_memdup() })
-}
-')
+fn check_shadowed_allocation_helper_fn_value_escape(c_source string) {
 	for fn_name in ['make_memdup', 'make_memdup_noscan', 'make_aligned_memdup'] {
 		body := c_fn_body(c_source, 'i64* ${fn_name}(void) {')
 		assert body.contains('i64* local ='), body

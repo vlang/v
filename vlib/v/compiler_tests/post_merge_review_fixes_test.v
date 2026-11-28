@@ -195,7 +195,7 @@ fn run_good_module_batch_with_main_files(v3_bin string, name string, cases []Rev
 	return run_good_fixture_cases(v3_bin, name, root, cases)
 }
 
-fn run_good_main_batch(v3_bin string, name string, cases []ReviewRuntimeCase, main_files map[string]string) string {
+fn run_good_main_batch(v3_bin string, name string, cases []ReviewRuntimeCase, main_files map[string]string, flags ...string) string {
 	root := '${tmp_test_path(name)}_project'
 	for file, source in main_files {
 		write_project_file(root, file, source)
@@ -207,12 +207,12 @@ fn run_good_main_batch(v3_bin string, name string, cases []ReviewRuntimeCase, ma
 			'fn ${case.name}() {'))
 	}
 	write_project_file(root, 'main.v', "module main\n\nimport os\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n")
-	return run_good_fixture_cases(v3_bin, name, root, cases)
+	return run_good_fixture_cases(v3_bin, name, root, cases, ...flags)
 }
 
-fn run_good_fixture_cases(v3_bin string, name string, root string, cases []ReviewRuntimeCase) string {
+fn run_good_fixture_cases(v3_bin string, name string, root string, cases []ReviewRuntimeCase, flags ...string) string {
 	bin_path := tmp_test_path(name)
-	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin_path])
+	compile := os.exec([v3_bin, ...flags, root, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
 	for case in cases {
@@ -1708,9 +1708,10 @@ fn test_single_letter_enum_names_are_rejected() {
 	v3_bin := build_v3()
 }
 
-fn test_nested_sum_is_check_evaluates_subject_once() {
+fn test_global_runtime_cases() {
 	v3_bin := build_v3()
-	out := run_good_with_flags(v3_bin, 'nested_sum_is_subject_once', '-enable-globals', '__global calls int
+	run_good_main_batch(v3_bin, 'global_runtime_cases', [
+		ReviewRuntimeCase{'nested_sum_is_subject_once', '__global calls int
 
 struct Leaf {
 	n int
@@ -1734,8 +1735,185 @@ fn main() {
 		println("missing")
 	}
 }
-')
-	assert out == '1'
+', '1'},
+		ReviewRuntimeCase{'select_exception_branch_defers', 'import time
+
+__global trace int
+
+fn cleanup() {
+	trace = trace * 10 + 2
+}
+
+fn main() {
+	select {
+		else {
+			defer {
+				cleanup()
+			}
+			trace = 1
+		}
+	}
+	println(int_str(trace))
+	trace = 0
+	ch := chan int{}
+	select {
+		_ := <-ch {}
+		1 * time.nanosecond {
+			defer {
+				cleanup()
+			}
+			trace = 3
+		}
+	}
+	println(int_str(trace))
+}
+', '12\n32'},
+		ReviewRuntimeCase{'assoc_return_runs_defers', 'struct Point {\n\tx int\n\ty int\n}\n\n__global hit int\n\nfn make_point() Point {\n\tbase := Point{\n\t\tx: 1\n\t\ty: 2\n\t}\n\tdefer {\n\t\thit = 7\n\t}\n\treturn Point{\n\t\t...base\n\t\tx: 5\n\t}\n}\n\nfn main() {\n\tp := make_point()\n\tprintln(int_str(p.x))\n\tprintln(int_str(hit))\n}\n', '5\n7'},
+		ReviewRuntimeCase{'interface_local_address_escape_variants', 'interface Reader {
+	get() int
+}
+
+struct Box {
+mut:
+	n int
+}
+
+struct Holder {
+mut:
+	inner Box
+}
+
+struct StaticReader {
+	n int
+}
+
+__global fallback Box
+__global global_box Box
+
+fn (b &Box) get() int {
+	return b.n
+}
+
+fn (s StaticReader) get() int {
+	return s.n
+}
+
+fn make_aggregate_reader() []Reader {
+	mut b := Box{
+		n: 5
+	}
+	r := Reader(&b)
+	b.n = 6
+	return [r]
+}
+
+fn make_assigned_reader() Reader {
+	mut b := Box{
+		n: 7
+	}
+	mut r := Reader(StaticReader{
+		n: 0
+	})
+	r = Reader(&b)
+	b.n = 8
+	return r
+}
+
+fn make_pointer_alias_reader() Reader {
+	mut b := Box{
+		n: 9
+	}
+	p := &b
+	q := p
+	r := Reader(q)
+	b.n = 10
+	return r
+}
+
+fn make_field_reader() Reader {
+	mut holder := Holder{
+		inner: Box{
+			n: 11
+		}
+	}
+	r := Reader(&holder.inner)
+	holder.inner.n = 12
+	return r
+}
+
+fn make_pointer_alias_field_reader() Reader {
+	mut holder := Holder{
+		inner: Box{
+			n: 18
+		}
+	}
+	p := &holder
+	q := p
+	r := Reader(&q.inner)
+	holder.inner.n = 19
+	return r
+}
+
+fn make_conditional_reader(use_global bool) Reader {
+	mut b := Box{
+		n: 13
+	}
+	mut r := Reader(&b)
+	if use_global {
+		r = Reader(&fallback)
+	}
+	b.n = 14
+	return r
+}
+
+fn make_global_reader() Reader {
+	r := Reader(&global_box)
+	return r
+}
+
+fn main() {
+	fallback = Box{
+		n: 15
+	}
+	global_box = Box{
+		n: 16
+	}
+	global_reader := make_global_reader()
+	global_box.n = 17
+	println(int_str(make_aggregate_reader()[0].get()))
+	println(int_str(make_assigned_reader().get()))
+	println(int_str(make_pointer_alias_reader().get()))
+	println(int_str(make_field_reader().get()))
+	println(int_str(make_pointer_alias_field_reader().get()))
+	println(int_str(make_conditional_reader(false).get()))
+	println(int_str(make_conditional_reader(true).get()))
+	println(int_str(global_reader.get()))
+}
+', '6\n8\n10\n12\n19\n14\n15\n17'},
+		ReviewRuntimeCase{'runtime_sum_typeof', '__global typeof_calls int
+
+type Value = int | string
+
+fn make_typeof_value() Value {
+	typeof_calls++
+	return Value(9)
+}
+
+fn main() {
+	a := Value(7)
+	b := Value("v3")
+	p := &Value("pointer")
+	nil_pointer := unsafe { &Value(nil) }
+	println(unsafe { typeof(a) })
+	println(unsafe { typeof(b) })
+	println(unsafe { typeof(p) })
+	println(unsafe { typeof(nil_pointer) })
+	println(typeof(nil_pointer).name)
+	println(typeof(make_typeof_value()).name)
+	println(int_str(typeof_calls))
+}
+', 'int\nstring\nstring\nunknown Value\n&Value\nValue\n0'},
+	], map[string]string{}, '-enable-globals')
 }
 
 fn interface_boxing_and_struct_initializers_fixtures() []ReviewRuntimeCase {
@@ -3270,49 +3448,6 @@ fn main() {
 }
 ')
 	assert out == '7'
-}
-
-fn test_select_exception_branches_flush_defers() {
-	v3_bin := build_v3()
-	out := run_good_with_flags(v3_bin, 'select_exception_branch_defers', '-enable-globals', 'import time
-
-__global trace int
-
-fn cleanup() {
-	trace = trace * 10 + 2
-}
-
-fn main() {
-	select {
-		else {
-			defer {
-				cleanup()
-			}
-			trace = 1
-		}
-	}
-	println(int_str(trace))
-	trace = 0
-	ch := chan int{}
-	select {
-		_ := <-ch {}
-		1 * time.nanosecond {
-			defer {
-				cleanup()
-			}
-			trace = 3
-		}
-	}
-	println(int_str(trace))
-}
-')
-	assert out == '12\n32'
-}
-
-fn test_assoc_return_runs_defers() {
-	v3_bin := build_v3()
-	out := run_good_with_flags(v3_bin, 'assoc_return_runs_defers', '-enable-globals', 'struct Point {\n\tx int\n\ty int\n}\n\n__global hit int\n\nfn make_point() Point {\n\tbase := Point{\n\t\tx: 1\n\t\ty: 2\n\t}\n\tdefer {\n\t\thit = 7\n\t}\n\treturn Point{\n\t\t...base\n\t\tx: 5\n\t}\n}\n\nfn main() {\n\tp := make_point()\n\tprintln(int_str(p.x))\n\tprintln(int_str(hit))\n}\n')
-	assert out == '5\n7'
 }
 
 fn test_builtin_addr_requires_unsafe_and_addresses_pointer_variables() {
@@ -5144,132 +5279,6 @@ fn test_user_new_map_call_with_args_uses_renamed_symbol() {
 	assert out == '42'
 }
 
-fn test_interface_local_address_escape_variants() {
-	v3_bin := build_v3()
-	escape_variants := run_good_with_flags(v3_bin, 'interface_local_address_escape_variants', '-enable-globals', 'interface Reader {
-	get() int
-}
-
-struct Box {
-mut:
-	n int
-}
-
-struct Holder {
-mut:
-	inner Box
-}
-
-struct StaticReader {
-	n int
-}
-
-__global fallback Box
-__global global_box Box
-
-fn (b &Box) get() int {
-	return b.n
-}
-
-fn (s StaticReader) get() int {
-	return s.n
-}
-
-fn make_aggregate_reader() []Reader {
-	mut b := Box{
-		n: 5
-	}
-	r := Reader(&b)
-	b.n = 6
-	return [r]
-}
-
-fn make_assigned_reader() Reader {
-	mut b := Box{
-		n: 7
-	}
-	mut r := Reader(StaticReader{
-		n: 0
-	})
-	r = Reader(&b)
-	b.n = 8
-	return r
-}
-
-fn make_pointer_alias_reader() Reader {
-	mut b := Box{
-		n: 9
-	}
-	p := &b
-	q := p
-	r := Reader(q)
-	b.n = 10
-	return r
-}
-
-fn make_field_reader() Reader {
-	mut holder := Holder{
-		inner: Box{
-			n: 11
-		}
-	}
-	r := Reader(&holder.inner)
-	holder.inner.n = 12
-	return r
-}
-
-fn make_pointer_alias_field_reader() Reader {
-	mut holder := Holder{
-		inner: Box{
-			n: 18
-		}
-	}
-	p := &holder
-	q := p
-	r := Reader(&q.inner)
-	holder.inner.n = 19
-	return r
-}
-
-fn make_conditional_reader(use_global bool) Reader {
-	mut b := Box{
-		n: 13
-	}
-	mut r := Reader(&b)
-	if use_global {
-		r = Reader(&fallback)
-	}
-	b.n = 14
-	return r
-}
-
-fn make_global_reader() Reader {
-	r := Reader(&global_box)
-	return r
-}
-
-fn main() {
-	fallback = Box{
-		n: 15
-	}
-	global_box = Box{
-		n: 16
-	}
-	global_reader := make_global_reader()
-	global_box.n = 17
-	println(int_str(make_aggregate_reader()[0].get()))
-	println(int_str(make_assigned_reader().get()))
-	println(int_str(make_pointer_alias_reader().get()))
-	println(int_str(make_field_reader().get()))
-	println(int_str(make_pointer_alias_field_reader().get()))
-	println(int_str(make_conditional_reader(false).get()))
-	println(int_str(make_conditional_reader(true).get()))
-	println(int_str(global_reader.get()))
-}
-')
-	assert escape_variants == '6\n8\n10\n12\n19\n14\n15\n17'
-}
-
 fn test_native_arm64_atomic_pointer_fetch_add_sub() {
 	$if macos && arm64 {
 		v3_bin := build_v3()
@@ -6484,30 +6493,6 @@ fn test_cross_module_mut_receiver_checks_visible_mutation() {
 
 fn test_late_resolution_and_promoted_init_regressions() {
 	v3_bin := build_v3()
-	typeof_out := run_good_with_flags(v3_bin, 'runtime_sum_typeof', '-enable-globals', '__global typeof_calls int
-
-type Value = int | string
-
-fn make_typeof_value() Value {
-	typeof_calls++
-	return Value(9)
-}
-
-fn main() {
-	a := Value(7)
-	b := Value("v3")
-	p := &Value("pointer")
-	nil_pointer := unsafe { &Value(nil) }
-	println(unsafe { typeof(a) })
-	println(unsafe { typeof(b) })
-	println(unsafe { typeof(p) })
-	println(unsafe { typeof(nil_pointer) })
-	println(typeof(nil_pointer).name)
-	println(typeof(make_typeof_value()).name)
-	println(int_str(typeof_calls))
-}
-')
-	assert typeof_out == 'int\nstring\nstring\nunknown Value\n&Value\nValue\n0'
 	promoted_call_default_out := run_good_with_flags(v3_bin, 'promoted_embed_call_default', '-enable-globals', '__global calls int
 
 struct CallInner {
