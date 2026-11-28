@@ -93,6 +93,10 @@ fn test_basename_libc_collision_under_gnu_source() {
 // <immintrin.h>, so a plain V `fn div(...)` needs a disjoint C name too.
 fn test_div_libc_collision() {
 	assert is_libc_collision('div')
+	assert plain_name_may_be_reserved('div')
+	assert c_name('div') == '${internal_symbol_c_prefix}libc_div'
+	assert c_name('div') != c_name('v_div')
+	assert c_name('div') != c_name(c_name('div'))
 	assert c_name('C.div') == 'div'
 }
 

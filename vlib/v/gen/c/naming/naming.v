@@ -251,7 +251,7 @@ pub fn c_name(name string) string {
 	if n == 'complex' || name == '@complex' {
 		return '${internal_symbol_c_prefix}macro_complex'
 	}
-	if n in ['mktemp', 'truncate', 'alloca', 'basename'] {
+	if n in ['mktemp', 'truncate', 'alloca', 'basename', 'div'] {
 		return '${internal_symbol_c_prefix}libc_${n}'
 	}
 	mut result := n
