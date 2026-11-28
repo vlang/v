@@ -230,22 +230,177 @@ fn main() {
 	])
 }
 
-fn test_wasm_narrow_integer_casts_and_arithmetic_wrap() {
-	v3_bin := v3_binary()
-	src := 'fn main() {\n\tprintln(int(i8(i16(128))))\n\tprintln(int(u8(u16(256))))\n\tprintln(int(u16(u32(65536))))\n\tprintln(int(i16(i32(32768))))\n\tmut a := u8(250)\n\ta += u8(10)\n\tprintln(int(a))\n\tmut b := i8(127)\n\tb++\n\tprintln(int(b))\n\tprintln(int(u8(200) + u8(100)))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_narrow')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['-128', '0', '0', '-32768', '4', '-128', '44'])
+fn test_wasm_scalar_values_and_printing() {
+	wasm := compile_to_wasm(v3_binary(), "fn narrow_integer_casts_and_arithmetic_wrap() {
+	println(int(i8(i16(128))))
+	println(int(u8(u16(256))))
+	println(int(u16(u32(65536))))
+	println(int(i16(i32(32768))))
+	mut a := u8(250)
+	a += u8(10)
+	println(int(a))
+	mut b := i8(127)
+	b++
+	println(int(b))
+	println(int(u8(200) + u8(100)))
 }
 
-fn test_wasm_runtime_oversized_shift_is_zero() {
-	v3_bin := v3_binary()
-	// V yields 0 when a runtime shift count is >= the operand width, whereas
-	// raw WASM masks the count modulo the width; in-range shifts are unchanged.
-	src := 'fn osc() u64 {\n\treturn u64(64)\n}\n\nfn main() {\n\tshift := osc()\n\tbits := u64(9221120237041090561)\n\tprintln(bits >> shift)\n\tprintln(bits << shift)\n\tmut left := u64(1)\n\tleft <<= shift\n\tprintln(left)\n\tprintln(u64(1) << u64(40))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_shiftguard')
+fn osc() u64 {
+	return u64(64)
+}
+
+// V yields 0 when a runtime shift count is >= the operand width, whereas
+// raw WASM masks the count modulo the width; in-range shifts are unchanged.
+fn runtime_oversized_shift_is_zero() {
+	shift := osc()
+	bits := u64(9221120237041090561)
+	println(bits >> shift)
+	println(bits << shift)
+	mut left := u64(1)
+	left <<= shift
+	println(left)
+	println(u64(1) << u64(40))
+}
+
+// Print lowering uses dotted numeric str methods, including u64's unsigned range.
+fn lowered_integer_print_formats() {
+	for number in 1 .. 4 {
+		println(number * number)
+	}
+	println(i8(-8))
+	println(i16(-160))
+	println(i32(-320))
+	println(i64(-6400000000))
+	println(int(-32))
+	println(u8(255).str())
+	println(u16(65535).str())
+	println(u32(4294967295).str())
+	println(u64(18446744073709551615))
+	println(uint(4294967295).str())
+}
+
+fn unsigned_i64_and_bool() {
+	a := u32(4000000000)
+	println(a / u32(3))
+	c := u64(10000000000)
+	println(c * 2)
+	d := u64(1)
+	println(d << 40)
+	println(a > u32(3))
+}
+
+// f32->int/i64 truncation casts and full-range unsigned u64 printing.
+fn f32_cast_and_unsigned_u64_print() {
+	f := f32(3.9)
+	println(int(f))
+	println(i64(f))
+	g := f32(-2.7)
+	println(int(g))
+	println(u64(0) - u64(1))
+}
+
+// signed /= %= >>=, unsigned /=, float ++/--, full-range u64 decimal literal.
+fn signed_compound_float_postfix_and_u64_literal() {
+	mut x := -6
+	x /= 2
+	println(x)
+	mut y := -7
+	y %= 3
+	println(y)
+	mut z := -8
+	z >>= 1
+	println(z)
+	mut u := u32(4000000000)
+	u /= u32(2)
+	println(u)
+	mut f := 1.5
+	f++
+	println(int(f))
+	mut g := f32(5.5)
+	g--
+	println(int(g))
+	println(u64(18446744073709551615))
+}
+
+const answer = 42
+const big = u64(9223372036854775808)
+
+// Numeric/bool consts are inlined at the use site instead of warning + 0.
+fn top_level_const_inlined() {
+	println(answer)
+	println(big)
+	println(answer + 1)
+}
+
+fn main() {
+	println('narrow_integer_casts_and_arithmetic_wrap')
+	narrow_integer_casts_and_arithmetic_wrap()
+	println('runtime_oversized_shift_is_zero')
+	runtime_oversized_shift_is_zero()
+	println('lowered_integer_print_formats')
+	lowered_integer_print_formats()
+	println('unsigned_i64_and_bool')
+	unsigned_i64_and_bool()
+	println('f32_cast_and_unsigned_u64_print')
+	f32_cast_and_unsigned_u64_print()
+	println('signed_compound_float_postfix_and_u64_literal')
+	signed_compound_float_postfix_and_u64_literal()
+	println('top_level_const_inlined')
+	top_level_const_inlined()
+}
+", 'wasm_scalar_values_and_printing')
 	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['0', '0', '0', '1099511627776'])
+	run_wasi_expect(wasm, [
+		'narrow_integer_casts_and_arithmetic_wrap',
+		'-128',
+		'0',
+		'0',
+		'-32768',
+		'4',
+		'-128',
+		'44',
+		'runtime_oversized_shift_is_zero',
+		'0',
+		'0',
+		'0',
+		'1099511627776',
+		'lowered_integer_print_formats',
+		'1',
+		'4',
+		'9',
+		'-8',
+		'-160',
+		'-320',
+		'-6400000000',
+		'-32',
+		'255',
+		'65535',
+		'4294967295',
+		'18446744073709551615',
+		'4294967295',
+		'unsigned_i64_and_bool',
+		'1333333333',
+		'20000000000',
+		'1099511627776',
+		'true',
+		'f32_cast_and_unsigned_u64_print',
+		'3',
+		'3',
+		'-2',
+		'18446744073709551615',
+		'signed_compound_float_postfix_and_u64_literal',
+		'-3',
+		'-1',
+		'-4',
+		'2000000000',
+		'2',
+		'4',
+		'18446744073709551615',
+		'top_level_const_inlined',
+		'42',
+		'9223372036854775808',
+		'43',
+	])
 }
 
 fn test_wasm_hello_world() {
@@ -301,8 +456,9 @@ ${checks}
 	}
 }
 
-fn test_wasm_float_constant_comparisons() {
-	assert_wasm_source_before_and_after_optimization('float_comparisons', '
+fn test_wasm_constant_evaluation() {
+	assert_wasm_source_before_and_after_optimization('constant_evaluation', '
+// Float constant comparisons.
 pub fn less() bool { return f64(1.25) < f64(1.5) }
 pub fn less_equal() bool { return f64(1.25) <= f64(1.5) }
 pub fn greater() bool { return f64(1.25) > f64(1.5) }
@@ -311,6 +467,28 @@ pub fn equal() bool { return f64(1.25) == f64(1.5) }
 pub fn unequal() bool { return f64(1.25) != f64(1.5) }
 pub fn f32_less() bool { return f32(-1.5) < f32(-1.25) }
 pub fn f32_rounded_equal() bool { return f32(16777216) == f32(16777217) }
+
+// Full-width integer constant folding.
+pub fn check() bool { return 9223372036854775808 == 9223372036854775809 }
+pub fn full_width_unequal() bool { return 9223372036854775808 != 9223372036854775809 }
+pub fn hex_unequal() bool { return 0x8000000000000000 != 0x8000000000000001 }
+pub fn unsigned_less() bool { return u64(9223372036854775808) < u64(9223372036854775809) }
+pub fn unsigned_difference() u64 { return u64(9223372036854775809) - u64(9223372036854775808) }
+pub fn unsigned_maximum() u64 { return 18446744073709551615 }
+pub fn minimum_equal(n i64) bool { return n == -9223372036854775808 }
+
+// Wide integer literal operands.
+pub fn wide_equal(n i64) bool { return n == 4294967296 }
+pub fn reversed_equal(n i64) bool { return 4294967296 == n }
+pub fn add(n i64) i64 { return n + 4294967296 }
+pub fn reversed_add(n i64) i64 { return 4294967296 + n }
+pub fn float_add(n f64) f64 { return n + 4294967296 }
+pub fn float_equal(n f64) bool { return n == 4294967296 }
+pub fn narrow_equal(n int) bool { return n == 4294967296 }
+pub fn narrow_less(n int) bool { return n < 4294967296 }
+pub fn narrow_negative_equal(n int) bool { return n == -4294967296 }
+pub fn narrow_unsigned_equal(n u8) bool { return n == 256 }
+pub fn unsigned_wide_equal(n u64) bool { return n == 18446744073709551615 }
 ', '
 assert.equal(e.less(), 1);
 assert.equal(e.less_equal(), 1);
@@ -320,6 +498,33 @@ assert.equal(e.equal(), 0);
 assert.equal(e.unequal(), 1);
 assert.equal(e.f32_less(), 1);
 assert.equal(e.f32_rounded_equal(), 1);
+
+assert.equal(e.check(), 0);
+assert.equal(e.full_width_unequal(), 1);
+assert.equal(e.hex_unequal(), 1);
+assert.equal(e.unsigned_less(), 1);
+assert.equal(e.unsigned_difference(), 1n);
+assert.equal(e.unsigned_maximum(), -1n);
+assert.equal(e.minimum_equal(-9223372036854775808n), 1);
+assert.equal(e.minimum_equal(9223372036854775807n), 0);
+
+assert.equal(e.wide_equal(4294967296n), 1);
+assert.equal(e.wide_equal(0n), 0);
+assert.equal(e.reversed_equal(4294967296n), 1);
+assert.equal(e.reversed_equal(0n), 0);
+assert.equal(e.add(1n), 4294967297n);
+assert.equal(e.reversed_add(1n), 4294967297n);
+assert.equal(e.float_add(1), 4294967297);
+assert.equal(e.float_equal(4294967296), 1);
+assert.equal(e.float_equal(0), 0);
+assert.equal(e.narrow_equal(0), 0);
+assert.equal(e.narrow_less(0), 1);
+assert.equal(e.narrow_less(2147483647), 1);
+assert.equal(e.narrow_negative_equal(0), 0);
+assert.equal(e.narrow_unsigned_equal(0), 0);
+assert.equal(e.narrow_unsigned_equal(255), 0);
+assert.equal(e.unsigned_wide_equal(-1n), 1);
+assert.equal(e.unsigned_wide_equal(0n), 0);
 ')
 }
 
@@ -368,61 +573,6 @@ assert.equal(e.branch_float(1, 0), 3.5);
 assert.equal(e.parallel_floats(3), 7.5);
 assert.equal(e.unsigned_to_signed(4000000000), 1);
 assert.equal(e.unsigned_to_signed(1), 0);
-')
-}
-
-fn test_wasm_full_width_integer_constant_folding() {
-	assert_wasm_source_before_and_after_optimization('full_width_folding', '
-pub fn check() bool { return 9223372036854775808 == 9223372036854775809 }
-pub fn unequal() bool { return 9223372036854775808 != 9223372036854775809 }
-pub fn hex_unequal() bool { return 0x8000000000000000 != 0x8000000000000001 }
-pub fn unsigned_less() bool { return u64(9223372036854775808) < u64(9223372036854775809) }
-pub fn unsigned_difference() u64 { return u64(9223372036854775809) - u64(9223372036854775808) }
-pub fn unsigned_maximum() u64 { return 18446744073709551615 }
-pub fn minimum_equal(n i64) bool { return n == -9223372036854775808 }
-', '
-assert.equal(e.check(), 0);
-assert.equal(e.unequal(), 1);
-assert.equal(e.hex_unequal(), 1);
-assert.equal(e.unsigned_less(), 1);
-assert.equal(e.unsigned_difference(), 1n);
-assert.equal(e.unsigned_maximum(), -1n);
-assert.equal(e.minimum_equal(-9223372036854775808n), 1);
-assert.equal(e.minimum_equal(9223372036854775807n), 0);
-')
-}
-
-fn test_wasm_wide_integer_literal_operands() {
-	assert_wasm_source_before_and_after_optimization('wide_literals', '
-pub fn equal(n i64) bool { return n == 4294967296 }
-pub fn reversed_equal(n i64) bool { return 4294967296 == n }
-pub fn add(n i64) i64 { return n + 4294967296 }
-pub fn reversed_add(n i64) i64 { return 4294967296 + n }
-pub fn float_add(n f64) f64 { return n + 4294967296 }
-pub fn float_equal(n f64) bool { return n == 4294967296 }
-pub fn narrow_equal(n int) bool { return n == 4294967296 }
-pub fn narrow_less(n int) bool { return n < 4294967296 }
-pub fn narrow_negative_equal(n int) bool { return n == -4294967296 }
-pub fn narrow_unsigned_equal(n u8) bool { return n == 256 }
-pub fn unsigned_wide_equal(n u64) bool { return n == 18446744073709551615 }
-', '
-assert.equal(e.equal(4294967296n), 1);
-assert.equal(e.equal(0n), 0);
-assert.equal(e.reversed_equal(4294967296n), 1);
-assert.equal(e.reversed_equal(0n), 0);
-assert.equal(e.add(1n), 4294967297n);
-assert.equal(e.reversed_add(1n), 4294967297n);
-assert.equal(e.float_add(1), 4294967297);
-assert.equal(e.float_equal(4294967296), 1);
-assert.equal(e.float_equal(0), 0);
-assert.equal(e.narrow_equal(0), 0);
-assert.equal(e.narrow_less(0), 1);
-assert.equal(e.narrow_less(2147483647), 1);
-assert.equal(e.narrow_negative_equal(0), 0);
-assert.equal(e.narrow_unsigned_equal(0), 0);
-assert.equal(e.narrow_unsigned_equal(255), 0);
-assert.equal(e.unsigned_wide_equal(-1n), 1);
-assert.equal(e.unsigned_wide_equal(0n), 0);
 ')
 }
 
@@ -602,16 +752,6 @@ fn test_wasm_control_flow_and_int_print() {
 	assert last_line(res.output) == '10', res.output
 }
 
-fn test_wasm_lowered_integer_print_formats() {
-	v3_bin := v3_binary()
-	// Print lowering uses dotted numeric str methods, including u64's unsigned range.
-	src := 'fn main() {\n\tfor number in 1 .. 4 {\n\t\tprintln(number * number)\n\t}\n\tprintln(i8(-8))\n\tprintln(i16(-160))\n\tprintln(i32(-320))\n\tprintln(i64(-6400000000))\n\tprintln(int(-32))\n\tprintln(u8(255).str())\n\tprintln(u16(65535).str())\n\tprintln(u32(4294967295).str())\n\tprintln(u64(18446744073709551615))\n\tprintln(uint(4294967295).str())\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_integer_print_formats')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['1', '4', '9', '-8', '-160', '-320', '-6400000000', '-32', '255', '65535',
-		'4294967295', '18446744073709551615', '4294967295'])
-}
-
 fn test_wasm_production_control_flow_and_recursion() {
 	source := os.join_path(os.vtmp_dir(), 'wasm_ssa_prod_${os.getpid()}.v')
 	output := os.join_path(os.vtmp_dir(), 'wasm_ssa_prod_${os.getpid()}.wasm')
@@ -758,68 +898,6 @@ assert.throws(() => e.__v_alloc(-1), WebAssembly.RuntimeError);
 		assert build.exit_code == 0, build.output
 		result := os.exec([node, runner, output])
 		assert result.exit_code == 0, result.output
-	}
-}
-
-fn test_wasm_unsigned_i64_and_bool() {
-	v3_bin := v3_binary()
-	src := 'fn main() {\n\ta := u32(4000000000)\n\tprintln(a / u32(3))\n\tc := u64(10000000000)\n\tprintln(c * 2)\n\td := u64(1)\n\tprintln(d << 40)\n\tprintln(a > u32(3))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_unsigned')
-	assert_valid_wasm(wasm)
-
-	node := node_path() or { return }
-	runner := os.join_path(os.vtmp_dir(), 'wasm_run_wasi.mjs')
-	os.write_file(runner, wasi_runner_js) or { panic(err) }
-	res := run_node(node, runner, wasm)
-	assert res.exit_code == 0, res.output
-	lines := res.output.split_into_lines().map(it.trim_space()).filter(it.len > 0)
-	expected := ['1333333333', '20000000000', '1099511627776', 'true']
-	assert lines.len >= expected.len, res.output
-	for i, want in expected {
-		got := lines[lines.len - expected.len + i]
-		assert got == want, 'line ${i}: got ${got}, want ${want} (full: ${res.output})'
-	}
-}
-
-fn test_wasm_f32_cast_and_unsigned_u64_print() {
-	v3_bin := v3_binary()
-	// f32->int/i64 truncation casts and full-range unsigned u64 printing.
-	src := 'fn main() {\n\tf := f32(3.9)\n\tprintln(int(f))\n\tprintln(i64(f))\n\tg := f32(-2.7)\n\tprintln(int(g))\n\tprintln(u64(0) - u64(1))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_f32_u64')
-	assert_valid_wasm(wasm)
-
-	node := node_path() or { return }
-	runner := os.join_path(os.vtmp_dir(), 'wasm_run_wasi.mjs')
-	os.write_file(runner, wasi_runner_js) or { panic(err) }
-	res := run_node(node, runner, wasm)
-	assert res.exit_code == 0, res.output
-	lines := res.output.split_into_lines().map(it.trim_space()).filter(it.len > 0)
-	expected := ['3', '3', '-2', '18446744073709551615']
-	assert lines.len >= expected.len, res.output
-	for i, want in expected {
-		got := lines[lines.len - expected.len + i]
-		assert got == want, 'line ${i}: got ${got}, want ${want} (full: ${res.output})'
-	}
-}
-
-fn test_wasm_signed_compound_float_postfix_and_u64_literal() {
-	v3_bin := v3_binary()
-	// signed /= %= >>=, unsigned /=, float ++/--, full-range u64 decimal literal.
-	src := 'fn main() {\n\tmut x := -6\n\tx /= 2\n\tprintln(x)\n\tmut y := -7\n\ty %= 3\n\tprintln(y)\n\tmut z := -8\n\tz >>= 1\n\tprintln(z)\n\tmut u := u32(4000000000)\n\tu /= u32(2)\n\tprintln(u)\n\tmut f := 1.5\n\tf++\n\tprintln(int(f))\n\tmut g := f32(5.5)\n\tg--\n\tprintln(int(g))\n\tprintln(u64(18446744073709551615))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_signed_float_u64')
-	assert_valid_wasm(wasm)
-
-	node := node_path() or { return }
-	runner := os.join_path(os.vtmp_dir(), 'wasm_run_wasi.mjs')
-	os.write_file(runner, wasi_runner_js) or { panic(err) }
-	res := run_node(node, runner, wasm)
-	assert res.exit_code == 0, res.output
-	lines := res.output.split_into_lines().map(it.trim_space()).filter(it.len > 0)
-	expected := ['-3', '-1', '-4', '2000000000', '2', '4', '18446744073709551615']
-	assert lines.len >= expected.len, res.output
-	for i, want in expected {
-		got := lines[lines.len - expected.len + i]
-		assert got == want, 'line ${i}: got ${got}, want ${want} (full: ${res.output})'
 	}
 }
 
@@ -1290,15 +1368,6 @@ fn result_value() int { return result }
 ', 'assert.equal(e.answer_value(), 42);
 assert.equal(BigInt.asUintN(64, e.big_value()), 9223372036854775808n);
 assert.equal(e.result_value(), 41);')
-}
-
-fn test_wasm_top_level_const_inlined() {
-	v3_bin := v3_binary()
-	// Numeric/bool consts are inlined at the use site instead of warning + 0.
-	src := 'const answer = 42\nconst big = u64(9223372036854775808)\n\nfn main() {\n\tprintln(answer)\n\tprintln(big)\n\tprintln(answer + 1)\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_const')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['42', '9223372036854775808', '43'])
 }
 
 fn test_wasm_nested_imported_modules() {
