@@ -433,15 +433,143 @@ fn test_filelock_helpers_are_inlined_in_generated_c() {
 	assert out == '7'
 }
 
-fn test_imported_module_call_in_struct_default_has_no_receiver_arg() {
+fn test_imported_receivers_defaults_and_types() {
 	v3_bin := build_v3()
-	out := run_good_project(v3_bin, 'module_call_struct_default', {
-		'v.mod':         "Module { name: 'module_call_struct_default' }\n"
-		'myseed/seed.v': 'module myseed\n\npub fn next() int {\n\treturn 42\n}\n'
-		'rng/rng.v':     'module rng\n\nimport myseed\n\npub struct Rng {\n\tvalue int = myseed.next()\n}\n\npub fn value() int {\n\tr := Rng{}\n\treturn r.value\n}\n'
-		'main.v':        'module main\n\nimport rng\n\nfn main() {\n\tprintln(int_str(rng.value()))\n}\n'
-	}, 'main.v')
-	assert out == '42'
+	run_good_main_batch(v3_bin, 'imported_receivers_defaults_and_types', [
+		ReviewRuntimeCase{'module_call_struct_default', 'module main\n\nimport rng\n\nfn main() {\n\tprintln(int_str(rng.value()))\n}\n', '42'},
+		ReviewRuntimeCase{'module_array_receiver_methods', 'module main\n\nimport array_utils\nimport array__utils\nimport thing\n\nfn main() {\n\tprintln(array_utils.run())\n\tprintln(array__utils.run())\n\tprintln(thing.run())\n}\n', '73\n83\n91'},
+		ReviewRuntimeCase{'isreftype_qualified_type_args', 'module main
+
+import foo
+
+fn main() {
+	check_unqualified_types()
+
+	if !isreftype(foo.Bar) {
+		println("qualified type")
+	}
+	if isreftype(&foo.Bar) {
+		println("qualified ptr type")
+	}
+	bar := foo.Bar{}
+	if isreftype(bar) {
+		println("bad expr")
+	} else {
+		println("qualified value expr")
+	}
+}
+', 'value expr\nptr expr\nptr type\nfn type\narray type\nchan type\nthread type parsed\nqualified type\nqualified ptr type\nqualified value expr'},
+		ReviewRuntimeCase{'review_main_module_private_alias', 'module main
+
+fn main() {
+	app := App{
+		value: 7
+	}
+	println(app.hidden())
+}
+', '7'},
+		ReviewRuntimeCase{'review_cross_module_private_mut_receiver', 'module main\n\nimport other\n\nfn main() {\n\tmut state := other.State{}\n\tstate.bump()\n\tprintln(int_str(state.value()))\n}\n', '1'},
+		ReviewRuntimeCase{'promoted_cross_module_struct_default', 'module main
+
+import alias_defaults
+import defaults
+
+const default_a = 99
+
+fn main() {
+	value := defaults.Outer{
+		b: 7
+	}
+	println(int_str(value.Inner.a))
+	println(int_str(value.Inner.b))
+
+	from_alias := alias_defaults.Outer{
+		b: 7
+	}
+	println(int_str(from_alias.Inner.a))
+	println(int_str(from_alias.Inner.b))
+}
+', '3\n7\n3\n7'},
+		ReviewRuntimeCase{'imported_lowercase_selector_attached_block', 'module main
+
+import flags
+
+fn main() {
+	mut seen := 0
+	if flags.enabled{
+		seen = 1
+	}
+	println(seen)
+}
+', '1'},
+		ReviewRuntimeCase{'imported_struct_default_scalar_sum', 'module main\n\nimport model\n\nfn main() {\n\tprintln(model.choice_is_true(model.Settings{}))\n}\n', 'true'},
+		ReviewRuntimeCase{'imported_generic_receiver_alias_field', 'module main\n\nimport vectors\n\ntype V2 = vectors.Vec[f32]\n\nstruct Holder {\nmut:\n\tvalue V2\n}\n\nfn main() {\n\tmut holder := Holder{\n\t\tvalue: V2{\n\t\t\tx: 8\n\t\t}\n\t}\n\tholder.value += V2{\n\t\tx: 2\n\t}\n\tscaled := holder.value.divide(2)\n\tassert scaled.x == 5\n\tassert holder.value.difference(V2{\n\t\tx: 3\n\t}) == 7\n\tprintln("ok")\n}\n', 'ok'},
+		ReviewRuntimeCase{'imported_generic_receiver_alias_return', 'module main\n\nimport vectors\n\ntype Vec = vectors.Vec3[f64]\n\nfn main() {\n\tleft := Vec{\n\t\tx: 1\n\t\ty: 0\n\t\tz: 0\n\t}\n\tright := Vec{\n\t\tx: 0\n\t\ty: 1\n\t\tz: 0\n\t}\n\tresult := Vec(left.cross(right).mul_scalar(2) + left)\n\tprintln(result.z)\n}\n', '2.0'},
+		ReviewRuntimeCase{'imported_generic_main_embedded_context', 'module main\n\nimport ctxhelper\n\nstruct Context {\n\tctxhelper.Context\n}\n\nfn main() {\n\tprintln(ctxhelper.read[Context]())\n}\n', '14'},
+	], {
+		'v.mod':                  "Module { name: 'imported_receivers_defaults_and_types' }\n"
+		'myseed/seed.v':          'module myseed\n\npub fn next() int {\n\treturn 42\n}\n'
+		'rng/rng.v':              'module rng\n\nimport myseed\n\npub struct Rng {\n\tvalue int = myseed.next()\n}\n\npub fn value() int {\n\tr := Rng{}\n\treturn r.value\n}\n'
+		'array_utils/mod.v':      'module array_utils\n\nstruct Num {}\n\nfn (a []Num) reverse() int {\n\treturn 73\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.reverse())\n}\n'
+		'array__utils/mod.v':     'module array__utils\n\nstruct Num {}\n\nfn (a []Num) reverse() int {\n\treturn 83\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.reverse())\n}\n'
+		'thing/mod.v':            'module thing\n\nstruct Num {}\n\nfn (a []Num) move() int {\n\treturn 91\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.move())\n}\n'
+		'foo/foo.v':              'module foo\n\npub struct Bar {}\n'
+		// This file uses foo as a local variable.
+		'unqualified.v':          'module main
+
+struct Foo {
+	n int
+}
+
+fn check_unqualified_types() {
+	foo := Foo{}
+	if isreftype(foo) {
+		println("bad expr")
+	} else {
+		println("value expr")
+	}
+	if isreftype(&foo) {
+		println("ptr expr")
+	}
+	if isreftype(&Foo) {
+		println("ptr type")
+	}
+	if isreftype(fn () int) {
+		println("fn type")
+	}
+	if isreftype([]int) {
+		println("array type")
+	}
+	if isreftype(chan int) {
+		println("chan type")
+	}
+	_ := isreftype(thread Foo)
+	println("thread type parsed")
+}
+'
+		'app.v':                  'module main
+
+struct App {
+	value int
+}
+
+fn (app App) hidden() int {
+	return app.value
+}
+'
+		'other/state.v':          'module other\n\npub struct State {\nmut:\n\thidden int\n}\n\npub fn (mut state State) bump() {\n\tstate.hidden++\n}\n\npub fn (state State) value() int {\n\treturn state.hidden\n}\n'
+		'defaults/types.v':       'module defaults\n\npub const default_a = 3\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = Inner{\n\t\ta: default_a\n\t\tb: 4\n\t}\n}\n'
+		'helpers/helpers.v':      'module helpers\n\npub fn default_a() int {\n\treturn 3\n}\n'
+		'alias_defaults/types.v': 'module alias_defaults\n\nimport helpers as h\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = make_inner(h.default_a())\n}\n\nfn make_inner(a int) Inner {\n\treturn Inner{\n\t\ta: a\n\t\tb: 4\n\t}\n}\n'
+		'flags/flags.v':          'module flags
+
+pub const enabled = true
+'
+		'model/model.v':          'module model\n\ntype Choice = Item | bool\n\npub struct Item {}\n\npub struct Settings {\npub:\n\tchoice Choice = true\n}\n\npub fn choice_is_true(settings Settings) bool {\n\treturn settings.choice is bool && settings.choice\n}\n'
+		'vectors/vectors.v':      'module vectors\n\npub struct Vec[T] {\npub mut:\n\tx T\n}\n\npub fn (left Vec[T]) + (right Vec[T]) Vec[T] {\n\treturn Vec[T]{\n\t\tx: left.x + right.x\n\t}\n}\n\npub fn (value Vec[T]) divide[U](scalar U) Vec[T] {\n\treturn Vec[T]{\n\t\tx: value.x / T(scalar)\n\t}\n}\n\npub fn (value Vec[T]) difference(other Vec[T]) T {\n\treturn value.x - other.x\n}\n'
+		'vectors/vec3.v':         'module vectors\n\npub struct Vec3[T] {\npub:\n\tx T\n\ty T\n\tz T\n}\n\npub fn (left Vec3[T]) + (right Vec3[T]) Vec3[T] {\n\treturn Vec3[T]{left.x + right.x, left.y + right.y, left.z + right.z}\n}\n\npub fn (value Vec3[T]) mul_scalar[U](scalar U) Vec3[T] {\n\treturn Vec3[T]{value.x * T(scalar), value.y * T(scalar), value.z * T(scalar)}\n}\n\npub fn (left Vec3[T]) cross(right Vec3[T]) Vec3[T] {\n\treturn Vec3[T]{\n\t\tx: left.y * right.z - left.z * right.y\n\t\ty: left.z * right.x - left.x * right.z\n\t\tz: left.x * right.y - left.y * right.x\n\t}\n}\n'
+		'ctxhelper/ctxhelper.v':  'module ctxhelper\n\npub struct Context {\npub:\n\tvalue int\n}\n\npub fn read[X]() int {\n\tctx := Context{\n\t\tvalue: 7\n\t}\n\tuser_context := X{\n\t\tContext: ctx\n\t}\n\treturn user_context.Context.value + user_context.value\n}\n'
+	})
 }
 
 fn test_global_struct_defaults_follow_global_declaration_order() {
@@ -3895,13 +4023,6 @@ fn main() {
 
 fn test_array_builtin_method_fallback_keeps_return_type() {
 	v3_bin := build_v3()
-	module_array_out := run_good_project(v3_bin, 'module_array_receiver_methods', {
-		'main.v':             'module main\n\nimport array_utils\nimport array__utils\nimport thing\n\nfn main() {\n\tprintln(array_utils.run())\n\tprintln(array__utils.run())\n\tprintln(thing.run())\n}\n'
-		'array_utils/mod.v':  'module array_utils\n\nstruct Num {}\n\nfn (a []Num) reverse() int {\n\treturn 73\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.reverse())\n}\n'
-		'array__utils/mod.v': 'module array__utils\n\nstruct Num {}\n\nfn (a []Num) reverse() int {\n\treturn 83\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.reverse())\n}\n'
-		'thing/mod.v':        'module thing\n\nstruct Num {}\n\nfn (a []Num) move() int {\n\treturn 91\n}\n\npub fn run() string {\n\tmut nums := []Num{}\n\tnums << Num{}\n\treturn int_str(nums.move())\n}\n'
-	}, 'main.v')
-	assert module_array_out == '73\n83\n91'
 	// Run in main to check the unqualified function name in the diagnostic.
 	run_bad(v3_bin, 'exact_array_first_method_checked_before_builtin', 'struct Num {}\n\nfn (a []Num) first() string {\n\treturn "bad"\n}\n\nfn take_int(x int) {}\n\nfn main() {\n\tmut nums := []Num{}\n\tnums << Num{}\n\ttake_int(nums.first())\n}\n', 'cannot use `string` as `int` in argument 1 to `take_int`')
 	fixed_expr_out := run_good_with_flags(v3_bin, 'fixed_array_pointers_evaluates_receiver_once', '-enable-globals', '__global calls int\n\nfn next() int {\n\tcalls = calls + 1\n\treturn 0\n}\n\nfn main() {\n\tmut rows := [1][2]int{}\n\trows[0][0] = 5\n\tptrs := unsafe { rows[next()].pointers() }\n\tunsafe {\n\t\tp0 := &int(ptrs[0])\n\t\t*p0 = 8\n\t}\n\tprintln(int_str(calls))\n\tprintln(int_str(rows[0][0]))\n}\n')
@@ -5986,65 +6107,6 @@ fn main() {
 
 fn test_isreftype_parenthesized_type_args() {
 	v3_bin := build_v3()
-	out := run_good_project(v3_bin, 'isreftype_qualified_type_args', {
-		'v.mod':         "Module { name: 'isreftype_qualified_type_args' }\n"
-		'foo/foo.v':     'module foo\n\npub struct Bar {}\n'
-		'main.v':        'module main
-
-import foo
-
-fn main() {
-	check_unqualified_types()
-
-	if !isreftype(foo.Bar) {
-		println("qualified type")
-	}
-	if isreftype(&foo.Bar) {
-		println("qualified ptr type")
-	}
-	bar := foo.Bar{}
-	if isreftype(bar) {
-		println("bad expr")
-	} else {
-		println("qualified value expr")
-	}
-}
-'
-		// This file uses foo as a local variable.
-		'unqualified.v': 'module main
-
-struct Foo {
-	n int
-}
-
-fn check_unqualified_types() {
-	foo := Foo{}
-	if isreftype(foo) {
-		println("bad expr")
-	} else {
-		println("value expr")
-	}
-	if isreftype(&foo) {
-		println("ptr expr")
-	}
-	if isreftype(&Foo) {
-		println("ptr type")
-	}
-	if isreftype(fn () int) {
-		println("fn type")
-	}
-	if isreftype([]int) {
-		println("array type")
-	}
-	if isreftype(chan int) {
-		println("chan type")
-	}
-	_ := isreftype(thread Foo)
-	println("thread type parsed")
-}
-'
-	}, '')
-	assert out == 'value expr\nptr expr\nptr type\nfn type\narray type\nchan type\nthread type parsed\nqualified type\nqualified ptr type\nqualified value expr'
 	run_bad(v3_bin, 'isreftype_unknown_type_arguments', 'fn main() {
 	_ := isreftype(NoSuchType)
 	_ := isreftype([]MissingElem)
@@ -6406,33 +6468,6 @@ fn test_imported_private_static_function_uses_source_name_in_diagnostic() {
 	}, ['main.v'], 'function `dep.Widget.make` is private')
 }
 
-fn test_private_declarations_in_main_module_accept_empty_module_alias() {
-	v3_bin := build_v3()
-	out := run_good_project(v3_bin, 'review_main_module_private_alias', {
-		'v.mod':  "Module { name: 'review_main_module_private_alias' }\n"
-		'app.v':  'module main
-
-struct App {
-	value int
-}
-
-fn (app App) hidden() int {
-	return app.value
-}
-'
-		'main.v': 'module main
-
-fn main() {
-	app := App{
-		value: 7
-	}
-	println(app.hidden())
-}
-'
-	}, '')
-	assert out == '7'
-}
-
 fn test_cross_module_mut_receiver_checks_visible_mutation() {
 	v3_bin := build_v3()
 	run_bad_project(v3_bin, 'review_cross_module_public_mut_receiver', {
@@ -6440,12 +6475,6 @@ fn test_cross_module_mut_receiver_checks_visible_mutation() {
 		'other/config.v': 'module other\n\npub struct Config {\npub mut:\n\tvalue int\n}\n\npub fn (mut cfg Config) reset() {\n\tcfg.value = 0\n}\n'
 		'main.v':         'module main\n\nimport other\n\nfn main() {\n\tcfg := other.Config{\n\t\tvalue: 1\n\t}\n\tcfg.reset()\n}\n'
 	}, ['main.v'], '`cfg` is immutable, declare it with `mut` to make it mutable')
-	private_out := run_good_project(v3_bin, 'review_cross_module_private_mut_receiver', {
-		'v.mod':         "Module { name: 'review_cross_module_private_mut_receiver' }\n"
-		'other/state.v': 'module other\n\npub struct State {\nmut:\n\thidden int\n}\n\npub fn (mut state State) bump() {\n\tstate.hidden++\n}\n\npub fn (state State) value() int {\n\treturn state.hidden\n}\n'
-		'main.v':        'module main\n\nimport other\n\nfn main() {\n\tmut state := other.State{}\n\tstate.bump()\n\tprintln(int_str(state.value()))\n}\n'
-	}, 'main.v')
-	assert private_out == '1'
 }
 
 fn test_late_resolution_and_promoted_init_regressions() {
@@ -6474,34 +6503,6 @@ fn main() {
 }
 ')
 	assert typeof_out == 'int\nstring\nstring\nunknown Value\n&Value\nValue\n0'
-	promoted_defaults_out := run_good_project(v3_bin, 'promoted_cross_module_struct_default', {
-		'v.mod':                  "Module { name: 'promoted_cross_module_struct_default' }\n"
-		'defaults/types.v':       'module defaults\n\npub const default_a = 3\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = Inner{\n\t\ta: default_a\n\t\tb: 4\n\t}\n}\n'
-		'helpers/helpers.v':      'module helpers\n\npub fn default_a() int {\n\treturn 3\n}\n'
-		'alias_defaults/types.v': 'module alias_defaults\n\nimport helpers as h\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = make_inner(h.default_a())\n}\n\nfn make_inner(a int) Inner {\n\treturn Inner{\n\t\ta: a\n\t\tb: 4\n\t}\n}\n'
-		'main.v':                 'module main
-
-import alias_defaults
-import defaults
-
-const default_a = 99
-
-fn main() {
-	value := defaults.Outer{
-		b: 7
-	}
-	println(int_str(value.Inner.a))
-	println(int_str(value.Inner.b))
-
-	from_alias := alias_defaults.Outer{
-		b: 7
-	}
-	println(int_str(from_alias.Inner.a))
-	println(int_str(from_alias.Inner.b))
-}
-'
-	}, 'main.v')
-	assert promoted_defaults_out == '3\n7\n3\n7'
 	promoted_call_default_out := run_good_with_flags(v3_bin, 'promoted_embed_call_default', '-enable-globals', '__global calls int
 
 struct CallInner {
@@ -7153,30 +7154,6 @@ fn main() {
 	}, 'main.v')
 	assert !result.compile_output.contains('unexpected token'), result.compile_output
 	assert result.run_output == '7\n8', result.run_output
-}
-
-fn test_imported_lowercase_selector_with_attached_block_is_not_struct_literal() {
-	v3_bin := build_v3()
-	out := run_good_project(v3_bin, 'imported_lowercase_selector_attached_block', {
-		'v.mod':         "Module { name: 'imported_lowercase_selector_attached_block' }\n"
-		'flags/flags.v': 'module flags
-
-pub const enabled = true
-'
-		'main.v':        'module main
-
-import flags
-
-fn main() {
-	mut seen := 0
-	if flags.enabled{
-		seen = 1
-	}
-	println(seen)
-}
-'
-	}, 'main.v')
-	assert out == '1'
 }
 
 fn test_number_prefixed_identifier_suppression_stays_in_declaration_scope() {
@@ -9721,36 +9698,6 @@ fn main() {
 	assert out.contains('value: 7')
 }
 
-fn test_imported_struct_default_wraps_scalar_sum_variant() {
-	v3_bin := build_v3()
-	out := run_good_project(v3_bin, 'imported_struct_default_scalar_sum', {
-		'v.mod':         "Module { name: 'imported_struct_default_scalar_sum' }\n"
-		'model/model.v': 'module model\n\ntype Choice = Item | bool\n\npub struct Item {}\n\npub struct Settings {\npub:\n\tchoice Choice = true\n}\n\npub fn choice_is_true(settings Settings) bool {\n\treturn settings.choice is bool && settings.choice\n}\n'
-		'main.v':        'module main\n\nimport model\n\nfn main() {\n\tprintln(model.choice_is_true(model.Settings{}))\n}\n'
-	}, 'main.v')
-	assert out == 'true'
-}
-
-fn test_imported_generic_receiver_alias_methods_on_struct_field() {
-	v3_bin := build_v3()
-	out := run_good_project(v3_bin, 'imported_generic_receiver_alias_field', {
-		'v.mod':             "Module { name: 'imported_generic_receiver_alias_field' }\n"
-		'vectors/vectors.v': 'module vectors\n\npub struct Vec[T] {\npub mut:\n\tx T\n}\n\npub fn (left Vec[T]) + (right Vec[T]) Vec[T] {\n\treturn Vec[T]{\n\t\tx: left.x + right.x\n\t}\n}\n\npub fn (value Vec[T]) divide[U](scalar U) Vec[T] {\n\treturn Vec[T]{\n\t\tx: value.x / T(scalar)\n\t}\n}\n\npub fn (value Vec[T]) difference(other Vec[T]) T {\n\treturn value.x - other.x\n}\n'
-		'main.v':            'module main\n\nimport vectors\n\ntype V2 = vectors.Vec[f32]\n\nstruct Holder {\nmut:\n\tvalue V2\n}\n\nfn main() {\n\tmut holder := Holder{\n\t\tvalue: V2{\n\t\t\tx: 8\n\t\t}\n\t}\n\tholder.value += V2{\n\t\tx: 2\n\t}\n\tscaled := holder.value.divide(2)\n\tassert scaled.x == 5\n\tassert holder.value.difference(V2{\n\t\tx: 3\n\t}) == 7\n\tprintln("ok")\n}\n'
-	}, 'main.v')
-	assert out == 'ok'
-}
-
-fn test_imported_generic_receiver_alias_method_return_is_concrete() {
-	v3_bin := build_v3()
-	out := run_good_project(v3_bin, 'imported_generic_receiver_alias_return', {
-		'v.mod':             "Module { name: 'imported_generic_receiver_alias_return' }\n"
-		'vectors/vectors.v': 'module vectors\n\npub struct Vec3[T] {\npub:\n\tx T\n\ty T\n\tz T\n}\n\npub fn (left Vec3[T]) + (right Vec3[T]) Vec3[T] {\n\treturn Vec3[T]{left.x + right.x, left.y + right.y, left.z + right.z}\n}\n\npub fn (value Vec3[T]) mul_scalar[U](scalar U) Vec3[T] {\n\treturn Vec3[T]{value.x * T(scalar), value.y * T(scalar), value.z * T(scalar)}\n}\n\npub fn (left Vec3[T]) cross(right Vec3[T]) Vec3[T] {\n\treturn Vec3[T]{\n\t\tx: left.y * right.z - left.z * right.y\n\t\ty: left.z * right.x - left.x * right.z\n\t\tz: left.x * right.y - left.y * right.x\n\t}\n}\n'
-		'main.v':            'module main\n\nimport vectors\n\ntype Vec = vectors.Vec3[f64]\n\nfn main() {\n\tleft := Vec{\n\t\tx: 1\n\t\ty: 0\n\t\tz: 0\n\t}\n\tright := Vec{\n\t\tx: 0\n\t\ty: 1\n\t\tz: 0\n\t}\n\tresult := Vec(left.cross(right).mul_scalar(2) + left)\n\tprintln(result.z)\n}\n'
-	}, 'main.v')
-	assert out == '2.0'
-}
-
 fn test_top_level_statements_with_postinclude_generate_main() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'top_level_postinclude_main', '#postinclude <limits.h>\n\n@[export: "v3_exported_helper"]\nfn exported_helper() {}\n\nprintln("ok")\n')
@@ -9813,16 +9760,6 @@ fn main() {
 }
 ')
 	assert out == '7'
-}
-
-fn test_imported_generic_preserves_main_embedded_context_type() {
-	v3_bin := build_v3()
-	out := run_good_project(v3_bin, 'imported_generic_main_embedded_context', {
-		'v.mod':                 "Module { name: 'imported_generic_main_embedded_context' }\n"
-		'ctxhelper/ctxhelper.v': 'module ctxhelper\n\npub struct Context {\npub:\n\tvalue int\n}\n\npub fn read[X]() int {\n\tctx := Context{\n\t\tvalue: 7\n\t}\n\tuser_context := X{\n\t\tContext: ctx\n\t}\n\treturn user_context.Context.value + user_context.value\n}\n'
-		'main.v':                'module main\n\nimport ctxhelper\n\nstruct Context {\n\tctxhelper.Context\n}\n\nfn main() {\n\tprintln(ctxhelper.read[Context]())\n}\n'
-	}, 'main.v')
-	assert out == '14'
 }
 
 fn test_imported_generic_closure_preserves_main_embedded_context_type() {
