@@ -796,16 +796,15 @@ fn flow_next(mut state FlowState) !bool { if state.ready { return error("absent"
 		flow_sources << source
 		mixed_sources << source
 	}
-	for source in flow_sources {
-		os.write_file(invalid, source.replace(' local = Item{code: 3}\n', ''))!
-		for mode in ['-autofree', '-ownership'] {
-			for prealloc in [false, true] {
-				mut command := [compiler, '-no-closures', '-gc', 'none', mode]
-				if prealloc { command << '-prealloc' }
-				command << ['run', invalid]
-				control := os.exec(command)
-				assert control.exit_code == 0, control.output
-			}
+	// The controls run as modules of one program per mode instead of one build each.
+	flow_controls := write_module_programs(os.join_path(dir, 'flow_controls'), flow_sources.map(it.replace(' local = Item{code: 3}\n', '')))!
+	for mode in ['-autofree', '-ownership'] {
+		for prealloc in [false, true] {
+			mut command := [compiler, '-no-closures', '-gc', 'none', mode]
+			if prealloc { command << '-prealloc' }
+			command << ['run', flow_controls]
+			control := os.exec(command)
+			assert control.exit_code == 0, '${mode}, prealloc=${prealloc}: ${control.output}'
 		}
 	}
 	for source in mixed_sources {
@@ -928,4 +927,24 @@ fn main() {
 			assert storage_moved.output.contains('ambiguous.v:14:'), storage_moved.output
 		}
 	}
+}
+
+// write_module_programs writes every program as module `case_<index>` under `root`, its `main`
+// renamed to `exercise`, and a main.v that calls the cases in order. It returns main.v.
+fn write_module_programs(root string, sources []string) !string {
+	os.rmdir_all(root) or {}
+	mut imports := []string{cap: sources.len}
+	mut calls := []string{cap: sources.len}
+	for i, source in sources {
+		name := 'case_${i}'
+		assert source.contains('\nfn main() {'), source
+		os.mkdir_all(os.join_path(root, name))!
+		os.write_file(os.join_path(root, name, '${name}.v'), 'module ${name}\n' +
+			source.replace_once('\nfn main() {', '\npub fn exercise() {'))!
+		imports << 'import ${name}'
+		calls << '\t${name}.exercise()'
+	}
+	main_path := os.join_path(root, 'main.v')
+	os.write_file(main_path, '${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n')!
+	return main_path
 }
