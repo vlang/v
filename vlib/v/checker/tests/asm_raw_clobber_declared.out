@@ -1,0 +1,14 @@
+vlib/v/checker/tests/asm_raw_clobber_declared.vv:1655:6: warning: label `raw_x@y` in a raw assembly template has no `%=` suffix, so a second instantiation of this function (inlining, or a generic specialization) defines the same assembler symbol again; use `raw_x@y%=`, a numeric local label such as `1:`, or export the label with `.globl`
+ 1653 |         "pushq %%rbx\n\t"
+ 1654 |         "call \"raw_x@y\"\n\t"
+ 1655 |         "\"raw_x@y\":\n\t"
+      |            ~~~~~~~
+ 1656 |         "popq %%rcx\n\t"
+ 1657 |         "movq $5, %%rbx\n\t"
+vlib/v/checker/tests/asm_raw_clobber_declared.vv:2193:10: error: undefined ident: `undefined_total`
+ 2191 |     raw_naked_body_with_sections()
+ 2192 |     raw_naked_body_without_a_return()
+ 2193 |     println(undefined_total)
+      |             ~~~~~~~~~~~~~~~
+ 2194 |     println(raw_save_and_restore())
+ 2195 |     println(raw_save_and_restore_implicit_write(3))

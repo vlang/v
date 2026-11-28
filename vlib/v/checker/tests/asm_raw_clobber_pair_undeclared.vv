@@ -1,0 +1,359 @@
+// Raw x86 templates with an `A` constraint that still leave a write undeclared: a single-word
+// operand does not reserve both registers of the pair, and `A` says nothing about the other
+// registers, the flags, or an input.
+fn raw_single_word_pair_output_is_reported(x u32, y u32) u32 {
+	mut r := x
+	asm x86 raw {
+		"mull %[y]"
+		; "+A" (r)
+		; [y] "r" (y)
+		; cc
+	}
+	return r
+}
+
+fn raw_single_word_pair_output_on_amd64_is_reported(x u64, y u64) u64 {
+	mut r := x
+	asm amd64 raw {
+		"mulq %[y]"
+		; "+A" (r)
+		; [y] "r" (y)
+		; cc
+	}
+	return r
+}
+
+fn raw_pair_output_with_an_ecx_write_is_reported(x u64, y u32) u64 {
+	mut r := x
+	asm x86 raw {
+		"movl %[y], %%ecx\n\t"
+		"mull %%ecx"
+		; "+A" (r)
+		; [y] "r" (y)
+		; cc
+	}
+	return r
+}
+
+fn raw_pair_output_with_a_flag_write_is_reported(x u64, y u32) u64 {
+	mut r := x
+	asm x86 raw {
+		"mull %[y]"
+		; "+A" (r)
+		; [y] "r" (y)
+	}
+	return r
+}
+
+// A single-word input does not reserve both registers of the pair, and a double-word one
+// declares only the pair.
+fn raw_narrow_pair_input_with_a_mul_is_reported(x u32, y u32) u32 {
+	mut out := u32(0)
+	asm x86 raw {
+		"mull %[y]\n\t"
+		"movl %%edx, %[out]"
+		; [out] "=r" (out)
+		; "A" (x)
+		  [y] "r" (y)
+		; cc
+	}
+	return out
+}
+
+fn raw_narrow_pair_input_with_a_not_is_reported(x u64) u64 {
+	mut out := u64(0)
+	asm amd64 raw {
+		"notq %%rax\n\t"
+		"notq %%rax\n\t"
+		"movq %%rax, %[out]"
+		; [out] "=&r" (out)
+		; "A" (x)
+	}
+	return out
+}
+
+fn raw_double_pair_input_with_an_rcx_write_is_reported(input u128) u64 {
+	mut out := u64(0)
+	asm amd64 raw {
+		"movq %%rax, %%rcx\n\t"
+		"movq %%rcx, %[out]"
+		; [out] "=&r" (out)
+		; "A" (input)
+	}
+	return out
+}
+
+struct Halves {
+mut:
+	lo u32
+}
+
+fn raw_single_word_pair_output_field_is_reported(mut h Halves, y u32) u32 {
+	// A field is typed like a variable: `h.lo` is 32 bits wide, half the pair.
+	asm x86 raw {
+		"mull %[y]"
+		; "+A" (h.lo)
+		; [y] "r" (y)
+		; cc
+	}
+	return h.lo
+}
+
+fn raw_single_word_pair_output_is_reported_once(x u32) u32 {
+	mut r := x
+	asm x86 raw {
+		"movl $1, %%eax\n\t"
+		"movl $2, %%edx"
+		; "+A" (r)
+		;
+		;
+	}
+	return r
+}
+
+fn raw_narrow_output_beside_a_pair_operand_reference_is_reported(x u64, y u32) u64 {
+	mut r := x
+	mut low := u64(0)
+	asm x86 raw {
+		"mull %[y]\n\t"
+		"movq %[r], %[low]"
+		; [r] "+A" (r)
+		  [low] "=r" (low)
+		; [y] "r" (y)
+		; cc
+	}
+	return low
+}
+
+// The report names the operand's alias, not its expression.
+fn raw_narrow_pair_output_is_reported_by_its_alias(x u32) u32 {
+	mut out := x
+	asm x86 raw {
+		"movl $1, %%eax"
+		; [al] "+A" (out)
+	}
+	return out
+}
+
+fn raw_one_narrow_pair_input_is_reported(x u32) {
+	asm amd64 raw {
+		"movq $5, %%rax"
+		;
+		; "A" (x)
+		;
+	}
+}
+
+fn raw_lone_narrow_pair_input_written_by_mul_is_reported(x u32, y u32) u32 {
+	mut out := u32(0)
+	asm amd64 raw {
+		"mull %[y]\n\t"
+		"movl %%edx, %[out]"
+		; [out] "=r" (out)
+		; [x] "A" (x)
+		  [y] "r" (y)
+		; cc
+	}
+	return out
+}
+
+fn raw_narrow_pair_input_beside_an_rdx_write_is_reported(x u32) u32 {
+	mut out := u32(0)
+	asm amd64 raw {
+		"movl $0, %%edx\n\t"
+		"movl %%eax, %[out]"
+		; [out] "=r" (out)
+		; [x] "A" (x)
+	}
+	return out
+}
+
+fn raw_narrow_pair_input_with_a_later_rax_write_is_reported(x u32) u32 {
+	mut out := u32(0)
+	asm amd64 raw {
+		"cltd\n\t"
+		"movl %%edx, %[out]\n\t"
+		"xorl %%eax, %%eax"
+		; [out] "=r" (out)
+		; [x] "A" (x)
+		; cc
+	}
+	return out + x
+}
+
+fn raw_narrow_pair_input_with_a_restored_rax_write_is_reported(x u32) u32 {
+	mut out := u32(0)
+	asm amd64 raw {
+		"pushq %%rax\n\t"
+		"xorl %%eax, %%eax\n\t"
+		"popq %%rax\n\t"
+		"cltd\n\t"
+		"movl %%edx, %[out]"
+		; [out] "=c" (out)
+		; [x] "A" (x)
+		; cc
+	}
+	return out + x
+}
+
+fn raw_narrow_pair_output_beside_a_flag_output_with_an_a_is_reported(x u32) u32 {
+	mut y := x
+	mut c := false
+	asm amd64 raw {
+		"addl $1, %%edx"
+		; [y] "=A" (y)
+		  [c] "=@cca" (c)
+		; 
+		; 
+	}
+	return y
+}
+
+fn raw_narrow_pair_output_beside_a_braced_rdi_input_is_reported(x u32) u32 {
+	mut y := x
+	asm amd64 raw {
+		"movl %[z], %%edx"
+		; [y] "=A" (y)
+		; [z] "{rdi}" (x)
+		; 
+	}
+	return y
+}
+
+fn raw_narrow_pair_input_with_its_own_alias_is_reported(x u32) u32 {
+	mut y := x
+	mut out := u32(0)
+	asm amd64 raw {
+		"cltd\n\t"
+		"movl %%edx, %[out]"
+		; [out] "=r" (out)
+		; [foo] "A" (y)
+		; 
+	}
+	return y
+}
+
+// A constraint that adds a letter to `A`, as in `=Ar`, is checked as `A`, and is offered only the
+// fixed-register fix.
+fn raw_narrow_pair_output_with_a_mixed_constraint_is_reported() u32 {
+	mut y := u32(0)
+	asm amd64 raw {
+		"movl $1, %%eax"
+		; [z] "=Ar" (y)
+	}
+	return y
+}
+
+// An `Ar` input bound to a variable is checked as an `A` input.
+fn raw_narrow_pair_input_with_a_mixed_constraint_is_reported(x u32) u32 {
+	mut out := u32(0)
+	asm amd64 raw {
+		"movl %[x], %[out]\n\t"
+		"xorl %%edx, %%edx"
+		; [out] "=r" (out)
+		; [x] "Ar" (x)
+		; cc
+	}
+	return out
+}
+
+// `=&A` and `%A` are `A` with modifiers only, so the wider-operand fix is offered.
+fn raw_narrow_pair_output_with_an_early_clobber_modifier_is_reported() u32 {
+	mut y := u32(0)
+	asm amd64 raw {
+		"movl $1, %%eax"
+		; [z] "=&A" (y)
+	}
+	return y
+}
+
+fn raw_narrow_pair_input_with_a_commutative_modifier_is_reported(x u32) u32 {
+	mut out := u32(0)
+	asm amd64 raw {
+		"movl %[x], %[out]\n\t"
+		"xorl %%edx, %%edx"
+		; [out] "=r" (out)
+		; [x] "%A" (x)
+		  [w] "r" (x)
+		; cc
+	}
+	return out
+}
+
+// The check counts an `a` or `d` beside the `A` as declaring only that register.
+fn raw_narrow_pair_output_with_a_d_beside_the_a_is_reported() u32 {
+	mut y := u32(0)
+	asm amd64 raw {
+		"movl $1, %%eax"
+		; [z] "=Ad" (y)
+	}
+	return y
+}
+
+// A matching digit may tie the input to another operand, which need not be in the pair.
+fn raw_narrow_pair_input_matched_to_another_output_is_reported(x u32) u32 {
+	mut out := x
+	asm amd64 raw {
+		"xorl %%edx, %%edx"
+		; [out] "=c" (out)
+		; [z] "0A" (x)
+		; cc
+	}
+	return out
+}
+
+// `?` is a modifier, so `=?A` gets the wider-operand fix.
+fn raw_narrow_pair_output_with_a_cost_modifier_is_reported() u32 {
+	mut y := u32(0)
+	asm amd64 raw {
+		"movl $1, %%eax"
+		; [z] "=?A" (y)
+	}
+	return y
+}
+
+// The check counts the `a` beside the `A` as declaring `rax`, so the report names `rdx`, the
+// other register `mull` writes.
+fn raw_narrow_pair_output_with_an_a_and_a_mull_is_reported(x u32) u32 {
+	mut y := x
+	asm amd64 raw {
+		"mull %[x]"
+		; [z] "=Aa" (y)
+		; [x] "r" (x)
+		; cc
+	}
+	return y
+}
+
+fn main() {
+	println(raw_single_word_pair_output_is_reported(6, 7))
+	println(raw_single_word_pair_output_on_amd64_is_reported(6, 7))
+	println(raw_pair_output_with_an_ecx_write_is_reported(6, 7))
+	println(raw_pair_output_with_a_flag_write_is_reported(6, 7))
+	println(raw_narrow_pair_input_with_a_mul_is_reported(1, 2))
+	println(raw_narrow_pair_input_with_a_not_is_reported(1))
+	println(raw_double_pair_input_with_an_rcx_write_is_reported(u128(1)))
+	mut h := Halves{
+		lo: 6
+	}
+	println(raw_single_word_pair_output_field_is_reported(mut h, 7))
+	println(raw_single_word_pair_output_is_reported_once(6))
+	println(raw_narrow_output_beside_a_pair_operand_reference_is_reported(6, 7))
+	println(raw_narrow_pair_output_is_reported_by_its_alias(1))
+	raw_one_narrow_pair_input_is_reported(1)
+	println(raw_lone_narrow_pair_input_written_by_mul_is_reported(1, 2))
+	println(raw_narrow_pair_input_beside_an_rdx_write_is_reported(1))
+	println(raw_narrow_pair_input_with_a_later_rax_write_is_reported(1))
+	println(raw_narrow_pair_input_with_a_restored_rax_write_is_reported(1))
+	println(raw_narrow_pair_output_beside_a_flag_output_with_an_a_is_reported(1))
+	println(raw_narrow_pair_output_beside_a_braced_rdi_input_is_reported(1))
+	println(raw_narrow_pair_input_with_its_own_alias_is_reported(1))
+	println(raw_narrow_pair_output_with_a_mixed_constraint_is_reported())
+	println(raw_narrow_pair_input_with_a_mixed_constraint_is_reported(1))
+	println(raw_narrow_pair_output_with_an_early_clobber_modifier_is_reported())
+	println(raw_narrow_pair_input_with_a_commutative_modifier_is_reported(1))
+	println(raw_narrow_pair_output_with_a_d_beside_the_a_is_reported())
+	println(raw_narrow_pair_input_matched_to_another_output_is_reported(1))
+	println(raw_narrow_pair_output_with_a_cost_modifier_is_reported())
+	println(raw_narrow_pair_output_with_an_a_and_a_mull_is_reported(1))
+}

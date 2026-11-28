@@ -319,3 +319,32 @@ Same-sum wrappers preserve conditional cleanup even when their sources are borro
 Loop exits preserve the source loans held at `break` or `continue`, including labeled exits.
 Only paths that continue within the body reach a later replacement; replacements after the loop
 apply to its exited paths too.
+
+## Raw x86 assembly checks
+`checker_asm_raw.v` checks operand widths and `checker_asm_raw_clobbers.v` checks undeclared
+writes. `doc/docs.md` says what they report. They do not model an assembler: a template they
+cannot read as plain AT&T code is not checked. The choices below rest on what GNU as 2.44, GCC 14
+and clang 19.1.7 did on x86-64 Linux; run them again before changing one.
+
+* A `rep` counts for the string instruction after it only where no assembler that takes the
+  spelling puts it elsewhere. `rep` on its own line, and `wait rep` on one line (which clang
+  refuses), reach the next instruction. Both encode `lock` and `rep` on separate lines, in either
+  order, and `lock` before a `rep movsb` line, as one instruction that faults. Other spellings of
+  `rep` with `lock` or `wait` are refused by GNU as, and refused or read in different ways by
+  clang, so none counts.
+* Alignment after a lone `rep` may emit padding that takes the prefix (`.p2align 4`), or nothing
+  (`.p2align 0`).
+* A fill byte is code: `.p2align 1, 0x41` at an odd offset makes the next `movl $1, %eax` write
+  `r8d`.
+* Some prefixes change what is written: `data16 push %rsi` pushes 16 bits, `rex.b movl $1, %esi`
+  writes `r14d`, and `rex.w movl` becomes a `movabs` that takes the next bytes.
+* In an i386 block clang ignores a clobber such as `rbx`, and GCC saves `ebx` for it.
+* GCC prints a narrow `A` operand at its own width; clang prints `eax` on i386 and `rax` on amd64.
+  clang gives two narrow `A` outputs one register, and GCC gives an `A` input the register of an
+  `a` input with the same value.
+* A `#` in a constraint hides the rest of its alternative: `=d#r` is `rdx`. `[name]` matches an
+  output, as a digit does.
+* Letters of a limited class, found by leaving one register free at a time: `Q` is `rax` to `rdx`,
+  `R` those and `rsi`, `rdi` and `rbp`, and `U` (GCC only) the call-clobbered registers.
+* The two-letter names were enumerated with both compilers, each with integer, floating, vector,
+  mask and constant operands. Those in `inline_asm_raw_other_names` never held a general register.

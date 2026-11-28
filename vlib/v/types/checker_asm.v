@@ -121,6 +121,14 @@ fn (mut tc TypeChecker) check_inline_asm_block(id flat.NodeId, node flat.Node, s
 		&& header.arch in inline_asm_raw_x86_arches {
 		types := tc.inline_asm_raw_att_operand_types(node, block, sections)
 		tc.check_inline_asm_raw_att_widths(id, node, block, start, sections[0], header.arch, types)
+		// A block with no sections is emitted as basic asm, which cannot declare anything, and a
+		// `@[_naked]` body is the whole function, so no compiler code around it needs declarations.
+		// No function is known outside a function body: at file scope, and in an anonymous
+		// function in a constant's or a global's initializer or in a field's default value.
+		if tc.fn_context.node_id >= 0 && sections.len > 1
+			&& !tc.declaration_has_attribute(flat.NodeId(tc.fn_context.node_id), '_naked') {
+			tc.check_inline_asm_raw_clobbers(id, node, block, start, sections, header.arch, types)
+		}
 	}
 	if registers.len == 0 {
 		// Without a register table for this instruction set every name looks unknown.

@@ -1,0 +1,1575 @@
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:852:6: warning: label `raw_get_pc` in a raw assembly template has no `%=` suffix, so a second instantiation of this function (inlining, or a generic specialization) defines the same assembler symbol again; use `raw_get_pc%=`, a numeric local label such as `1:`, or export the label with `.globl`
+  850 |         "pushq %%rbx\n\t"
+  851 |         "call \"raw_get_pc\"\n"
+  852 |         "\"raw_get_pc\": popq %%rbx\n\t"
+      |            ~~~~~~~~~~
+  853 |         "movq %%rbx, %[pc]\n\t"
+  854 |         "popq %%rbx"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:5:13: error: `movq` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+    3 |     mut y := x
+    4 |     asm amd64 raw {
+    5 |         "movq $1, %%rax\n\t"
+      |                   ~~~~~
+    6 |         "addq %%rax, %[y]"
+    7 |         ; [y] "+r" (y)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:17:4: error: `addq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+   15 |     mut y := x
+   16 |     asm amd64 raw {
+   17 |         "addq $1, %[y]"
+      |          ~~~~
+   18 |         ; [y] "+r" (y)
+   19 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:29:4: error: `mulq` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+   27 |     mut w := z
+   28 |     asm amd64 raw {
+   29 |         "mulq %[w]"
+      |          ~~~~
+   30 |         ; [y] "+a" (y)
+   31 |           [w] "r" (w)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:41:4: error: `cqo` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+   39 |     mut y := x
+   40 |     asm amd64 raw {
+   41 |         "cqo"
+      |          ~~~
+   42 |         ; [y] "+a" (y)
+   43 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:52:4: error: `rep stosb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+   50 |     mut c := n
+   51 |     asm amd64 raw {
+   52 |         "rep stosb"
+      |          ~~~~~~~~~
+   53 |         ; [c] "r" (c)
+   54 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:63:17: error: `movsbq` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+   61 |     mut src := x
+   62 |     asm amd64 raw {
+   63 |         "movsbq %%cl, %%rax"
+      |                       ~~~~~
+   64 |         ; [src] "+c" (src)
+   65 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:74:4: error: `testq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+   72 |     mut y := x
+   73 |     asm amd64 raw {
+   74 |         "testq %%rax, %%rax"
+      |          ~~~~~
+   75 |         ; [y] "+r" (y)
+   76 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:85:4: error: `mul` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+   83 |     mut acc := x
+   84 |     asm amd64 raw {
+   85 |         "mul %%rbx"
+      |          ~~~
+   86 |         ; [acc] "+a" (acc)
+   87 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:96:4: error: `mul` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+   94 |     mut acc := x
+   95 |     asm amd64 raw {
+   96 |         "mul %1"
+      |          ~~~
+   97 |         ; "+a" (acc)
+   98 |         ; "r" (acc)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:108:4: error: `mulq` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+  106 |     mut addr := x
+  107 |     asm amd64 raw {
+  108 |         "mulq (%%rbx)"
+      |          ~~~~
+  109 |         ; [acc] "+a" (acc)
+  110 |           [addr] "r" (addr)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:120:19: error: `movq` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+  118 |     mut value := x
+  119 |     asm amd64 raw {
+  120 |         "movq %[value], %%rcx\n\t"
+      |                         ~~~~~
+  121 |         "addq $1, %[value]"
+  122 |         ; [value] "+r" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:133:15: error: `xorq` writes `r8` in this raw assembly template, but `r8` is neither an output operand nor in the clobber list; add `r8` to the clobbers
+  131 |     asm amd64 raw {
+  132 |         ".align 4\n\t"
+  133 |         "xorq %%r8, %%r8\n\t"
+      |                     ~~~~
+  134 |         "movq $42, %[value]"
+  135 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:146:15: error: `xorq` writes `r9` in this raw assembly template, but `r9` is neither an output operand nor in the clobber list; add `r9` to the clobbers
+  144 |     asm amd64 raw {
+  145 |         ".p2align 4\n\t"
+  146 |         "xorq %%r9, %%r9\n\t"
+      |                     ~~~~
+  147 |         "movq $42, %[value]"
+  148 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:159:16: error: `xorq` writes `r10` in this raw assembly template, but `r10` is neither an output operand nor in the clobber list; add `r10` to the clobbers
+  157 |     asm amd64 raw {
+  158 |         ".balign 4\n\t"
+  159 |         "xorq %%r10, %%r10\n\t"
+      |                      ~~~~~
+  160 |         "movq $42, %[value]"
+  161 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:172:16: error: `xorq` writes `r11` in this raw assembly template, but `r11` is neither an output operand nor in the clobber list; add `r11` to the clobbers
+  170 |     asm amd64 raw {
+  171 |         ".globl sym\n\t"
+  172 |         "xorq %%r11, %%r11\n\t"
+      |                      ~~~~~
+  173 |         "movq $42, %[value]"
+  174 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:185:16: error: `xorq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  183 |     asm amd64 raw {
+  184 |         ".global sym\n\t"
+  185 |         "xorq %%r12, %%r12\n\t"
+      |                      ~~~~~
+  186 |         "movq $42, %[value]"
+  187 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:198:16: error: `xorq` writes `r13` in this raw assembly template, but `r13` is neither an output operand nor in the clobber list; add `r13` to the clobbers
+  196 |     asm amd64 raw {
+  197 |         ".weak sym\n\t"
+  198 |         "xorq %%r13, %%r13\n\t"
+      |                      ~~~~~
+  199 |         "movq $42, %[value]"
+  200 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:211:16: error: `xorq` writes `r14` in this raw assembly template, but `r14` is neither an output operand nor in the clobber list; add `r14` to the clobbers
+  209 |     asm amd64 raw {
+  210 |         ".hidden sym\n\t"
+  211 |         "xorq %%r14, %%r14\n\t"
+      |                      ~~~~~
+  212 |         "movq $42, %[value]"
+  213 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:224:16: error: `xorq` writes `r15` in this raw assembly template, but `r15` is neither an output operand nor in the clobber list; add `r15` to the clobbers
+  222 |     asm amd64 raw {
+  223 |         ".local sym\n\t"
+  224 |         "xorq %%r15, %%r15\n\t"
+      |                      ~~~~~
+  225 |         "movq $42, %[value]"
+  226 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:237:15: error: `xorq` writes `r8` in this raw assembly template, but `r8` is neither an output operand nor in the clobber list; add `r8` to the clobbers
+  235 |     asm amd64 raw {
+  236 |         ".type sym, @function\n\t"
+  237 |         "xorq %%r8, %%r8\n\t"
+      |                     ~~~~
+  238 |         "movq $42, %[value]"
+  239 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:250:15: error: `xorq` writes `r9` in this raw assembly template, but `r9` is neither an output operand nor in the clobber list; add `r9` to the clobbers
+  248 |     asm amd64 raw {
+  249 |         ".size sym, 4\n\t"
+  250 |         "xorq %%r9, %%r9\n\t"
+      |                     ~~~~
+  251 |         "movq $42, %[value]"
+  252 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:263:16: error: `xorq` writes `r11` in this raw assembly template, but `r11` is neither an output operand nor in the clobber list; add `r11` to the clobbers
+  261 |     asm amd64 raw {
+  262 |         ".cfi_adjust_cfa_offset 8\n\t"
+  263 |         "xorq %%r11, %%r11\n\t"
+      |                      ~~~~~
+  264 |         "movq $42, %[value]"
+  265 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:276:16: error: `xorq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  274 |     asm amd64 raw {
+  275 |         ".P2ALIGN 4\n\t"
+  276 |         "xorq %%r12, %%r12\n\t"
+      |                      ~~~~~
+  277 |         "movq $42, %[value]"
+  278 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:291:18: error: `lock addq` writes `r15` in this raw assembly template, but `r15` is neither an output operand nor in the clobber list; add `r15` to the clobbers
+  289 |     asm amd64 raw {
+  290 |         "1:\n\t"
+  291 |         "lock addq $1, %%r15\n\t"
+      |                        ~~~~~
+  292 |         "xorq %%r14, %%r14\n\t"
+  293 |         "movq $42, %[value]"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:292:16: error: `xorq` writes `r14` in this raw assembly template, but `r14` is neither an output operand nor in the clobber list; add `r14` to the clobbers
+  290 |         "1:\n\t"
+  291 |         "lock addq $1, %%r15\n\t"
+  292 |         "xorq %%r14, %%r14\n\t"
+      |                      ~~~~~
+  293 |         "movq $42, %[value]"
+  294 |         ; [value] "=&d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:305:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+  303 |     mut o := x
+  304 |     asm amd64 raw {
+  305 |         "movq $1, %%rbx"
+      |                   ~~~~~
+  306 |         ; [o] "+r" (o)
+  307 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:316:13: error: `movq` writes `rsi` in this raw assembly template, but `rsi` is neither an output operand nor in the clobber list; add `rsi` to the clobbers
+  314 |     mut o := x
+  315 |     asm amd64 raw {
+  316 |         "movq $1, %%rsi"
+      |                   ~~~~~
+  317 |         ; [o] "+r" (o)
+  318 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:327:13: error: `movq` writes `rdi` in this raw assembly template, but `rdi` is neither an output operand nor in the clobber list; add `rdi` to the clobbers
+  325 |     mut o := x
+  326 |     asm amd64 raw {
+  327 |         "movq $1, %%rdi"
+      |                   ~~~~~
+  328 |         ; [o] "+r" (o)
+  329 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:338:13: error: `movq` writes `rbp` in this raw assembly template, but `rbp` is neither an output operand nor in the clobber list; copy it with `mov` to a register in the clobbers and back, and bind every operand to a fixed register such as `=d`, or to a constant
+  336 |     mut o := x
+  337 |     asm amd64 raw {
+  338 |         "movq $1, %%rbp"
+      |                   ~~~~~
+  339 |         ; [o] "+r" (o)
+  340 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:349:13: error: `movl` writes `r8` in this raw assembly template, but `r8` is neither an output operand nor in the clobber list; add `r8` to the clobbers
+  347 |     mut o := x
+  348 |     asm amd64 raw {
+  349 |         "movl $1, %%r8d"
+      |                   ~~~~~
+  350 |         ; [o] "+r" (o)
+  351 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:360:13: error: `movw` writes `r9` in this raw assembly template, but `r9` is neither an output operand nor in the clobber list; add `r9` to the clobbers
+  358 |     mut o := x
+  359 |     asm amd64 raw {
+  360 |         "movw $1, %%r9w"
+      |                   ~~~~~
+  361 |         ; [o] "+r" (o)
+  362 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:371:13: error: `movb` writes `r10` in this raw assembly template, but `r10` is neither an output operand nor in the clobber list; add `r10` to the clobbers
+  369 |     mut o := x
+  370 |     asm amd64 raw {
+  371 |         "movb $1, %%r10b"
+      |                   ~~~~~~
+  372 |         ; [o] "+r" (o)
+  373 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:382:9: error: `popq` writes `r11` in this raw assembly template, but `r11` is neither an output operand nor in the clobber list; add `r11` to the clobbers
+  380 |     mut o := x
+  381 |     asm amd64 raw {
+  382 |         "popq %%r11"
+      |               ~~~~~
+  383 |         ; [o] "+r" (o)
+  384 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:393:4: error: `divq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+  391 |     mut o := x
+  392 |     asm amd64 raw {
+  393 |         "divq %[o]"
+      |          ~~~~
+  394 |         ; [o] "+r" (o)
+  395 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:393:4: error: `divq` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+  391 |     mut o := x
+  392 |     asm amd64 raw {
+  393 |         "divq %[o]"
+      |          ~~~~
+  394 |         ; [o] "+r" (o)
+  395 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:393:4: error: `divq` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+  391 |     mut o := x
+  392 |     asm amd64 raw {
+  393 |         "divq %[o]"
+      |          ~~~~
+  394 |         ; [o] "+r" (o)
+  395 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:404:4: error: `idivq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+  402 |     mut o := x
+  403 |     asm amd64 raw {
+  404 |         "idivq %[o]"
+      |          ~~~~~
+  405 |         ; [o] "+r" (o)
+  406 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:404:4: error: `idivq` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+  402 |     mut o := x
+  403 |     asm amd64 raw {
+  404 |         "idivq %[o]"
+      |          ~~~~~
+  405 |         ; [o] "+r" (o)
+  406 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:404:4: error: `idivq` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+  402 |     mut o := x
+  403 |     asm amd64 raw {
+  404 |         "idivq %[o]"
+      |          ~~~~~
+  405 |         ; [o] "+r" (o)
+  406 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:415:4: error: `imulq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+  413 |     mut o := x
+  414 |     asm amd64 raw {
+  415 |         "imulq %[o]"
+      |          ~~~~~
+  416 |         ; [o] "+r" (o)
+  417 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:415:4: error: `imulq` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+  413 |     mut o := x
+  414 |     asm amd64 raw {
+  415 |         "imulq %[o]"
+      |          ~~~~~
+  416 |         ; [o] "+r" (o)
+  417 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:415:4: error: `imulq` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+  413 |     mut o := x
+  414 |     asm amd64 raw {
+  415 |         "imulq %[o]"
+      |          ~~~~~
+  416 |         ; [o] "+r" (o)
+  417 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:426:4: error: `cqto` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+  424 |     mut o := x
+  425 |     asm amd64 raw {
+  426 |         "cqto"
+      |          ~~~~
+  427 |         ; [o] "+r" (o)
+  428 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:437:4: error: `cdq` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+  435 |     mut o := x
+  436 |     asm amd64 raw {
+  437 |         "cdq"
+      |          ~~~
+  438 |         ; [o] "+r" (o)
+  439 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:448:4: error: `cltd` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+  446 |     mut o := x
+  447 |     asm amd64 raw {
+  448 |         "cltd"
+      |          ~~~~
+  449 |         ; [o] "+r" (o)
+  450 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:459:4: error: `repne scasb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+  457 |     mut o := x
+  458 |     asm amd64 raw {
+  459 |         "repne scasb"
+      |          ~~~~~~~~~~~
+  460 |         ; [o] "+r" (o)
+  461 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:470:4: error: `subq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+  468 |     mut o := x
+  469 |     asm amd64 raw {
+  470 |         "subq $1, %%r12"
+      |          ~~~~
+  471 |         ; [o] "+r" (o)
+  472 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:470:13: error: `subq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  468 |     mut o := x
+  469 |     asm amd64 raw {
+  470 |         "subq $1, %%r12"
+      |                   ~~~~~
+  471 |         ; [o] "+r" (o)
+  472 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:481:4: error: `andq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+  479 |     mut o := x
+  480 |     asm amd64 raw {
+  481 |         "andq $1, %%r12"
+      |          ~~~~
+  482 |         ; [o] "+r" (o)
+  483 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:481:13: error: `andq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  479 |     mut o := x
+  480 |     asm amd64 raw {
+  481 |         "andq $1, %%r12"
+      |                   ~~~~~
+  482 |         ; [o] "+r" (o)
+  483 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:492:4: error: `orq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+  490 |     mut o := x
+  491 |     asm amd64 raw {
+  492 |         "orq $1, %%r12"
+      |          ~~~
+  493 |         ; [o] "+r" (o)
+  494 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:492:12: error: `orq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  490 |     mut o := x
+  491 |     asm amd64 raw {
+  492 |         "orq $1, %%r12"
+      |                  ~~~~~
+  493 |         ; [o] "+r" (o)
+  494 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:503:4: error: `xorq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+  501 |     mut o := x
+  502 |     asm amd64 raw {
+  503 |         "xorq $1, %%r12"
+      |          ~~~~
+  504 |         ; [o] "+r" (o)
+  505 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:503:13: error: `xorq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  501 |     mut o := x
+  502 |     asm amd64 raw {
+  503 |         "xorq $1, %%r12"
+      |                   ~~~~~
+  504 |         ; [o] "+r" (o)
+  505 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:514:4: error: `incq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+  512 |     mut o := x
+  513 |     asm amd64 raw {
+  514 |         "incq %%r12"
+      |          ~~~~
+  515 |         ; [o] "+r" (o)
+  516 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:514:9: error: `incq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  512 |     mut o := x
+  513 |     asm amd64 raw {
+  514 |         "incq %%r12"
+      |               ~~~~~
+  515 |         ; [o] "+r" (o)
+  516 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:525:4: error: `decq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+  523 |     mut o := x
+  524 |     asm amd64 raw {
+  525 |         "decq %%r12"
+      |          ~~~~
+  526 |         ; [o] "+r" (o)
+  527 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:525:9: error: `decq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  523 |     mut o := x
+  524 |     asm amd64 raw {
+  525 |         "decq %%r12"
+      |               ~~~~~
+  526 |         ; [o] "+r" (o)
+  527 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:536:4: error: `negq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+  534 |     mut o := x
+  535 |     asm amd64 raw {
+  536 |         "negq %%r12"
+      |          ~~~~
+  537 |         ; [o] "+r" (o)
+  538 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:536:9: error: `negq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  534 |     mut o := x
+  535 |     asm amd64 raw {
+  536 |         "negq %%r12"
+      |               ~~~~~
+  537 |         ; [o] "+r" (o)
+  538 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:547:9: error: `notq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  545 |     mut o := x
+  546 |     asm amd64 raw {
+  547 |         "notq %%r12"
+      |               ~~~~~
+  548 |         ; [o] "+r" (o)
+  549 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:558:4: error: `shlq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+  556 |     mut o := x
+  557 |     asm amd64 raw {
+  558 |         "shlq $1, %%r12"
+      |          ~~~~
+  559 |         ; [o] "+r" (o)
+  560 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:558:13: error: `shlq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  556 |     mut o := x
+  557 |     asm amd64 raw {
+  558 |         "shlq $1, %%r12"
+      |                   ~~~~~
+  559 |         ; [o] "+r" (o)
+  560 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:569:4: error: `shrq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+  567 |     mut o := x
+  568 |     asm amd64 raw {
+  569 |         "shrq $1, %%r12"
+      |          ~~~~
+  570 |         ; [o] "+r" (o)
+  571 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:569:13: error: `shrq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  567 |     mut o := x
+  568 |     asm amd64 raw {
+  569 |         "shrq $1, %%r12"
+      |                   ~~~~~
+  570 |         ; [o] "+r" (o)
+  571 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:580:4: error: `sarq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+  578 |     mut o := x
+  579 |     asm amd64 raw {
+  580 |         "sarq $1, %%r12"
+      |          ~~~~
+  581 |         ; [o] "+r" (o)
+  582 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:580:13: error: `sarq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  578 |     mut o := x
+  579 |     asm amd64 raw {
+  580 |         "sarq $1, %%r12"
+      |                   ~~~~~
+  581 |         ; [o] "+r" (o)
+  582 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:591:18: error: `leaq` writes `r13` in this raw assembly template, but `r13` is neither an output operand nor in the clobber list; add `r13` to the clobbers
+  589 |     mut o := x
+  590 |     asm amd64 raw {
+  591 |         "leaq (%%rax), %%r13"
+      |                        ~~~~~
+  592 |         ; [o] "+r" (o)
+  593 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:602:4: error: `cmpq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+  600 |     mut o := x
+  601 |     asm amd64 raw {
+  602 |         "cmpq $1, %[o]"
+      |          ~~~~
+  603 |         ; [o] "+r" (o)
+  604 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:614:13: error: `movq` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+  612 |     mut z := false
+  613 |     asm amd64 raw {
+  614 |         "movq $1, %%rcx"
+      |                   ~~~~~
+  615 |         ; [z] "=@ccz" (z)
+  616 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:625:16: error: `imulq` writes `r14` in this raw assembly template, but `r14` is neither an output operand nor in the clobber list; add `r14` to the clobbers
+  623 |     mut o := x
+  624 |     asm amd64 raw {
+  625 |         "imulq %[o], %%r14"
+      |                      ~~~~~
+  626 |         ; [o] "+r" (o)
+  627 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:636:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+  634 |     mut out := u64(0)
+  635 |     asm amd64 raw {
+  636 |         "movq $5, %%rbx\n"
+      |                   ~~~~~
+  637 |         "pushq %%rbx\n"
+  638 |         "movq %%rbx, %[out]\n"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:652:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+  650 |         "pushq %%rbx\n"
+  651 |         "popq %%rbx\n"
+  652 |         "movq $5, %%rbx\n"
+      |                   ~~~~~
+  653 |         "movq %%rbx, %[out]"
+  654 |         ; [out] "=d" (out)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:665:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+  663 |     asm amd64 raw {
+  664 |         "pushq %%rbx\n"
+  665 |         "movq $5, %%rbx\n"
+      |                   ~~~~~
+  666 |         "movq %%rbx, %[out]\n"
+  667 |         "popq %%r12"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:667:9: error: `popq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  665 |         "movq $5, %%rbx\n"
+  666 |         "movq %%rbx, %[out]\n"
+  667 |         "popq %%r12"
+      |               ~~~~~
+  668 |         ; [out] "=r" (out)
+  669 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:679:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+  677 |     asm amd64 raw {
+  678 |         "pushq %%rbx\n"
+  679 |         "movq $5, %%rbx\n"
+      |                   ~~~~~
+  680 |         "movq %%rbx, %[out]"
+  681 |         ; [out] "=r" (out)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:693:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+  691 |         "pushq %%rbx\n"
+  692 |         "pushq %%r12\n"
+  693 |         "movq $5, %%rbx\n"
+      |                   ~~~~~
+  694 |         "movq %%rbx, %[out]\n"
+  695 |         "popq %%rbx\n"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:696:9: error: `popq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  694 |         "movq %%rbx, %[out]\n"
+  695 |         "popq %%rbx\n"
+  696 |         "popq %%r12"
+      |               ~~~~~
+  697 |         ; [out] "=r" (out)
+  698 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:695:9: error: `popq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+  693 |         "movq $5, %%rbx\n"
+  694 |         "movq %%rbx, %[out]\n"
+  695 |         "popq %%rbx\n"
+      |               ~~~~~
+  696 |         "popq %%r12"
+  697 |         ; [out] "=r" (out)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:709:4: error: `addq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+  707 |         "pushfq\n"
+  708 |         "popfq\n"
+  709 |         "addq $1, %[out]"
+      |          ~~~~
+  710 |         ; [out] "+r" (out)
+  711 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:721:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+  719 |     asm amd64 raw {
+  720 |         "pushq %[rbx]\n"
+  721 |         "movq $5, %%rbx\n"
+      |                   ~~~~~
+  722 |         "movq %%rbx, %[out]\n"
+  723 |         "popq %[rbx]"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:734:9: error: `stosb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+  732 |     mut y := x
+  733 |     asm amd64 raw {
+  734 |         "rep; stosb"
+      |               ~~~~~
+  735 |         ; [y] "+r" (y)
+  736 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:745:4: error: `REP STOSB` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+  743 |     mut y := x
+  744 |     asm amd64 raw {
+  745 |         "REP STOSB"
+      |          ~~~~~~~~~
+  746 |         ; [y] "+r" (y)
+  747 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:756:15: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+  754 |     mut y := x
+  755 |     asm amd64 raw {
+  756 |         "movq %[y], %%RBX"
+      |                     ~~~~~
+  757 |         ; [y] "+r" (y)
+  758 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:770:13: error: `movq` writes `rsi` in this raw assembly template, but `rsi` is neither an output operand nor in the clobber list; add `rsi` to the clobbers
+  768 |         "popq %%rbx\n\t"
+  769 |         "call abort\n\t"
+  770 |         "movq $1, %%rsi\n\t"
+      |                   ~~~~~
+  771 |         "addq %%rsi, %[y]"
+  772 |         ; [y] "+b" (y)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:786:13: error: `movq` writes `r8` in this raw assembly template, but `r8` is neither an output operand nor in the clobber list; add `r8` to the clobbers
+  784 |         "pushq %%rbp\n\t"
+  785 |         "movq %%rsp, %%rbp\n\t"
+  786 |         "movq $1, %%r8\n\t"
+      |                   ~~~~
+  787 |         "leave\n\t"
+  788 |         "leave"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:802:13: error: `movq` writes `r8` in this raw assembly template, but `r8` is neither an output operand nor in the clobber list; add `r8` to the clobbers
+  800 |         "movq %%rsp, %%rbp\n\t"
+  801 |         "pushq %%rbx\n\t"
+  802 |         "movq $1, %%r8\n\t"
+      |                   ~~~~
+  803 |         "movq %%rbp, %%rsp\n\t"
+  804 |         "popq %%rbp"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:817:4: error: `stosq` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+  815 |         "rep\n\t"
+  816 |         ".globl raw_rep_symbol\n\t"
+  817 |         "stosq"
+      |          ~~~~~
+  818 |         ; [y] "+r" (y)
+  819 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:828:4: error: `cwd` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+  826 |     mut o := x
+  827 |     asm amd64 raw {
+  828 |         "cwd"
+      |          ~~~
+  829 |         ; [o] "+r" (o)
+  830 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:839:4: error: `cwtd` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+  837 |     mut o := x
+  838 |     asm amd64 raw {
+  839 |         "cwtd"
+      |          ~~~~
+  840 |         ; [o] "+r" (o)
+  841 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:865:13: error: `movl` writes `esi` in this raw assembly template, but `esi` is neither an output operand nor in the clobber list; add `esi` to the clobbers
+  863 |         "pop %%ebx\n\t"
+  864 |         "call abort\n\t"
+  865 |         "movl $1, %%esi"
+      |                   ~~~~~
+  866 |         ; 
+  867 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:874:13: error: `movq` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+  872 | fn raw_every_register_spelling_is_a_write() {
+  873 |     asm amd64 raw {
+  874 |         "movq $1, %%rax"
+      |                   ~~~~~
+  875 |         ; 
+  876 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:880:13: error: `movl` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+  878 |     }
+  879 |     asm amd64 raw {
+  880 |         "movl $1, %%eax"
+      |                   ~~~~~
+  881 |         ; 
+  882 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:886:13: error: `movw` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+  884 |     }
+  885 |     asm amd64 raw {
+  886 |         "movw $1, %%ax"
+      |                   ~~~~
+  887 |         ; 
+  888 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:892:13: error: `movb` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+  890 |     }
+  891 |     asm amd64 raw {
+  892 |         "movb $1, %%al"
+      |                   ~~~~
+  893 |         ; 
+  894 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:898:13: error: `movb` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+  896 |     }
+  897 |     asm amd64 raw {
+  898 |         "movb $1, %%ah"
+      |                   ~~~~
+  899 |         ; 
+  900 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:904:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+  902 |     }
+  903 |     asm amd64 raw {
+  904 |         "movq $1, %%rbx"
+      |                   ~~~~~
+  905 |         ; 
+  906 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:910:13: error: `movl` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+  908 |     }
+  909 |     asm amd64 raw {
+  910 |         "movl $1, %%ebx"
+      |                   ~~~~~
+  911 |         ; 
+  912 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:916:13: error: `movw` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+  914 |     }
+  915 |     asm amd64 raw {
+  916 |         "movw $1, %%bx"
+      |                   ~~~~
+  917 |         ; 
+  918 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:922:13: error: `movb` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+  920 |     }
+  921 |     asm amd64 raw {
+  922 |         "movb $1, %%bl"
+      |                   ~~~~
+  923 |         ; 
+  924 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:928:13: error: `movb` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+  926 |     }
+  927 |     asm amd64 raw {
+  928 |         "movb $1, %%bh"
+      |                   ~~~~
+  929 |         ; 
+  930 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:934:13: error: `movq` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+  932 |     }
+  933 |     asm amd64 raw {
+  934 |         "movq $1, %%rcx"
+      |                   ~~~~~
+  935 |         ; 
+  936 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:940:13: error: `movl` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+  938 |     }
+  939 |     asm amd64 raw {
+  940 |         "movl $1, %%ecx"
+      |                   ~~~~~
+  941 |         ; 
+  942 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:946:13: error: `movw` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+  944 |     }
+  945 |     asm amd64 raw {
+  946 |         "movw $1, %%cx"
+      |                   ~~~~
+  947 |         ; 
+  948 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:952:13: error: `movb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+  950 |     }
+  951 |     asm amd64 raw {
+  952 |         "movb $1, %%cl"
+      |                   ~~~~
+  953 |         ; 
+  954 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:958:13: error: `movb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+  956 |     }
+  957 |     asm amd64 raw {
+  958 |         "movb $1, %%ch"
+      |                   ~~~~
+  959 |         ; 
+  960 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:964:13: error: `movq` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+  962 |     }
+  963 |     asm amd64 raw {
+  964 |         "movq $1, %%rdx"
+      |                   ~~~~~
+  965 |         ; 
+  966 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:970:13: error: `movl` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+  968 |     }
+  969 |     asm amd64 raw {
+  970 |         "movl $1, %%edx"
+      |                   ~~~~~
+  971 |         ; 
+  972 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:976:13: error: `movw` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+  974 |     }
+  975 |     asm amd64 raw {
+  976 |         "movw $1, %%dx"
+      |                   ~~~~
+  977 |         ; 
+  978 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:982:13: error: `movb` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+  980 |     }
+  981 |     asm amd64 raw {
+  982 |         "movb $1, %%dl"
+      |                   ~~~~
+  983 |         ; 
+  984 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:988:13: error: `movb` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+  986 |     }
+  987 |     asm amd64 raw {
+  988 |         "movb $1, %%dh"
+      |                   ~~~~
+  989 |         ; 
+  990 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:994:13: error: `movq` writes `rsi` in this raw assembly template, but `rsi` is neither an output operand nor in the clobber list; add `rsi` to the clobbers
+  992 |     }
+  993 |     asm amd64 raw {
+  994 |         "movq $1, %%rsi"
+      |                   ~~~~~
+  995 |         ; 
+  996 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1000:13: error: `movl` writes `rsi` in this raw assembly template, but `rsi` is neither an output operand nor in the clobber list; add `rsi` to the clobbers
+  998 |     }
+  999 |     asm amd64 raw {
+ 1000 |         "movl $1, %%esi"
+      |                   ~~~~~
+ 1001 |         ; 
+ 1002 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1006:13: error: `movw` writes `rsi` in this raw assembly template, but `rsi` is neither an output operand nor in the clobber list; add `rsi` to the clobbers
+ 1004 |     }
+ 1005 |     asm amd64 raw {
+ 1006 |         "movw $1, %%si"
+      |                   ~~~~
+ 1007 |         ; 
+ 1008 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1012:13: error: `movb` writes `rsi` in this raw assembly template, but `rsi` is neither an output operand nor in the clobber list; add `rsi` to the clobbers
+ 1010 |     }
+ 1011 |     asm amd64 raw {
+ 1012 |         "movb $1, %%sil"
+      |                   ~~~~~
+ 1013 |         ; 
+ 1014 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1018:13: error: `movq` writes `rdi` in this raw assembly template, but `rdi` is neither an output operand nor in the clobber list; add `rdi` to the clobbers
+ 1016 |     }
+ 1017 |     asm amd64 raw {
+ 1018 |         "movq $1, %%rdi"
+      |                   ~~~~~
+ 1019 |         ; 
+ 1020 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1024:13: error: `movl` writes `rdi` in this raw assembly template, but `rdi` is neither an output operand nor in the clobber list; add `rdi` to the clobbers
+ 1022 |     }
+ 1023 |     asm amd64 raw {
+ 1024 |         "movl $1, %%edi"
+      |                   ~~~~~
+ 1025 |         ; 
+ 1026 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1030:13: error: `movw` writes `rdi` in this raw assembly template, but `rdi` is neither an output operand nor in the clobber list; add `rdi` to the clobbers
+ 1028 |     }
+ 1029 |     asm amd64 raw {
+ 1030 |         "movw $1, %%di"
+      |                   ~~~~
+ 1031 |         ; 
+ 1032 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1036:13: error: `movb` writes `rdi` in this raw assembly template, but `rdi` is neither an output operand nor in the clobber list; add `rdi` to the clobbers
+ 1034 |     }
+ 1035 |     asm amd64 raw {
+ 1036 |         "movb $1, %%dil"
+      |                   ~~~~~
+ 1037 |         ; 
+ 1038 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1042:13: error: `movq` writes `rbp` in this raw assembly template, but `rbp` is neither an output operand nor in the clobber list; copy it with `mov` to a register in the clobbers and back, and bind every operand to a fixed register such as `=d`, or to a constant
+ 1040 |     }
+ 1041 |     asm amd64 raw {
+ 1042 |         "movq $1, %%rbp"
+      |                   ~~~~~
+ 1043 |         ; 
+ 1044 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1048:13: error: `movl` writes `rbp` in this raw assembly template, but `rbp` is neither an output operand nor in the clobber list; copy it with `mov` to a register in the clobbers and back, and bind every operand to a fixed register such as `=d`, or to a constant
+ 1046 |     }
+ 1047 |     asm amd64 raw {
+ 1048 |         "movl $1, %%ebp"
+      |                   ~~~~~
+ 1049 |         ; 
+ 1050 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1054:13: error: `movw` writes `rbp` in this raw assembly template, but `rbp` is neither an output operand nor in the clobber list; copy it with `mov` to a register in the clobbers and back, and bind every operand to a fixed register such as `=d`, or to a constant
+ 1052 |     }
+ 1053 |     asm amd64 raw {
+ 1054 |         "movw $1, %%bp"
+      |                   ~~~~
+ 1055 |         ; 
+ 1056 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1060:13: error: `movb` writes `rbp` in this raw assembly template, but `rbp` is neither an output operand nor in the clobber list; copy it with `mov` to a register in the clobbers and back, and bind every operand to a fixed register such as `=d`, or to a constant
+ 1058 |     }
+ 1059 |     asm amd64 raw {
+ 1060 |         "movb $1, %%bpl"
+      |                   ~~~~~
+ 1061 |         ; 
+ 1062 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1071:13: error: `movq` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+ 1069 |     asm amd64 raw {
+ 1070 |         "movq $1, %%rdi\n\t"
+ 1071 |         "movq $2, %%rdx"
+      |                   ~~~~~
+ 1072 |         ; [y] "={rdi}" (y)
+ 1073 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1082:13: error: `movq` writes `rsi` in this raw assembly template, but `rsi` is neither an output operand nor in the clobber list; add `rsi` to the clobbers
+ 1080 |     asm amd64 raw {
+ 1081 |         "call \"abort\"\n\t"
+ 1082 |         "movq $1, %%rsi"
+      |                   ~~~~~
+ 1083 |         ; 
+ 1084 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1095:13: error: `movq` writes `rsi` in this raw assembly template, but `rsi` is neither an output operand nor in the clobber list; add `rsi` to the clobbers
+ 1093 |         "call raw$fn\n\t"
+ 1094 |         "call memcpy@PLT\n\t"
+ 1095 |         "movq $1, %%rsi"
+      |                   ~~~~~
+ 1096 |         ; 
+ 1097 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1105:13: error: `movq` writes `rsi` in this raw assembly template, but `rsi` is neither an output operand nor in the clobber list; add `rsi` to the clobbers
+ 1103 |     asm amd64 raw {
+ 1104 |         ".cfi_def_cfa %%rsp, 16\n\t"
+ 1105 |         "movq $1, %%rsi"
+      |                   ~~~~~
+ 1106 |         ; 
+ 1107 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1118:16: error: `movq` writes `rsi` in this raw assembly template, but `rsi` is neither an output operand nor in the clobber list; add `rsi` to the clobbers
+ 1116 |         "movq %%rbp, %%rsp\n\t"
+ 1117 |         "popq %%rbp\n\t"
+ 1118 |         "movq %%rbp, %%rsi"
+      |                      ~~~~~
+ 1119 |         ; 
+ 1120 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1130:16: error: `movq` writes `rsi` in this raw assembly template, but `rsi` is neither an output operand nor in the clobber list; add `rsi` to the clobbers
+ 1128 |         "movq %%rsp, %%rbp\n\t"
+ 1129 |         "leaveq\n\t"
+ 1130 |         "movq %%rbp, %%rsi"
+      |                      ~~~~~
+ 1131 |         ; 
+ 1132 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1139:16: error: `movl` writes `esi` in this raw assembly template, but `esi` is neither an output operand nor in the clobber list; add `esi` to the clobbers
+ 1137 |         "movl %%esp, %%ebp\n\t"
+ 1138 |         "leavel\n\t"
+ 1139 |         "movl %%ebp, %%esi"
+      |                      ~~~~~
+ 1140 |         ; 
+ 1141 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1151:4: error: `divl` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+ 1149 |         "mull (%%rbx)\n\t"
+ 1150 |         "imull (%%rbx)\n\t"
+ 1151 |         "divl (%%rbx)\n\t"
+      |          ~~~~
+ 1152 |         "idivl (%%rbx)"
+ 1153 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1151:4: error: `divl` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+ 1149 |         "mull (%%rbx)\n\t"
+ 1150 |         "imull (%%rbx)\n\t"
+ 1151 |         "divl (%%rbx)\n\t"
+      |          ~~~~
+ 1152 |         "idivl (%%rbx)"
+ 1153 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1152:4: error: `idivl` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+ 1150 |         "imull (%%rbx)\n\t"
+ 1151 |         "divl (%%rbx)\n\t"
+ 1152 |         "idivl (%%rbx)"
+      |          ~~~~~
+ 1153 |         ; 
+ 1154 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1152:4: error: `idivl` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+ 1150 |         "imull (%%rbx)\n\t"
+ 1151 |         "divl (%%rbx)\n\t"
+ 1152 |         "idivl (%%rbx)"
+      |          ~~~~~
+ 1153 |         ; 
+ 1154 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1150:4: error: `imull` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+ 1148 |         "mulw (%%rbx)\n\t"
+ 1149 |         "mull (%%rbx)\n\t"
+ 1150 |         "imull (%%rbx)\n\t"
+      |          ~~~~~
+ 1151 |         "divl (%%rbx)\n\t"
+ 1152 |         "idivl (%%rbx)"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1150:4: error: `imull` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+ 1148 |         "mulw (%%rbx)\n\t"
+ 1149 |         "mull (%%rbx)\n\t"
+ 1150 |         "imull (%%rbx)\n\t"
+      |          ~~~~~
+ 1151 |         "divl (%%rbx)\n\t"
+ 1152 |         "idivl (%%rbx)"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1149:4: error: `mull` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+ 1147 |     asm amd64 raw {
+ 1148 |         "mulw (%%rbx)\n\t"
+ 1149 |         "mull (%%rbx)\n\t"
+      |          ~~~~
+ 1150 |         "imull (%%rbx)\n\t"
+ 1151 |         "divl (%%rbx)\n\t"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1149:4: error: `mull` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+ 1147 |     asm amd64 raw {
+ 1148 |         "mulw (%%rbx)\n\t"
+ 1149 |         "mull (%%rbx)\n\t"
+      |          ~~~~
+ 1150 |         "imull (%%rbx)\n\t"
+ 1151 |         "divl (%%rbx)\n\t"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1148:4: error: `mulw` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+ 1146 | fn raw_suffixed_mul_and_div_of_memory_write_rdx() {
+ 1147 |     asm amd64 raw {
+ 1148 |         "mulw (%%rbx)\n\t"
+      |          ~~~~
+ 1149 |         "mull (%%rbx)\n\t"
+ 1150 |         "imull (%%rbx)\n\t"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1148:4: error: `mulw` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+ 1146 | fn raw_suffixed_mul_and_div_of_memory_write_rdx() {
+ 1147 |     asm amd64 raw {
+ 1148 |         "mulw (%%rbx)\n\t"
+      |          ~~~~
+ 1149 |         "mull (%%rbx)\n\t"
+ 1150 |         "imull (%%rbx)\n\t"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1161:4: error: `repe cmpsb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1159 | fn raw_rep_prefix_spellings_write_rcx() {
+ 1160 |     asm amd64 raw {
+ 1161 |         "repe cmpsb\n\t"
+      |          ~~~~~~~~~~
+ 1162 |         "repz scasb\n\t"
+ 1163 |         "repnz scasb\n\t"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1164:4: error: `repne scasb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1162 |         "repz scasb\n\t"
+ 1163 |         "repnz scasb\n\t"
+ 1164 |         "repne scasb"
+      |          ~~~~~~~~~~~
+ 1165 |         ; 
+ 1166 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1163:4: error: `repnz scasb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1161 |         "repe cmpsb\n\t"
+ 1162 |         "repz scasb\n\t"
+ 1163 |         "repnz scasb\n\t"
+      |          ~~~~~~~~~~~
+ 1164 |         "repne scasb"
+ 1165 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1162:4: error: `repz scasb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1160 |     asm amd64 raw {
+ 1161 |         "repe cmpsb\n\t"
+ 1162 |         "repz scasb\n\t"
+      |          ~~~~~~~~~~
+ 1163 |         "repnz scasb\n\t"
+ 1164 |         "repne scasb"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1175:4: error: `movsb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1173 |         "rep\n\t"
+ 1174 |         "1:\n\t"
+ 1175 |         "movsb"
+      |          ~~~~~
+ 1176 |         ; 
+ 1177 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1186:13: error: `movq` writes `rsi` in this raw assembly template, but `rsi` is neither an output operand nor in the clobber list; add `rsi` to the clobbers
+ 1184 |         "pushq %%rbx\n\t"
+ 1185 |         "popq %%rbp\n\t"
+ 1186 |         "movq $1, %%rsi"
+      |                   ~~~~~
+ 1187 |         ; 
+ 1188 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1185:9: error: `popq` writes `rbp` in this raw assembly template, but `rbp` is neither an output operand nor in the clobber list; copy it with `mov` to a register in the clobbers and back, and bind every operand to a fixed register such as `=d`, or to a constant
+ 1183 |     asm amd64 raw {
+ 1184 |         "pushq %%rbx\n\t"
+ 1185 |         "popq %%rbp\n\t"
+      |               ~~~~~
+ 1186 |         "movq $1, %%rsi"
+ 1187 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1195:4: error: `rep movsd` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1193 | fn raw_rep_movsd_without_operands_writes_rcx() {
+ 1194 |     asm amd64 raw {
+ 1195 |         "rep movsd"
+      |          ~~~~~~~~~
+ 1196 |         ; 
+ 1197 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1204:4: error: `repe cmpsd` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1202 | fn raw_repe_cmpsd_without_operands_writes_rcx() {
+ 1203 |     asm amd64 raw {
+ 1204 |         "repe cmpsd"
+      |          ~~~~~~~~~~
+ 1205 |         ; 
+ 1206 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1214:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1212 |     asm amd64 raw {
+ 1213 |         "wait\n\t"
+ 1214 |         "movq $1, %%rbx"
+      |                   ~~~~~
+ 1215 |         ; 
+ 1216 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1223:4: error: `rep smovb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1221 | fn raw_rep_smovb_writes_rcx() {
+ 1222 |     asm amd64 raw {
+ 1223 |         "rep smovb"
+      |          ~~~~~~~~~
+ 1224 |         ; 
+ 1225 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1232:4: error: `rep sstoq` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1230 | fn raw_rep_sstoq_writes_rcx() {
+ 1231 |     asm amd64 raw {
+ 1232 |         "rep sstoq"
+      |          ~~~~~~~~~
+ 1233 |         ; 
+ 1234 |         ; 
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1241:4: error: `rep slodb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1239 | fn raw_rep_slodb_writes_rcx() {
+ 1240 |     asm amd64 raw {
+ 1241 |         "rep slodb"
+      |          ~~~~~~~~~
+ 1242 |         ;
+ 1243 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1250:4: error: `repz scmpb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1248 | fn raw_repz_scmpb_writes_rcx() {
+ 1249 |     asm amd64 raw {
+ 1250 |         "repz scmpb"
+      |          ~~~~~~~~~~
+ 1251 |         ;
+ 1252 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1259:4: error: `repz sscab` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1257 | fn raw_repz_sscab_writes_rcx() {
+ 1258 |     asm amd64 raw {
+ 1259 |         "repz sscab"
+      |          ~~~~~~~~~~
+ 1260 |         ;
+ 1261 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1373:4: error: `rep lodsb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1371 | fn raw_rep_lodsb_writes_rcx() {
+ 1372 |     asm amd64 raw {
+ 1373 |         "rep lodsb"
+      |          ~~~~~~~~~
+ 1374 |         ;
+ 1375 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1382:4: error: `rep insb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1380 | fn raw_rep_insb_writes_rcx() {
+ 1381 |     asm amd64 raw {
+ 1382 |         "rep insb"
+      |          ~~~~~~~~
+ 1383 |         ;
+ 1384 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1391:4: error: `rep outsb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1389 | fn raw_rep_outsb_writes_rcx() {
+ 1390 |     asm amd64 raw {
+ 1391 |         "rep outsb"
+      |          ~~~~~~~~~
+ 1392 |         ;
+ 1393 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1401:13: error: `movq` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+ 1399 |     asm amd64 raw {
+ 1400 |         "call stub\n\t"
+ 1401 |         "movq $1, %%rax"
+      |                   ~~~~~
+ 1402 |         ;
+ 1403 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1414:13: error: `movq` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+ 1412 |         "pushq %%rbx\n\t"
+ 1413 |         "popq %%rcx\n\t"
+ 1414 |         "movq $1, %%rax\n\t"
+      |                   ~~~~~
+ 1415 |         "popq %%rbp"
+ 1416 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1428:13: error: `movq` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+ 1426 |         "pushq %%rbx\n\t"
+ 1427 |         "popq %%rbx\n\t"
+ 1428 |         "movq $1, %%rax\n\t"
+      |                   ~~~~~
+ 1429 |         "movq %%rbp, %%rsp\n\t"
+ 1430 |         "popq %%rbp"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1440:4: error: `mul` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+ 1438 |     mut y := x
+ 1439 |     asm amd64 raw {
+ 1440 |         "mul %[w]"
+      |          ~~~
+ 1441 |         ; [y] "+a" (y)
+ 1442 |         ; [w] "r" (z)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1451:4: error: `mul` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+ 1449 |     mut y := x
+ 1450 |     asm amd64 raw {
+ 1451 |         "mul %[w]"
+      |          ~~~
+ 1452 |         ; [y] "+a" (y)
+ 1453 |         ; [w] "r" (z)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1462:4: error: `idivl` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+ 1460 |     mut q := x
+ 1461 |     asm amd64 raw {
+ 1462 |         "idivl %[d], %%eax"
+      |          ~~~~~
+ 1463 |         ; [q] "+a" (q)
+ 1464 |         ; [d] "r" (d)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1473:4: error: `divl` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+ 1471 |     mut q := x
+ 1472 |     asm amd64 raw {
+ 1473 |         "divl %[d], %%eax"
+      |          ~~~~
+ 1474 |         ; [q] "+a" (q)
+ 1475 |         ; [d] "r" (d)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1484:4: error: `rep wait movsb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1482 | fn raw_rep_wait_movsb_on_one_line_writes_rcx() {
+ 1483 |     asm amd64 raw {
+ 1484 |         "rep wait movsb"
+      |          ~~~~~~~~~~~~~~
+ 1485 |         ;
+ 1486 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1495:4: error: `movsb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1493 |     asm amd64 raw {
+ 1494 |         "wait rep\n\t"
+ 1495 |         "movsb"
+      |          ~~~~~
+ 1496 |         ;
+ 1497 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1506:13: error: `movl` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+ 1504 |     asm amd64 raw {
+ 1505 |         ".p2align 4,,15\n\t"
+ 1506 |         "movl $1, %%eax"
+      |                   ~~~~~
+ 1507 |         ;
+ 1508 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1518:13: error: `movq` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1516 |     asm amd64 raw {
+ 1517 |         "push %[y]\n\t"
+ 1518 |         "movq $1, %%rcx\n\t"
+      |                   ~~~~~
+ 1519 |         "pop %[y]"
+ 1520 |         ; [y] "+r" (y)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1529:13: error: `movq` writes `rsi` in this raw assembly template, but `rsi` is neither an output operand nor in the clobber list; add `rsi` to the clobbers
+ 1527 |     asm amd64 raw {
+ 1528 |         "call f\n\t"
+ 1529 |         "movq $1, %%rsi"
+      |                   ~~~~~
+ 1530 |         ;
+ 1531 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1542:13: error: `movq` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1540 |         ".Lf%=:\n\t"
+ 1541 |         "movq %%rsp, %%rbp\n\t"
+ 1542 |         "movq $1, %%rcx\n\t"
+      |                   ~~~~~
+ 1543 |         "leave"
+ 1544 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1557:13: error: `movq` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1555 |         "nop\n\t"
+ 1556 |         "push %[a]\n\t"
+ 1557 |         "movq $1, %%rcx\n\t"
+      |                   ~~~~~
+ 1558 |         "pop %[b]"
+ 1559 |         ; [a] "+r" (a)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1568:13: error: `movl` writes `esi` in this raw assembly template, but `esi` is neither an output operand nor in the clobber list; add `esi` to the clobbers
+ 1566 | fn raw_i386_64_bit_clobber_name_does_not_declare() {
+ 1567 |     asm i386 raw {
+ 1568 |         "movl $1, %%esi"
+      |                   ~~~~~
+ 1569 |         ;
+ 1570 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1580:4: error: `rep movsb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 1578 |         "lock\n\t"
+ 1579 |         "addq $1, (%%rdi)\n\t"
+ 1580 |         "rep movsb"
+      |          ~~~~~~~~~
+ 1581 |         ;
+ 1582 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1590:13: error: `movl` writes `eax` in this raw assembly template, but `eax` is neither an output operand nor in the clobber list; add `eax` to the clobbers
+ 1588 | fn raw_i386_64_bit_clobber_names_do_not_declare() {
+ 1589 |     asm i386 raw {
+ 1590 |         "movl $1, %%eax\n\t"
+      |                   ~~~~~
+ 1591 |         "movl $1, %%ebx\n\t"
+ 1592 |         "movl $1, %%ecx\n\t"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1591:13: error: `movl` writes `ebx` in this raw assembly template, but `ebx` is neither an output operand nor in the clobber list; add `ebx` to the clobbers
+ 1589 |     asm i386 raw {
+ 1590 |         "movl $1, %%eax\n\t"
+ 1591 |         "movl $1, %%ebx\n\t"
+      |                   ~~~~~
+ 1592 |         "movl $1, %%ecx\n\t"
+ 1593 |         "movl $1, %%edx\n\t"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1592:13: error: `movl` writes `ecx` in this raw assembly template, but `ecx` is neither an output operand nor in the clobber list; add `ecx` to the clobbers
+ 1590 |         "movl $1, %%eax\n\t"
+ 1591 |         "movl $1, %%ebx\n\t"
+ 1592 |         "movl $1, %%ecx\n\t"
+      |                   ~~~~~
+ 1593 |         "movl $1, %%edx\n\t"
+ 1594 |         "movl $1, %%edi"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1594:13: error: `movl` writes `edi` in this raw assembly template, but `edi` is neither an output operand nor in the clobber list; add `edi` to the clobbers
+ 1592 |         "movl $1, %%ecx\n\t"
+ 1593 |         "movl $1, %%edx\n\t"
+ 1594 |         "movl $1, %%edi"
+      |                   ~~~~~
+ 1595 |         ;
+ 1596 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1593:13: error: `movl` writes `edx` in this raw assembly template, but `edx` is neither an output operand nor in the clobber list; add `edx` to the clobbers
+ 1591 |         "movl $1, %%ebx\n\t"
+ 1592 |         "movl $1, %%ecx\n\t"
+ 1593 |         "movl $1, %%edx\n\t"
+      |                   ~~~~~
+ 1594 |         "movl $1, %%edi"
+ 1595 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1603:13: error: `movl` writes `ebp` in this raw assembly template, but `ebp` is neither an output operand nor in the clobber list; copy it with `mov` to a register in the clobbers and back, and bind every operand to a fixed register such as `=d`, or to a constant
+ 1601 | fn raw_i386_rbp_clobber_does_not_declare_ebp() {
+ 1602 |     asm i386 raw {
+ 1603 |         "movl $1, %%ebp"
+      |                   ~~~~~
+ 1604 |         ;
+ 1605 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1613:4: error: `imulq` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+ 1611 | fn raw_one_operand_imul_without_the_pair() {
+ 1612 |     asm amd64 raw {
+ 1613 |         "imulq %%rcx"
+      |          ~~~~~
+ 1614 |         ;
+ 1615 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1613:4: error: `imulq` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+ 1611 | fn raw_one_operand_imul_without_the_pair() {
+ 1612 |     asm amd64 raw {
+ 1613 |         "imulq %%rcx"
+      |          ~~~~~
+ 1614 |         ;
+ 1615 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1626:17: error: `movl` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1624 |         "movq %%rbx, %%r11\n\t"
+ 1625 |         "movq $5, %%rbx\n\t"
+ 1626 |         "movl %%r11d, %%ebx"
+      |                       ~~~~~
+ 1627 |         ;
+ 1628 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1625:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1623 |     asm amd64 raw {
+ 1624 |         "movq %%rbx, %%r11\n\t"
+ 1625 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1626 |         "movl %%r11d, %%ebx"
+ 1627 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1636:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1634 |     asm amd64 raw {
+ 1635 |         "movq %%rbx, %%r11\n\t"
+ 1636 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1637 |         "movq %%r10, %%rbx"
+ 1638 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1646:16: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1644 | fn raw_mov_copy_back_before_the_copy_is_reported() {
+ 1645 |     asm amd64 raw {
+ 1646 |         "movq %%r11, %%rbx\n\t"
+      |                      ~~~~~
+ 1647 |         "movq %%rbx, %%r11"
+ 1648 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1658:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1656 |     asm amd64 raw {
+ 1657 |         "movq %%rbx, %%rbx\n\t"
+ 1658 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1659 |         "movq %%rbx, %%rbx"
+ 1660 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1669:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1667 |     asm amd64 raw {
+ 1668 |         "movq %%rbx, %%RBX\n\t"
+ 1669 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1670 |         "movq %%RBX, %%rbx"
+ 1671 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1681:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1679 |     asm amd64 raw {
+ 1680 |         "movq %%rcx, %%r11\n\t"
+ 1681 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1682 |         "movq %%r11, %%rbx"
+ 1683 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1693:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1691 |     asm amd64 raw {
+ 1692 |         "movl %%ebx, %%r11d\n\t"
+ 1693 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1694 |         "movq %%r11, %%rbx"
+ 1695 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1706:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1704 |     asm amd64 raw {
+ 1705 |         "movq %%rbx, (%[p])\n\t"
+ 1706 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1707 |         "movq (%[p]), %%rbx"
+ 1708 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1718:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1716 |     asm amd64 raw {
+ 1717 |         "movq %%rbx, %0\n\t"
+ 1718 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1719 |         "movq %[slot], %%rbx"
+ 1720 |         ; [slot] "=m" (slot)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1728:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1726 |     asm amd64 raw {
+ 1727 |         "movq %%rbx, %q[slot]\n\t"
+ 1728 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1729 |         "movq %[slot], %%rbx"
+ 1730 |         ; [slot] "=r" (slot)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1737:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1735 |     asm amd64 raw {
+ 1736 |         "movq %%rbx, %%xmm0\n\t"
+ 1737 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1738 |         "movq %%xmm0, %%rbx"
+ 1739 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1751:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1749 |     asm amd64 raw {
+ 1750 |         "pushq %%rbx\n\t"
+ 1751 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1752 |         "movq %%rbx, %[out]\n\t"
+ 1753 |         "popq %%rbx"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1753:9: error: `popq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1751 |         "movq $5, %%rbx\n\t"
+ 1752 |         "movq %%rbx, %[out]\n\t"
+ 1753 |         "popq %%rbx"
+      |               ~~~~~
+ 1754 |         ; [out] "=r" (out)
+ 1755 |     }
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1764:14: error: `movq` writes `rbp` in this raw assembly template, but `rbp` is neither an output operand nor in the clobber list; copy it with `mov` to a register in the clobbers and back, and bind every operand to a fixed register such as `=d`, or to a constant
+ 1762 |     asm amd64 raw {
+ 1763 |         "movq %%rbp, %%r11\n\t"
+ 1764 |         "movq $42, %%rbp\n\t"
+      |                    ~~~~~
+ 1765 |         "movq %%rbp, %[result]\n\t"
+ 1766 |         "movq %%r11, %%rbp"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1779:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1777 |     asm amd64 raw {
+ 1778 |         "movq %%rbx, %[slot]\n\t"
+ 1779 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1780 |         "movq %[slot], %%rbx"
+ 1781 |         ; [slot] "=m" (slot)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1792:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1790 |         "movq %[x], %%rax\n\t"
+ 1791 |         "pushq %%rbx\n\t"
+ 1792 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1793 |         "popq %%rbx"
+ 1794 |         ; [out] "=a" (out)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1793:9: error: `popq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1791 |         "pushq %%rbx\n\t"
+ 1792 |         "movq $5, %%rbx\n\t"
+ 1793 |         "popq %%rbx"
+      |               ~~~~~
+ 1794 |         ; [out] "=a" (out)
+ 1795 |         ; [x] "g" (x)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1807:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1805 |     asm amd64 raw {
+ 1806 |         "pushq %%rbx\n\t"
+ 1807 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1808 |         "movq %%rbx, %[loose]\n\t"
+ 1809 |         "movq %%rbx, %[fixed]\n\t"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1810:9: error: `popq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1808 |         "movq %%rbx, %[loose]\n\t"
+ 1809 |         "movq %%rbx, %[fixed]\n\t"
+ 1810 |         "popq %%rbx"
+      |               ~~~~~
+ 1811 |         ; [loose] "=r" (loose)
+ 1812 |           [fixed] "=d" (fixed)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1822:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1820 |     asm amd64 raw {
+ 1821 |         "pushq %%rbx\n\t"
+ 1822 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1823 |         "movq %%rbx, %[fixed]\n\t"
+ 1824 |         "movq %%rbx, %[loose]\n\t"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1825:9: error: `popq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1823 |         "movq %%rbx, %[fixed]\n\t"
+ 1824 |         "movq %%rbx, %[loose]\n\t"
+ 1825 |         "popq %%rbx"
+      |               ~~~~~
+ 1826 |         ; [fixed] "=d" (fixed)
+ 1827 |           [loose] "=r" (loose)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1842:5: error: `movq` writes `rax` in this raw assembly template, but the `A` constraint on the 32-bit operand `v` does not reserve both `rax` and `rdx`
+ 1840 |         "popq %%rax"
+ 1841 |         ; [out] "=S" (out)
+ 1842 |         ; [v] "A" (v)
+      |           ~~~~~~~~~~~
+ 1843 |     }
+ 1844 |     return out
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1855:5: error: `movq` writes `rdx` in this raw assembly template, but the `=A` constraint on the 32-bit operand `x` does not reserve both `rax` and `rdx`
+ 1853 |         "movl $7, %[x]\n\t"
+ 1854 |         "popq %%rdx"
+ 1855 |         ; [x] "=A" (x)
+      |           ~~~~~~~~~~~~
+ 1856 |     }
+ 1857 |     return x
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1871:5: error: `movq` writes `rax` in this raw assembly template, but the `=A` constraint on the 32-bit operand `x` does not reserve both `rax` and `rdx`
+ 1869 |         "popq %%rdx\n\t"
+ 1870 |         "popq %%rax"
+ 1871 |         ; [x] "=A" (x)
+      |           ~~~~~~~~~~~~
+ 1872 |     }
+ 1873 |     return x
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1884:5: error: `movq` writes `rax` in this raw assembly template, but the `=A` constraint on the 32-bit operand `x` does not reserve both `rax` and `rdx`
+ 1882 |         "movl $7, %[x]\n\t"
+ 1883 |         "popq %%rax"
+ 1884 |         ; [x] "=A" (x)
+      |           ~~~~~~~~~~~~
+ 1885 |     }
+ 1886 |     return x
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1897:5: error: `movq` writes `rdx` in this raw assembly template, but the `=A` constraint on the 32-bit operand `x` does not reserve both `rax` and `rdx`
+ 1895 |         "movl $7, %[x]\n\t"
+ 1896 |         "movq %%r11, %%rdx"
+ 1897 |         ; [x] "=A" (x)
+      |           ~~~~~~~~~~~~
+ 1898 |         ;
+ 1899 |         ; r11
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1911:5: error: `movq` writes `rax` in this raw assembly template, but the `=A` constraint on the 32-bit operand `x` does not reserve both `rax` and `rdx`
+ 1909 |         "movl $7, %[x]\n\t"
+ 1910 |         "movq %%r11, %%rax"
+ 1911 |         ; [x] "=A" (x)
+      |           ~~~~~~~~~~~~
+ 1912 |         ;
+ 1913 |         ; r11
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1922:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1920 |     asm amd64 raw {
+ 1921 |         "xchgq %%rbx, %%r11\n\t"
+ 1922 |         "movq $5, %%rbx"
+      |                   ~~~~~
+ 1923 |         ;
+ 1924 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1934:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1932 |     asm amd64 raw {
+ 1933 |         "xchgq %%rbx, %%r12\n\t"
+ 1934 |         "movq $7, %%rbx\n\t"
+      |                   ~~~~~
+ 1935 |         "movq %%rbx, %[out]\n\t"
+ 1936 |         "xchgq %%r12, %%rbx"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1945:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1943 |     asm amd64 raw {
+ 1944 |         "xchgq %%rbx, %%r11\n\t"
+ 1945 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1946 |         "xchgq %%rbx, %%r10"
+ 1947 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1956:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1954 |     asm amd64 raw {
+ 1955 |         "xchgl %%ebx, %%r11d\n\t"
+ 1956 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1957 |         "xchgl %%ebx, %%r11d"
+ 1958 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1969:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 1967 |     asm amd64 raw {
+ 1968 |         "xchgq %%rbx, %%r11\n\t"
+ 1969 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 1970 |         "movq %%rbx, %[out]\n\t"
+ 1971 |         "xchgq %%rbx, %%r11"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1986:5: error: `movq` writes `rdx` in this raw assembly template, but the `=A` constraint on the 32-bit operand `x` does not reserve both `rax` and `rdx`
+ 1984 |         "movl $7, %[x]\n\t"
+ 1985 |         "xchgq %%rdx, %%r11"
+ 1986 |         ; [x] "=A" (x)
+      |           ~~~~~~~~~~~~
+ 1987 |         ;
+ 1988 |         ; r11
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:1997:4: error: `addq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+ 1995 |     mut y := x
+ 1996 |     asm amd64 raw {
+ 1997 |         "addq $1, %%rcx"
+      |          ~~~~
+ 1998 |         ; "+c" (y)
+ 1999 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:2010:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 2008 |     asm amd64 raw {
+ 2009 |         "pushq %[rbx]\n\t"
+ 2010 |         "movq $1, %%rbx\n\t"
+      |                   ~~~~~
+ 2011 |         "popq %[rbx]"
+ 2012 |         ; [rbx] "+c" (y)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:2023:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 2021 |     asm amd64 raw {
+ 2022 |         "pushq %%fs\n\t"
+ 2023 |         "movq $1, %%rbx\n\t"
+      |                   ~~~~~
+ 2024 |         "popq %%fs"
+ 2025 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:2036:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 2034 |     asm amd64 raw {
+ 2035 |         "xchgq %%rbx, %%rcx\n\t"
+ 2036 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 2037 |         "xchgq %%rbx, %%rcx"
+ 2038 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:2047:13: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 2045 |     asm amd64 raw {
+ 2046 |         "movq %%rbx, %[s]\n\t"
+ 2047 |         "movq $5, %%rbx\n\t"
+      |                   ~~~~~
+ 2048 |         "movq %[s], %%rbx"
+ 2049 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:2060:14: error: `movq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 2058 |     asm amd64 raw {
+ 2059 |         "pushq %%rbx\n\t"
+ 2060 |         "movq $42, %%rbx\n\t"
+      |                    ~~~~~
+ 2061 |         "movq %%rbx, %[out]\n\t"
+ 2062 |         "popq %%rbx"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:2062:9: error: `popq` writes `rbx` in this raw assembly template, but `rbx` is neither an output operand nor in the clobber list; add `rbx` to the clobbers
+ 2060 |         "movq $42, %%rbx\n\t"
+ 2061 |         "movq %%rbx, %[out]\n\t"
+ 2062 |         "popq %%rbx"
+      |               ~~~~~
+ 2063 |         ; (out)
+ 2064 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:2073:18: error: `movzbl` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+ 2071 |     mut y := x
+ 2072 |     asm amd64 raw {
+ 2073 |         "movzbl %b[x], %%ecx\n\t"
+      |                        ~~~~~
+ 2074 |         "movl %%ecx, %[y]"
+ 2075 |         ; [y] "=r" (y)

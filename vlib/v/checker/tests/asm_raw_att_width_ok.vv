@@ -1,6 +1,13 @@
 // These AT&T forms agree with the widths of their operands, so the width check reports nothing.
 // The undefined name afterwards stops the build before code generation, which would otherwise
 // reject the templates on other hosts.
+const answer = 5
+const wide_const = u64(7)
+const flag_const = true
+const size_const = sizeof(u8)
+const tag_const = Tag.second
+const sum_const = u16(1) + 2
+
 enum Tag as int {
 	first
 	second
@@ -67,7 +74,202 @@ fn narrow_widths(wide u64, count int) u32 {
 	return out + u32(total)
 }
 
+// The C type of a constant is not its V type, so a constant operand fixes no width: each of
+// these is a valid width for the operand that cgen emits. A typed constant is not checked
+// either; the assembler rejects a real mismatch on one.
+@[noinline]
+fn const_operands() u32 {
+	mut out := u32(0)
+	mut other := u32(0)
+	asm amd64 raw {
+		"movl %[c], %[other]\n\t"
+		"movl %[w], %%eax\n\t"
+		"movl %[flag], %%eax\n\t"
+		"movq %[size], %%rax\n\t"
+		"movl %[tag], %%eax\n\t"
+		"movl %[sum], %%eax"
+		; "=r" (out)
+		  [other] "=r" (other)
+		; [c] "r" (answer)
+		  [w] "r" (wide_const)
+		  [flag] "r" (flag_const)
+		  [size] "r" (size_const)
+		  [tag] "r" (tag_const)
+		  [sum] "r" (sum_const)
+		; rax
+	}
+	return out + other
+}
+
+// A directive that can change how the template is read stops the width check too.
+@[noinline]
+fn nonlinear_template(wide u64) u32 {
+	mut out := u32(0)
+	asm amd64 raw {
+		".if 0\n\t"
+		"movl %[wide], %[out]\n\t"
+		".endif"
+		; [out] "=r" (out)
+		; [wide] "r" (wide)
+		;
+	}
+	return out
+}
+
+// A literal is spelled like a name, but it is not a variable, so it fixes no width: `true` is a
+// C `int` here.
+@[noinline]
+fn literal_operands() u32 {
+	mut out := u32(0)
+	mut other := u32(0)
+	asm amd64 raw {
+		"movl %[t], %[out]\n\t"
+		"movl %[f], %[other]"
+		; [out] "=r" (out)
+		  [other] "=r" (other)
+		; [t] "r" (true)
+		  [f] "r" (false)
+		;
+	}
+	return out + other
+}
+
+// An operand given by position fixes no width, whatever its V type: this parameter is a C `int`.
+enum Narrow as u8 {
+	first
+	second
+}
+
+@[noinline]
+fn positional_operands(wide u64, narrow Narrow) u32 {
+	mut out := u32(0)
+	asm amd64 raw {
+		"movl %1, %0\n\t"
+		"movl %2, %0"
+		; "=r" (out)
+		; "r" (wide)
+		  "r" (narrow)
+		;
+	}
+	return out
+}
+
+struct WideField {
+	f u64
+}
+
+// Only a name fixes a width, so a field, a cast and an index expression do not.
+@[noinline]
+fn non_name_operands(s WideField, x u32, a []u64) u32 {
+	mut out := u32(0)
+	asm amd64 raw {
+		"movl %[f], %[out]\n\t"
+		"movl %[c], %[out]\n\t"
+		"movl %[i], %[out]"
+		; [out] "=r" (out)
+		; [f] "r" (s.f)
+		  [c] "r" (u64(x))
+		  [i] "r" (a[0])
+		;
+	}
+	return out
+}
+
+fn empty_operand_name() u32 {
+	mut out := u32(1)
+	asm amd64 raw {
+		"movl %[], %[out]\n"
+		"movl %k[], %[out]"
+		; [out] "+r" (out)
+		;
+		;
+	}
+	return out
+}
+
+fn raw_memory_operand_is_not_width_checked(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"movl %[y], %%eax"
+		; 
+		; [y] "m" (y)
+		; rax
+	}
+	return y
+}
+
 fn main() {
 	println(widths(1, 2, 3, 4, .first))
 	println(narrow_widths(5, 6))
+	println(const_operands())
+	println(nonlinear_template(7))
+	println(literal_operands())
+	println(positional_operands(1, .second))
+	println(non_name_operands(WideField{}, 1, [u64(1)]))
+	println(empty_operand_name())
+	println(raw_memory_operand_is_not_width_checked(1))
+	println(raw_shift_count_is_not_width_checked(1, 2))
+}
+
+fn raw_shift_count_is_not_width_checked(x u32, c u8) u32 {
+	mut y := x
+	asm amd64 raw {
+		"shll %[c], %[y]"
+		; [y] "+r" (y)
+		; [c] "c" (c)
+		; cc
+	}
+	return y
+}
+
+// A mixed `mr` constraint may be memory, so its width is not checked.
+fn raw_mixed_memory_register_operand_is_not_width_checked(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"addl $1, %[y]"
+		; [y] "+mr" (y)
+		;
+		; cc
+	}
+	return y
+}
+
+// For a narrow `A` operand clang prints `%rax` on amd64 and `%eax` on i386, where GCC prints a
+// register of the operand's own width, so the width of an `A` operand is not checked.
+fn raw_amd64_narrow_a_operand_is_not_width_checked() u32 {
+	mut x := u32(0)
+	asm amd64 raw {
+		"movq $1, %[x]"
+		; [x] "=A" (x)
+	}
+	return x
+}
+
+fn raw_i386_narrow_a_operand_is_not_width_checked() u16 {
+	mut x := u16(0)
+	asm i386 raw {
+		"movl $1, %[x]"
+		; [x] "=A" (x)
+	}
+	return x
+}
+
+// An instruction with a prefix in the same statement, or with an encoding suffix, is not width
+// checked. The GNU assembler rejects both of these.
+fn raw_prefix_in_the_same_statement_is_not_width_checked(x u64) {
+	asm amd64 raw {
+		"wait movl %[x], %%eax"
+		;
+		; [x] "r" (x)
+		; rax
+	}
+}
+
+fn raw_encoding_suffix_is_not_width_checked(x u64) {
+	asm amd64 raw {
+		"movl.s %[x], %%eax"
+		;
+		; [x] "r" (x)
+		; rax
+	}
 }

@@ -1,0 +1,45 @@
+// Raw x86 width checks on enum operands whose names also occur in other modules.
+import crypto.sha3
+import strings
+
+enum Padding as u64 {
+	a
+}
+
+enum Builder as u8 {
+	b
+}
+
+fn raw_qualified_enum_uses_its_own_module(p sha3.Padding) {
+	asm amd64 raw {
+		"movq %[p], %%rax"
+		;
+		; [p] "r" (p)
+		; rax
+	}
+}
+
+fn raw_enum_named_like_a_struct_of_another_module(b Builder) {
+	asm amd64 raw {
+		"movq %[b], %%rax"
+		;
+		; [b] "r" (b)
+		; rax
+	}
+}
+
+fn raw_local_enum_named_like_one_of_another_module(p Padding) {
+	asm amd64 raw {
+		"movb %[p], %%al"
+		;
+		; [p] "r" (p)
+		; rax
+	}
+}
+
+fn main() {
+	raw_qualified_enum_uses_its_own_module(.sha3)
+	raw_enum_named_like_a_struct_of_another_module(.b)
+	raw_local_enum_named_like_one_of_another_module(.a)
+	_ := strings.new_builder(1)
+}

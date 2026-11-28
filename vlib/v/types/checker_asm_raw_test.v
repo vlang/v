@@ -133,7 +133,7 @@ fn first_label(instruction InlineAsmRawInstruction) string {
 // only exist outside GNU x86 syntax, where every register carries `%%`.
 fn raw_instructions_of(source string, arch string) []InlineAsmRawInstruction {
 	template := raw_template_of(source)
-	registers := if arch == 'amd64' { []string{} } else { util.asm_register_names(arch) }
+	registers := if arch in ['amd64', 'i386'] { []string{} } else { util.asm_register_names(arch) }
 	return inline_asm_raw_parse_instructions(&template, registers)
 }
 
@@ -530,6 +530,9 @@ fn test_att_gpr_constraints_exclude_memory_and_immediate() {
 	assert !inline_asm_raw_gpr_constraint('g')
 	assert !inline_asm_raw_gpr_constraint('x')
 	assert !inline_asm_raw_gpr_constraint('+')
+	// clang prints a narrow `A` operand as `%eax` on i386 and `%rax` on amd64: not checked.
+	assert !inline_asm_raw_gpr_constraint('=A')
+	assert !inline_asm_raw_gpr_constraint('+A')
 }
 
 fn att_width_errors(name string, source string) []string {
@@ -690,4 +693,908 @@ fn main() {
 ')
 	assert errors.len == 1, errors.str()
 	assert errors[0].starts_with('`movq` operates on 64-bit operands here, but `%k[x]` is 32-bit'), errors[0]
+}
+
+fn test_x86_family_maps_register_views_and_keeps_short_names() {
+	assert inline_asm_raw_x86_family('AL') == 'rax'
+	assert inline_asm_raw_x86_family('r8d') == 'r8'
+	assert inline_asm_raw_x86_family('R9W') == 'r9'
+	assert inline_asm_raw_x86_family('r15') == 'r15'
+	assert inline_asm_raw_x86_family('r') == 'r'
+	assert inline_asm_raw_x86_family('') == ''
+}
+
+// raw_all_declared holds every register a save may use, as a block that declares them all would.
+const raw_all_declared = InlineAsmRawSavePlaces{
+	changeable: {
+		'rax': true
+		'rbx': true
+		'rcx': true
+		'rdx': true
+		'rsi': true
+		'rdi': true
+		'rbp': true
+		'r8':  true
+		'r9':  true
+		'r10': true
+		'r11': true
+		'r12': true
+	}
+}
+
+// raw_mov_save_restored models a template that saves `rbx` (`ebx` on i386) with `save`, writes
+// it, and copies it back with `back`, and reports whether the copy back counts as a restore.
+fn raw_mov_save_restored(arch string, save string, back string) bool {
+	bits := if arch == 'i386' { 32 } else { 64 }
+	write := if arch == 'i386' { 'movl $5, %%ebx' } else { 'movq $5, %%rbx' }
+	source := 'asm ${arch} raw {\n\t"${save}\\n\\t"\n\t"${write}\\n\\t"\n\t"${back}"\n}'
+	return inline_asm_raw_mov_restored(raw_instructions_of(source, arch), bits, &raw_all_declared)['rbx']
+}
+
+// raw_rbx_is_saved reports whether the check of a whole amd64 block counts its write to `rbx` as saved.
+// `lines` are the lines of the template and `sections` the source after it.
+fn raw_rbx_is_saved(name string, lines []string, sections string) bool {
+	return !raw_block_errors(name, lines, sections).any(it.contains('writes `rbx`'))
+}
+
+// raw_block_errors returns the errors of a whole amd64 block; see raw_rbx_is_saved.
+fn raw_block_errors(name string, lines []string, sections string) []string {
+	template := lines.map('"' + it + '\\n\\t"').join('\n')
+	return att_width_errors(name, 'module main
+
+fn main() {
+	mut o := u64(0)
+	s := u64(1)
+	t := u64(2)
+	asm amd64 raw {
+		${template}
+		${sections}
+	}
+	println(o + s + t)
+}
+')
+}
+
+// The rows below are generated from the spellings of each part of a save and its copy back:
+// the mnemonic, the saved register and the place, each in several letter cases. The lists are
+// written out here rather than taken from the checker's own tables, so a register or spelling
+// dropped from those tables fails a row.
+const raw_mov_amd64_mnemonics = ['movq', 'MOVQ', 'Movq', 'mov', 'wait movq']
+const raw_mov_i386_mnemonics = ['movl', 'MOVL', 'mov', 'wait movl']
+
+fn test_mov_restored_counts_every_general_purpose_register_place() {
+	for family in ['rax', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp', 'r8', 'r9', 'r10', 'r11', 'r12', 'r13',
+		'r14', 'r15'] {
+		for place in [family, family.to_upper()] {
+			for back_place in [family, family.to_upper()] {
+				for saved in ['rbx', 'RBX'] {
+					for back_saved in ['rbx', 'RBX'] {
+						for m in raw_mov_amd64_mnemonics {
+							for back_m in raw_mov_amd64_mnemonics {
+								save := '${m} %%${saved}, %%${place}'
+								back := '${back_m} %%${back_place}, %%${back_saved}'
+								assert raw_mov_save_restored('amd64', save, back), '${save} / ${back}'
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	for place in ['eax', 'ecx', 'edx', 'esi', 'edi', 'ebp', 'ESI'] {
+		for m in raw_mov_i386_mnemonics {
+			for back_m in raw_mov_i386_mnemonics {
+				save := '${m} %%ebx, %%${place}'
+				back := '${back_m} %%${place.to_lower()}, %%EBX'
+				assert raw_mov_save_restored('i386', save, back), '${save} / ${back}'
+			}
+		}
+	}
+}
+
+fn test_mov_restored_ignores_registers_that_are_no_place() {
+	// A narrower register, the stack pointer, an `mm`, `xmm`, control, debug or segment
+	// register, the instruction pointer, and the saved register itself in any letter case.
+	for place in ['r11d', 'R11D', 'r11w', 'r11b', 'rsp', 'RSP', 'esp', 'mm0', 'MM7', 'xmm0', 'cr0',
+		'cr8', 'dr0', 'dr7', 'rip', 'fs', 'r16', 'r31', 'rbx', 'RBX', 'Rbx', 'ebx', 'bl'] {
+		for saved in ['rbx', 'RBX'] {
+			save := 'movq %%${saved}, %%${place}'
+			back := 'movq %%${place}, %%${saved}'
+			assert !raw_mov_save_restored('amd64', save, back), '${save} / ${back}'
+		}
+	}
+	for place in ['esp', 'ebx', 'EBX', 'si', 'mm0', 'xmm0', 'cr0', 'dr0', 'r11'] {
+		save := 'movl %%ebx, %%${place}'
+		back := 'movl %%${place}, %%ebx'
+		assert !raw_mov_save_restored('i386', save, back), '${save} / ${back}'
+	}
+	// A bare name such as `esi` is a symbol in GNU x86 syntax, on i386 as on amd64.
+	assert !raw_mov_save_restored('i386', 'movl %%ebx, esi', 'movl esi, %%ebx')
+	assert !raw_mov_save_restored('amd64', 'movq %%rbx, r11', 'movq r11, %%rbx')
+}
+
+// raw_suffix_shapes pairs a mnemonic with operands for zero, one and two operand statements, so
+// the suffix gate is tried on every statement shape.
+const raw_suffix_shapes = {
+	'nop':   ''
+	'incq':  ' %%rax'
+	'pushq': ' %%rax'
+	'movq':  ' %%rax, %%rbx'
+}
+
+fn raw_first_has_encoding_suffix(statement string) bool {
+	source := 'asm amd64 raw {\n\t"${statement}"\n}'
+	return inline_asm_raw_has_encoding_suffix(raw_instructions_of(source, 'amd64')[0])
+}
+
+fn test_encoding_suffix_gate_over_generated_shapes() {
+	for base, operands in raw_suffix_shapes {
+		for prefix in ['', 'lock ', 'wait '] {
+			for suffix in ['s', 'd8', 'd32'] {
+				for spelled in [suffix, suffix.to_upper(), suffix.capitalize()] {
+					for mnemonic in ['${base}.${spelled}', '${base.to_upper()}.${spelled}'] {
+						statement := '${prefix}${mnemonic}${operands}'
+						assert raw_first_has_encoding_suffix(statement), statement
+					}
+				}
+			}
+			// No suffix, or a dotted name such as a macro that is not one of the three suffixes.
+			for mnemonic in [base, base.to_upper(), '${base}.x', '${base}.d16', '${base}.ss',
+				'${base}.s8', 'my.${base}', 'set.rbx', 'a.b'] {
+				statement := '${prefix}${mnemonic}${operands}'
+				assert !raw_first_has_encoding_suffix(statement), statement
+			}
+		}
+	}
+	for statement in ['.p2align 4', '.balign 8', 'movq 1.5, %%rbx', 'movq $0x1.s, %%rbx'] {
+		assert !raw_first_has_encoding_suffix(statement), statement
+	}
+}
+
+fn test_mov_restored_needs_a_whole_width_copy_both_ways() {
+	for place in ['%%r11', '%[slot]', '%0'] {
+		for narrow in ['ebx', 'EBX', 'bx', 'bl'] {
+			// A narrower copy, either way, keeps only part of the register.
+			for save, back in {
+				'mov %%${narrow}, ${place}': 'movq ${place}, %%rbx'
+				'movq %%rbx, ${place}':      'mov ${place}, %%${narrow}'
+			} {
+				assert !raw_mov_save_restored('amd64', save, back), '${save} / ${back}'
+			}
+		}
+	}
+}
+
+fn test_mov_restored_matches_operand_places_as_written() {
+	places := ['%[slot]', '%[Slot]', '%[SLOT]', '%[rbx]', '%[RBX]', '%0', '%1', '%q[slot]', '%k[slot]',
+		'%Q[slot]', '%q0']
+	for place in places {
+		for back_place in places {
+			save := 'movq %%rbx, ${place}'
+			back := 'movq ${back_place}, %%rbx'
+			assert raw_mov_save_restored('amd64', save, back) == (place == back_place), '${save} / ${back}'
+		}
+	}
+	assert raw_mov_save_restored('i386', 'movl %%ebx, %[slot]', 'movl %[slot], %%ebx')
+	assert !raw_mov_save_restored('i386', 'movl %%ebx, %[slot]', 'movl %[Slot], %%ebx')
+}
+
+fn test_mov_restored_ignores_other_places_and_mnemonics() {
+	// Another register for the copy back, and memory written in the template.
+	assert !raw_mov_save_restored('amd64', 'movq %%rbx, %%r11', 'movq %%r10, %%rbx')
+	for place in ['(%[p])', '8(%[p])', '(%%rdi)', '8(%%RDI)', 'slot(%%rip)', 'slot', '0x1000',
+		'%%fs:8'] {
+		assert !raw_mov_save_restored('amd64', 'movq %%rbx, ${place}', 'movq ${place}, %%rbx'), place
+	}
+	// An operand named like the register is not the register, whether it is read for the save
+	// or written by the copy back.
+	for operand in ['%[rbx]', '%[RBX]', '%[ebx]'] {
+		assert !raw_mov_save_restored('amd64', 'movq ${operand}, %%r11', 'movq %%r11, %%rbx'), operand
+		assert !raw_mov_save_restored('amd64', 'movq %%rbx, %[slot]', 'movq %[slot], ${operand}'), operand
+	}
+	// A save or a copy back made with anything but `mov` or `xchg`.
+	for other in ['cmovzq', 'cmovneq', 'CMOVZQ', 'addq', 'movabsq', 'movsxq', 'xaddq', 'cmpxchgq'] {
+		assert !raw_mov_save_restored('amd64', 'movq %%rbx, %%r11', '${other} %%r11, %%rbx'), other
+		assert !raw_mov_save_restored('amd64', '${other} %%rbx, %%r11', 'movq %%r11, %%rbx'), other
+	}
+}
+
+// raw_pair returns the two operand orders of an `xchg` between `a` and `b`, which mean the same.
+fn raw_pair(m string, a string, b string) []string {
+	return ['${m} ${a}, ${b}', '${m} ${b}, ${a}']
+}
+
+fn test_xchg_counts_as_a_copy_both_ways() {
+	for place in ['%%rax', '%%r11', '%%R11', '%%rbp', '%[slot]', '%0'] {
+		for m in ['xchgq', 'XCHGQ', 'xchg', 'wait xchgq'] {
+			for saved in ['%%rbx', '%%RBX'] {
+				for save in raw_pair(m, saved, place) {
+					// Saved and restored with `xchg`, or one of the two with `mov`.
+					for back in raw_pair(m, '%%rbx', place) {
+						assert raw_mov_save_restored('amd64', save, back), '${save} / ${back}'
+						assert raw_mov_save_restored('amd64', 'movq ${saved}, ${place}', back), back
+					}
+					assert raw_mov_save_restored('amd64', save, 'movq ${place}, %%rbx'), save
+				}
+			}
+		}
+	}
+	for place in ['%%esi', '%[slot]'] {
+		for m in ['xchgl', 'XCHGL', 'xchg'] {
+			for save in raw_pair(m, '%%ebx', place) {
+				for back in raw_pair(m, '%%ebx', place) {
+					assert raw_mov_save_restored('i386', save, back), '${save} / ${back}'
+				}
+			}
+		}
+	}
+}
+
+// Two `xchg` give back one of the two registers, so a register counts only when the other one is
+// declared.
+fn test_xchg_needs_the_other_register_declared() {
+	for orders in [['%%rbx, %%r12', '%%r12, %%rbx'], ['%%r12, %%rbx', '%%rbx, %%r12'],
+		['%%rbx, %%r12', '%%rbx, %%r12']] {
+		source := 'asm amd64 raw {\n\t"xchgq ${orders[0]}\\n\\txchgq ${orders[1]}"\n}'
+		instructions := raw_instructions_of(source, 'amd64')
+		assert inline_asm_raw_mov_restored(instructions, 64, &InlineAsmRawSavePlaces{}).len == 0, source
+		assert inline_asm_raw_mov_restored(instructions, 64, &InlineAsmRawSavePlaces{
+			changeable: {
+				'r12': true
+			}
+		}) == {
+			'rbx': true
+		}, source
+		assert inline_asm_raw_mov_restored(instructions, 64, &InlineAsmRawSavePlaces{
+			changeable: {
+				'rbx': true
+			}
+		}) == {
+			'r12': true
+		}, source
+	}
+	// A `mov` on the other half of the pair changes nothing about the `xchg` half.
+	for lines in ['xchgq %%rbx, %%r12\\n\\tmovq %%r12, %%rbx', 'movq %%rbx, %%r12\\n\\txchgq %%rbx, %%r12'] {
+		instructions := raw_instructions_of('asm amd64 raw {\n\t"${lines}"\n}', 'amd64')
+		assert !inline_asm_raw_mov_restored(instructions, 64, &InlineAsmRawSavePlaces{})['rbx'], lines
+	}
+}
+
+// A template keeps its inputs, so an input is no place for a save, unless it shares the register of
+// an output or a clobber. Each row is the sections after the template, and whether a save of `rbx`
+// in the place counts.
+fn test_input_is_no_place_for_a_save() {
+	for index, row in [
+		['%[s]', ';\n; [s] "c" (s)', 'no'],
+		['%q[s]', ';\n; [s] "c" (s)', 'no'],
+		['%[s]', ';\n; "c" (s)', 'no'],
+		['%[s]', ';\n; "c" (t) as s', 'no'],
+		['%0', ';\n; [s] "c" (s)', 'no'],
+		['%1', '; [o] "=d" (o)\n; [s] "c" (s)', 'no'],
+		['%[s]', ';\n; [s] "x" (s)', 'no'],
+		['%[s]', ';\n; [s] "c" (s)\n  [t] "d" (t)', 'no'],
+		['%[t]', ';\n; [s] "c" (s)\n  [t] "d" (t)', 'no'],
+		['%1', ';\n; [s] "c" (s)\n  [t] "d" (t)', 'no'],
+		['%[s]', '; [o] "=d" (o)\n; (s)', 'no'],
+		['%[o]', '; (o)\n; [s] "c" (s)', 'no'],
+		['%[s]', ';\n; [s] "cS" (s)\n; rcx', 'no'],
+		['%[s]', ';\n; [s] "cx" (s)\n; rcx', 'no'],
+		['%[s]', ';\n; [s] "{rcx}" (s)', 'no'],
+		['%[s]', '; [o] "=@ccz" (o)\n; [s] "c" (s)', 'no'],
+		['%%rcx', ';\n; [s] "c" (s)', 'no'],
+		['%%RCX', ';\n; [s] "{ecx}" (s)', 'no'],
+		['%%rax', '; [o] "=d" (o)\n; [s] "A" (s)', 'no'],
+		['%%rdx', '; [o] "=d" (o)\n; [s] "A" (s)', 'yes'],
+		['%[o]', '; [o] "=d" (o)\n; [s] "c" (s)', 'yes'],
+		['%0', '; [o] "=d" (o)\n; [s] "c" (s)', 'yes'],
+		['%[o]', '; [o] "+x" (o)\n; [s] "c" (s)', 'yes'],
+		['%[s]', '; [o] "=c" (o)\n; [s] "0" (s)', 'yes'],
+		['%[s]', '; [o] "=c" (o)\n; [s] "%0" (s)', 'yes'],
+		['%[s]', '; [o] "=c" (o)\n; [s] "c" (s)', 'yes'],
+		['%[s]', '; [o] "=c" (o)\n; [s] "{rcx}" (s)', 'yes'],
+		['%%rcx', '; [o] "=c" (o)\n; [s] "c" (s)', 'yes'],
+		['%%rcx', ';\n; [s] "d" (s)\n; rcx', 'yes'],
+		['%%rax', '; [o] "=A" (o)\n; [s] "d" (s)', 'yes'],
+		// Alternatives, modifiers and names.
+		['%[s]', '; [o] "=c,c" (o)\n; [s] "c,c" (s)', 'yes'],
+		['%[s]', '; [o] "=c,c" (o)\n; [s] "0,0" (s)', 'yes'],
+		['%[s]', '; [o] "=c" (o)\n; [s] "?0" (s)', 'yes'],
+		['%[s]', '; [o] "=c" (o)\n; [s] "?c" (s)', 'yes'],
+		['%[s]', '; [o] "=c" (o)\n; [s] "0c" (s)', 'yes'],
+		['%[s]', '; [o] "=c" (o)\n; [s] "c#r" (s)', 'yes'],
+		['%[s]', '; [o] "=c" (o)\n; [s] "[o]" (s)', 'yes'],
+		['%[s]', '; [o] "=c,c" (o)\n; [s] "[o],[o]" (s)', 'yes'],
+		['%[s]', '; [o] "=A" (o)\n; [s] "A" (s)', 'yes'],
+		['%[s]', '; [o] "=A" (o)\n; [s] "d" (s)', 'yes'],
+		['%[s]', '; [o] "=a" (o)\n; [s] "A" (s)', 'no'],
+		['%[s]', ';\n; [s] "c,c" (s)', 'no'],
+		['%[s]', '; [o] "=d" (o)\n; [s] "A" (s)', 'no'],
+		['%[s]', '; [o] "=a" (o)\n; [s] "Q" (s)', 'no'],
+		['%[s]', '; [o] "=c" (o)\n; [s] "0S" (s)', 'no'],
+		['%[s]', '; [o] "=c" (o)\n; [s] "0x" (s)', 'no'],
+		['%[s]', '; [o] "=c" (o)\n; [s] "ci" (s)', 'no'],
+		['%[s]', '; [o] "=c" (o)\n; [s] "0r" (s)', 'no'],
+		// Each other fixed register, with and without an output that shares it.
+		['%[s]', '; [o] "=a" (o)\n; [s] "a" (s)', 'yes'],
+		['%[s]', '; [o] "=d" (o)\n; [s] "d" (s)', 'yes'],
+		['%[s]', '; [o] "=S" (o)\n; [s] "S" (s)', 'yes'],
+		['%[s]', '; [o] "=D" (o)\n; [s] "D" (s)', 'yes'],
+		['%[s]', ';\n; [s] "a" (s)', 'no'],
+		['%[s]', ';\n; [s] "d" (s)', 'no'],
+		['%[s]', ';\n; [s] "S" (s)', 'no'],
+		['%[s]', ';\n; [s] "D" (s)', 'no'],
+	] {
+		for m in ['movq', 'xchgq'] {
+			back := if m == 'movq' { '${row[0]}, %%rbx' } else { '%%rbx, ${row[0]}' }
+			lines := ['${m} %%rbx, ${row[0]}', 'movq $5, %%rbx', '${m} ${back}']
+			assert raw_rbx_is_saved('place_${index}_${m}', lines, row[1]) == (row[2] == 'yes'), '${lines} ${row[1]}'
+		}
+	}
+	// A register that nothing declares is a place for `mov`, which is reported on its own, but not
+	// for `xchg`.
+	for m in ['movq', 'xchgq'] {
+		lines := ['${m} %%rbx, %%rcx', 'movq $5, %%rbx', '${m} %%rcx, %%rbx']
+		assert raw_rbx_is_saved('undeclared_${m}', lines, ';\n;') == (m == 'movq'), m
+	}
+}
+
+// As above for `rbx` as the place, which needs another register to save.
+fn test_rbx_input_is_no_place_for_a_save() {
+	for index, sections in ['; [o] "=b" (o)\n; [s] "b" (s)', '; [o] "=d" (o)\n; [s] "b" (s)'] {
+		lines := ['movq %%rcx, %[s]', 'movq $5, %%rcx', 'movq %[s], %%rcx']
+		errors := raw_block_errors('rbx_place_${index}', lines, sections)
+		assert errors.any(it.contains('writes `rcx`')) == (index == 1), sections
+	}
+}
+
+// The name in a matching constraint is not read as letters: `[Acc]` is no `A` operand, and `[b]`
+// binds no `rbx`.
+fn test_matching_name_is_not_read_as_letters() {
+	lines := ['movq %%rax, %%rcx', 'movq $5, %%rax', 'movq %%rcx, %%rax']
+	sections := '; [Acc] "=S" (o)\n; [s] "[Acc]" (s)\n; rcx'
+	assert raw_block_errors('name_acc', lines, sections) == []
+	assert !raw_rbx_is_saved('name_b', ['movq $5, %%rbx'], '; [b] "=d" (o)\n; [s] "[b]" (s)')
+	errors := raw_block_errors('name_a', ['cqto'], '; [d] "=c" (o)\n; [s] "[d]" (s)')
+	assert errors.any(it.contains('writes `rdx`')), errors.str()
+}
+
+// An operand keeps its own width where a register has the same name, and the size suffix gives the
+// width where its type is not known. Either way the push is followed and the write is reported.
+fn test_pushed_operand_width_is_its_own() {
+	same_name := ['push %[di]', 'movq $5, %%rbx', 'pop %[di]', 'movw %%di, %%di']
+	assert !raw_rbx_is_saved('push_name', same_name, '; [di] "=d" (o)\n;\n; rdi')
+	literal := ['pushq %[c]', 'movq $5, %%rbx', 'popq %%rcx']
+	assert !raw_rbx_is_saved('push_literal', literal, ';\n; [c] "c" (5)')
+}
+
+// A `lock` waits for the next instruction only on a line of prefixes.
+fn test_lock_of_an_instruction_does_not_reach_the_next() {
+	errors := raw_block_errors('lock_next', ['lock movsb', 'rep movsb'], ';\n;\n; rsi rdi memory')
+	assert errors.any(it.contains('writes `rcx`')), errors.str()
+}
+
+// A save of a register counts beside an operand whose constraint names a class without it.
+fn test_save_beside_a_register_class() {
+	registers := ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp', 'r8', 'r9', 'r10', 'r11', 'r12']
+	for class, members in {
+		'Q': ['rax', 'rbx', 'rcx', 'rdx']
+		'R': ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp']
+		'U': ['rax', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11']
+		'A': ['rax', 'rdx']
+	} {
+		for register in registers {
+			lines := ['movq %%${register}, %%r13', 'movq $5, %%${register}',
+				'movq %%r13, %%${register}']
+			// `rax` and `rdx` beside an `A` operand are declared by it.
+			if class == 'A' && register in members {
+				continue
+			}
+			errors := raw_block_errors('class_${class}_${register}', lines, '; [o] "=${class}" (o)\n;\n; r13')
+			assert (errors.len > 0) == (register in members), '${class} ${register} ${errors}'
+		}
+	}
+	// A `Q` operand declares none of its registers.
+	errors := raw_block_errors('class_write', ['movq $5, %%rdx'], '; [o] "=Q" (o)')
+	assert errors.len == 1 && errors[0].contains('add `rdx` to the clobbers'), errors.str()
+	// A second operand that the compiler places anywhere ends that.
+	lines := ['movq %%rbp, %%r13', 'movq $5, %%rbp', 'movq %%r13, %%rbp']
+	assert raw_block_errors('class_free', lines, '; [o] "=Q" (o)\n; [s] "r" (s)\n; r13').len > 0
+	assert raw_block_errors('class_two', lines, '; [o] "=Q" (o)\n; [s] "R" (s)\n; r13').len > 0
+}
+
+// A save may go through several places, `push` and `pop` included.
+fn test_save_through_several_places() {
+	for index, row in [
+		['yes', 'movq %%rbx, %%r11', 'movq $5, %%rbx', 'pushq %%r11', 'popq %%rbx'],
+		['yes', 'pushq %%rbx', 'popq %%r11', 'movq $5, %%rbx', 'movq %%r11, %%rbx'],
+		['yes', 'movq %%rbx, %%r11', 'movq %%r11, %%r10', 'movq $5, %%rbx', 'movq %%r10, %%rbx'],
+		['yes', 'movq %%rbx, %%r11', 'pushq %%r11', 'popq %[o]', 'movq $5, %%rbx', 'movq %[o], %%rbx'],
+		['yes', 'movq %%rbx, %%r11', 'pushq %%r11', 'pushq %%r10', 'movq $5, %%rbx', 'popq %%r10',
+			'popq %%rbx'],
+		['yes', 'movq %%rbx, %[o]', 'movq %[o], %%r11', 'movq $5, %%rbx', 'movq %%r11, %%rbx'],
+		['yes', 'xchgq %%rbx, %%r11', 'movq %%r11, %%r10', 'movq $5, %%rbx', 'movq %%r10, %%rbx'],
+		['no', 'movq %%rbx, %%r11', 'movq $5, %%rbx', 'pushq %%r10', 'popq %%rbx'],
+		['no', 'pushq %%rbx', 'popq %%r11', 'movq $5, %%rbx', 'movq %%r10, %%rbx'],
+		['no', 'pushq %%r10', 'popq %%r11', 'movq $5, %%rbx', 'movq %%r11, %%rbx'],
+		['no', 'movq %%rbx, %%r11', 'pushq %%r11', 'pushq %%r10', 'movq $5, %%rbx', 'popq %%rbx',
+			'popq %%r11'],
+		// A push and a pop of the register itself cover what is between them only.
+		['no', 'pushq %%rbx', 'popq %%rbx', 'movq $5, %%rbx'],
+		// An undeclared place that only `xchg` uses is none.
+		['no', 'xchgq %%rbx, %%r9', 'pushq %%r9', 'movq $5, %%rbx', 'popq %%rbx'],
+	] {
+		assert raw_rbx_is_saved('several_${index}', row[1..], '; [o] "=d" (o)\n;\n; r10 r11') == (row[0] == 'yes'), row.str()
+	}
+	for index, row in [
+		// Frames, `leave` and the saved flags move the stack by their own slots.
+		['yes', 'movq %%rbx, %%r11', 'pushq %%r11', 'pushq %%rbp', 'movq %%rsp, %%rbp', 'pushq %%r10',
+			'leave', 'movq $5, %%rbx', 'popq %%rbx'],
+		['yes', 'movq %%rbx, %%r11', 'pushq %%r11', 'pushq %%rbp', 'movq %%rsp, %%rbp', 'pushq %%r10',
+			'movq %%rbp, %%rsp', 'popq %%rbp', 'movq $5, %%rbx', 'popq %%rbx'],
+		['yes', 'movq %%rbx, %%r11', 'pushq %%r11', 'pushq %%rbp', 'movq %%rsp, %%rbp', 'pushq %%rbp',
+			'movq %%rsp, %%rbp', 'leave', 'leave', 'movq $5, %%rbx', 'popq %%rbx'],
+		['yes', 'movq %%rbx, %%r11', 'pushq %%r11', 'pushq %%rbp', 'movq %%rsp, %%rbp', 'pushq %%rbp',
+			'movq %%rsp, %%rbp', 'popq %%rbp', 'pushq %%r10', 'leave', 'movq $5, %%rbx', 'popq %%rbx'],
+		['yes', 'movq %%rbx, %%r11', 'pushq %%r11', 'pushfq', 'movq $5, %%rbx', 'popfq', 'popq %%rbx'],
+		['no', 'movq %%rbx, %%r11', 'pushq %%rbp', 'movq %%rsp, %%rbp', 'pushq %%r11', 'leave',
+			'movq $5, %%rbx', 'popq %%rbx'],
+		['no', 'movq %%rbx, %%r11', 'pushq %%rbp', 'movq %%rsp, %%rbp', 'pushq %%r11', 'pushq %%r11',
+			'movq %%rbp, %%rsp', 'popq %%rbp', 'movq $5, %%rbx', 'popq %%rbx'],
+		['no', 'movq %%rbx, %%r11', 'pushq %%rbp', 'movq %%rsp, %%rbp', 'popq %%rbp', 'pushq %%r11',
+			'pushq %%rbp', 'movq %%rsp, %%rbp', 'leave', 'popq %%r10', 'movq $5, %%rbx', 'popq %%rbx'],
+	] {
+		assert raw_rbx_is_saved('framed_${index}', row[1..], '; [o] "=d" (o)\n;\n; r10 r11') == (row[0] == 'yes'), row.str()
+	}
+	// Upper-case names, and an instruction with one operand between the push and the pop.
+	for index, lines in [
+		['pushq %%RBX', 'popq %%r11', 'movq $5, %%rbx', 'movq %%r11, %%rbx'],
+		['movq %%rbx, %%r11', 'pushq %%r11', 'notq %%r10', 'movq $5, %%rbx', 'popq %%rbx'],
+	] {
+		assert raw_rbx_is_saved('between_${index}', lines, ';\n;\n; r10 r11'), lines.str()
+	}
+	// A pop of the flags that nothing pushed, and a pop without an operand, are read past.
+	assert raw_rbx_is_saved('lone_popf', ['popfq'], ';\n;')
+	assert raw_rbx_is_saved('bare_pop', ['pushq %%rcx', 'popq'], ';\n;')
+	assert inline_asm_raw_joined(['a'], ['a', 'b', 'c'], ['c', 'd', 'e']) == ['a', 'b', 'c', 'd',
+		'e']
+	// An operand named as a register is not that register.
+	for index, lines in [
+		['pushq %[rbx]', 'popq %%r11', 'movq $5, %%rbx', 'movq %%r11, %%rbx'],
+		['movq %%rbx, %%r11', 'pushq %%r11', 'popq %[rbx]', 'movq $5, %%rbx'],
+	] {
+		assert !raw_rbx_is_saved('named_${index}', lines, '; [rbx] "=d" (o)\n;\n; r11'), lines.str()
+	}
+	// An input is no place here either.
+	input := ['pushq %%rbx', 'popq %[s]', 'movq $5, %%rbx', 'pushq %[s]', 'popq %%rbx']
+	assert !raw_rbx_is_saved('pop_input', input, ';\n; [s] "c" (s)')
+	// LLVM's i386 `pushfd` and `popfd` use a slot too.
+	for index, pair in [['pushfd', 'popfl'], ['pushfl', 'popfd']] {
+		errors := att_width_errors('pushfd_${index}', 'module main
+
+fn main() {
+	mut o := u32(0)
+	asm i386 raw {
+		"movl %%ebx, %%esi\\n\\t"
+		"pushl %%esi\\n\\t"
+		"${pair[0]}\\n\\t"
+		"movl $5, %%ebx\\n\\t"
+		"${pair[1]}\\n\\t"
+		"popl %%ebx"
+		; [o] "=d" (o)
+		;
+		; esi
+	}
+	println(o)
+}
+')
+		assert errors == []
+	}
+}
+
+// An instruction that cannot change its destination writes nothing, though it may set the flags.
+fn test_instruction_that_changes_nothing() {
+	for index, row in [
+		['ok', 'amd64', 'leaq 0(%%rsi), %%rsi'],
+		['ok', 'amd64', 'leaq (%%rsi), %%rsi'],
+		['ok', 'amd64', 'leaq 0x0(%%rsi,%%riz,1), %%rsi'],
+		['ok', 'i386', 'leal 0(%%esi,%%eiz,1), %%esi'],
+		['ok', 'i386', 'leal 0(%%esi), %%esi'],
+		['ok', 'amd64', 'movq %%rbx, %%rbx'],
+		['ok', 'amd64', 'movq %%RBX, %%rbx'],
+		['ok', 'amd64', 'movb %%bl, %%bl'],
+		['ok', 'amd64', 'movw %%bx, %%bx'],
+		['ok', 'i386', 'movl %%ebx, %%ebx'],
+		['ok', 'amd64', 'orq %%rbx, %%rbx'],
+		['ok', 'amd64', 'andq %%rbx, %%rbx'],
+		['ok', 'amd64', 'addq $0, %%rbx'],
+		['ok', 'amd64', 'subq $0x0, %%rbx'],
+		['ok', 'amd64', 'orq $0, %%rbx'],
+		['ok', 'amd64', 'xorq $0, %%rbx'],
+		['ok', 'amd64', 'shlq $0, %%rbx'],
+		['ok', 'amd64', 'shrq $0, %%rbx'],
+		['ok', 'amd64', 'sarq $0, %%rbx'],
+		['ok', 'amd64', 'andq $-1, %%rbx'],
+		// Other spellings of the same values, as GNU as and clang read them (amendment 5).
+		['ok', 'amd64', 'addq $00, %%rbx'],
+		['ok', 'amd64', 'addq $0X0, %%rbx'],
+		['ok', 'amd64', 'addq $0b0, %%rbx'],
+		['ok', 'amd64', 'addq $0B0, %%rbx'],
+		['ok', 'amd64', 'addq $-0, %%rbx'],
+		['ok', 'amd64', 'addq $+0, %%rbx'],
+		['ok', 'amd64', 'addq $(0), %%rbx'],
+		['ok', 'amd64', 'addq $((0)), %%rbx'],
+		['ok', 'amd64', 'addq $- -0, %%rbx'],
+		['ok', 'amd64', 'addq $~-1, %%rbx'],
+		['ok', 'amd64', 'addq $!1, %%rbx'],
+		['ok', 'amd64', 'addq $0x00000000, %%rbx'],
+		['ok', 'amd64', 'subq $-0x0, %%rbx'],
+		['ok', 'amd64', 'orq $0b00, %%rbx'],
+		['ok', 'amd64', 'xorq $(0), %%rbx'],
+		['ok', 'amd64', 'addb $256, %%bl'],
+		['ok', 'amd64', 'addw $0x10000, %%bx'],
+		['ok', 'amd64', 'andq $~0, %%rbx'],
+		['ok', 'amd64', 'andq $-0x1, %%rbx'],
+		['ok', 'amd64', 'andq $0xffffffffffffffff, %%rbx'],
+		['ok', 'amd64', 'andq $18446744073709551615, %%rbx'],
+		['ok', 'amd64', 'andq $01777777777777777777777, %%rbx'],
+		['ok', 'amd64', 'andq $(-1), %%rbx'],
+		['ok', 'amd64', 'andq $- 1, %%rbx'],
+		['ok', 'amd64', 'andb $255, %%bl'],
+		['ok', 'amd64', 'andb $0xff, %%bl'],
+		['ok', 'amd64', 'andb $-1, %%bl'],
+		['ok', 'amd64', 'andw $0xffff, %%bx'],
+		['ok', 'amd64', 'andw $65535, %%bx'],
+		['ok', 'i386', 'andl $0xffffffff, %%esi'],
+		['ok', 'i386', 'addl $0x0, %%esi'],
+		['ok', 'amd64', 'shlq $64, %%rbx'],
+		['ok', 'amd64', 'shlq $0x40, %%rbx'],
+		['ok', 'amd64', 'shrq $128, %%rbx'],
+		['ok', 'amd64', 'sarq $0xc0, %%rbx'],
+		['ok', 'amd64', 'shlb $32, %%bl'],
+		['ok', 'amd64', 'shlw $32, %%bx'],
+		['ok', 'i386', 'shll $32, %%esi'],
+		['ok', 'amd64', 'leaq 0x0(,%%rbx,1), %%rbx'],
+		['ok', 'amd64', 'leaq (,%%rbx), %%rbx'],
+		['ok', 'amd64', 'leaq 00(%%rbx), %%rbx'],
+		['ok', 'amd64', 'leaq 0b0(%%rbx), %%rbx'],
+		['ok', 'amd64', 'leaq -0(%%rbx), %%rbx'],
+		['ok', 'amd64', 'leaq (0)(%%rbx), %%rbx'],
+		['ok', 'amd64', 'leaq 0(%%rbx,%%riz,2), %%rbx'],
+		['ok', 'amd64', 'leaw (%%rbx), %%bx'],
+		['ok', 'amd64', 'leaw (%%ebx), %%bx'],
+		['ok', 'amd64', 'leaw (,%%rbx,1), %%bx'],
+		['ok', 'amd64', 'leaq (,%%rbx,01), %%rbx'],
+		['ok', 'amd64', 'leaq (,%%rbx,0x1), %%rbx'],
+		['ok', 'amd64', 'leaq (,%%rbx,(1)), %%rbx'],
+		['ok', 'amd64', 'leaq (,%%rbx, +1), %%rbx'],
+		['ok', 'amd64', 'leaq (0)(,%%rbx,(1)), %%rbx'],
+		['no', 'amd64', 'leaq (,%%rbx,2-1), %%rbx'],
+		['no', 'amd64', 'leaq (%%rcx,%%rbx,1), %%rbx'],
+		['no', 'amd64', 'addq 00, %%rbx'],
+		['no', 'amd64', 'andq 0, %%rbx'],
+		['no', 'amd64', 'leaq (,%%rbx,(2)), %%rbx'],
+		['ok', 'i386', 'leal 0x0(,%%esi,1), %%esi'],
+		['ok', 'i386', 'leal 00(%%esi), %%esi'],
+		['ok', 'i386', 'leaw (%%si), %%si'],
+		['no', 'amd64', 'shlb $8, %%bl'],
+		['no', 'amd64', 'shlq $63, %%rbx'],
+		['no', 'i386', 'shll $31, %%esi'],
+		['no', 'amd64', 'addb $255, %%bl'],
+		['no', 'amd64', 'andb $254, %%bl'],
+		['no', 'amd64', 'andw $0xff, %%bx'],
+		['no', 'amd64', 'andq $0x7fffffffffffffff, %%rbx'],
+		['no', 'amd64', 'addq $1-1, %%rbx'],
+		['no', 'amd64', 'addq $~0, %%rbx'],
+		['no', 'amd64', 'orq $!0, %%rbx'],
+		['no', 'amd64', 'andq $--1, %%rbx'],
+		['no', 'amd64', 'addq $18446744073709551616, %%rbx'],
+		['no', 'amd64', 'leaq (%%ebx), %%rbx'],
+		['no', 'i386', 'leal (%%si), %%esi'],
+		['no', 'amd64', 'leaq (,%%rbx,2), %%rbx'],
+		['no', 'amd64', 'leaq 1(,%%rbx,1), %%rbx'],
+		['no', 'amd64', 'leaq (,%%rcx,1), %%rbx'],
+		['no', 'amd64', 'leaq 8(%%rbx,%%riz,2), %%rbx'],
+		['no', 'amd64', 'leaq 0(%%rbx,%%rcx,1), %%rbx'],
+		['no', 'amd64', 'leaq 0(%%rcx,%%riz,1), %%rbx'],
+		['no', 'amd64', 'leaq 8(%%rsi), %%rsi'],
+		['no', 'amd64', 'leaq 0(%%rdi), %%rsi'],
+		['no', 'amd64', 'leaq 0(%%rsi,%%rdi,1), %%rsi'],
+		['no', 'amd64', 'leaq foo(%%rsi), %%rsi'],
+		['no', 'amd64', 'leaq %%fs:0(%%rsi), %%rsi'],
+		['no', 'amd64', 'leal 0(%%rsi), %%esi'],
+		['no', 'amd64', 'leal 0(%%esi), %%esi'],
+		['no', 'amd64', 'movl %%ebx, %%ebx'],
+		['no', 'amd64', 'movb %%bh, %%bl'],
+		['no', 'amd64', 'movq %%rcx, %%rbx'],
+		['no', 'amd64', 'orl %%ebx, %%ebx'],
+		['no', 'amd64', 'xorq %%rbx, %%rbx'],
+		['no', 'amd64', 'subq %%rbx, %%rbx'],
+		['no', 'amd64', 'addq %%rbx, %%rbx'],
+		['no', 'amd64', 'addq $1, %%rbx'],
+		['no', 'amd64', 'addl $0, %%ebx'],
+		['no', 'amd64', 'andq $0, %%rbx'],
+		['no', 'amd64', 'movq $0, %%rbx'],
+		['no', 'amd64', 'orq $-1, %%rbx'],
+		['no', 'amd64', 'leaw 0(%%si), %%si'],
+		['no', 'amd64', 'orq $zero, %%rbx'],
+		['no', 'amd64', 'movsbq %%bl, %%rbx'],
+		['no', 'amd64', 'notq %%rbx'],
+	] {
+		errors := att_width_errors('identity_${index}', 'module main
+
+fn main() {
+	mut o := u64(0)
+	asm ${row[1]} raw {
+		"${row[2]}"
+		; [o] "=d" (o)
+		;
+		; cc
+	}
+	println(o)
+}
+')
+		assert (errors.len == 0) == (row[0] == 'ok'), '${row} ${errors}'
+	}
+	assert raw_block_errors('identity_flags', ['orq %%rbx, %%rbx'], ';\n;').any(it.contains('condition flags'))
+}
+
+// One place may save two registers, one after the other or one inside the other.
+fn test_one_place_saves_two_registers() {
+	for index, lines in [
+		['movq %%rbx, %%r11', 'movq $5, %%rbx', 'movq %%r11, %%rbx', 'movq %%rcx, %%r11',
+			'movq $7, %%rcx', 'movq %%r11, %%rcx'],
+		['xchgq %%rbx, %%r11', 'xchgq %%rcx, %%r11', 'movq $5, %%rbx', 'movq $7, %%rcx',
+			'xchgq %%rcx, %%r11', 'xchgq %%rbx, %%r11'],
+	] {
+		assert raw_block_errors('two_${index}', lines, ';\n;\n; r11') == []
+	}
+}
+
+// Both the save and the copy back must use a place that may change.
+fn test_save_and_copy_back_each_need_a_place_that_may_change() {
+	for index, pair in [
+		['xchgq %%rbx, %%rcx', 'movq %%rcx, %%rbx'],
+		['movq %%rbx, %%rcx', 'xchgq %%rcx, %%rbx'],
+		['movq %%rbx, %[s]', 'xchgq %[s], %%rbx'],
+		['xchgq %%rbx, %[s]', 'movq %[s], %%rbx'],
+	] {
+		lines := [pair[0], 'movq $5, %%rbx', pair[1]]
+		assert !raw_rbx_is_saved('mixed_input_${index}', lines, ';\n; [s] "c" (s)'), lines.str()
+		assert raw_rbx_is_saved('mixed_output_${index}', lines, '; [s] "+c" (o)'), lines.str()
+	}
+}
+
+// A clobber that is only a `%` names no register, and the check reads past it.
+fn test_bare_percent_clobber_does_not_crash_the_check() {
+	for index, clobber in ['%', '#', '%%'] {
+		assert !raw_rbx_is_saved('bare_clobber_${index}', ['movq $5, %%rbx'], ';\n;\n; ${clobber}'), clobber
+	}
+}
+
+fn test_xchg_that_restores_nothing() {
+	// One `xchg` alone, in both operand orders, does not restore itself.
+	for single in raw_pair('xchgq', '%%rbx', '%%r11') {
+		source := 'asm amd64 raw {\n\t"${single}"\n}'
+		assert inline_asm_raw_mov_restored(raw_instructions_of(source, 'amd64'), 64, &raw_all_declared).len == 0, single
+	}
+	for pair in [
+		// Another place, a narrower view, the register itself, the stack pointer, memory.
+		['xchgq %%rbx, %%r11', 'xchgq %%rbx, %%r10'],
+		['xchgq %%rbx, %[slot]', 'xchgq %%rbx, %[Slot]'],
+		['xchgl %%ebx, %%r11d', 'xchgl %%ebx, %%r11d'],
+		['xchgb %%bl, %%cl', 'xchgb %%bl, %%cl'],
+		['xchgq %%rbx, %%rbx', 'xchgq %%rbx, %%rbx'],
+		['xchgq %%rbx, %%rsp', 'xchgq %%rbx, %%rsp'],
+		['xchgq %%rbx, (%%rdi)', 'xchgq %%rbx, (%%rdi)'],
+		['xchgq (%%rdi), %%rbx', 'xchgq (%%rdi), %%rbx'],
+		['xchgq %[rbx], %%r11', 'xchgq %[rbx], %%r11'],
+		['cmpxchgq %%rbx, %%r11', 'cmpxchgq %%rbx, %%r11'],
+		['xaddq %%rbx, %%r11', 'xaddq %%rbx, %%r11'],
+	] {
+		assert !raw_mov_save_restored('amd64', pair[0], pair[1]), pair.str()
+	}
+}
+
+fn test_rex_prefixes_are_the_spellings_of_the_binutils_table() {
+	for base in ['rex', 'rex64'] {
+		for suffix in ['', 'z', 'y', 'yz', 'x', 'xz', 'xy', 'xyz'] {
+			assert inline_asm_raw_is_rex_prefix(base + suffix), base + suffix
+		}
+	}
+	for suffix in ['b', 'x', 'xb', 'r', 'rb', 'rx', 'rxb', 'w', 'wb', 'wx', 'wxb', 'wr', 'wrb',
+		'wrx', 'wrxb'] {
+		assert inline_asm_raw_is_rex_prefix('rex.' + suffix), suffix
+	}
+	for word in ['rex.', 'rex.bw', 'rex.ww', 'rex.q', 'rexzy', 'rexzz', 'rex64q', 'rexx64', 'rexw',
+		're'] {
+		assert !inline_asm_raw_is_rex_prefix(word), word
+	}
+}
+
+// raw_asm_docs returns the raw-asm check section of doc/docs.md as one line of text.
+fn raw_asm_docs() string {
+	docs := os.read_file(os.join_path(@VEXEROOT, 'doc', 'docs.md')) or { panic(err) }
+	start := docs.index('In x86 raw blocks that use AT&T syntax') or { panic('no width-check text') }
+	end := docs.index_after('For a loop over a V buffer', start) or { panic('no section end') }
+	return docs[start..end].replace('\n', ' ')
+}
+
+// raw_asm_docs_words returns the backquoted words of the docs text from `from` up to `to`.
+fn raw_asm_docs_words(docs string, from string, to string) []string {
+	start := docs.index(from) or { panic('docs no longer say `${from}`') }
+	end := docs.index_after(to, start + from.len) or { panic('docs no longer say `${to}`') }
+	mut words := []string{}
+	parts := docs[start..end].split('`')
+	for i := 1; i < parts.len; i += 2 {
+		words << parts[i]
+	}
+	return words
+}
+
+// The docs list the prefixes the clobber check reads past and the directives both checks read;
+// each list must be the code's table exactly (vlang/v PR 31407: docs sentences about the checks
+// were false in two review rounds in a row).
+fn test_raw_asm_docs_lists_match_the_tables() {
+	docs := raw_asm_docs()
+	read := raw_asm_docs_words(docs, 'The check reads past only the', 'prefixes.')
+	assert read.sorted() == inline_asm_raw_read_prefixes[..].sorted()
+	inert := raw_asm_docs_words(docs, 'the alignment and symbol directives', 'Any other directive')
+	assert inert.sorted() == inline_asm_raw_inert_directives[..].sorted()
+	assert docs.contains('the `.cfi_` directives')
+}
+
+// Every example the docs give for a group must be in the code's table for that group, and an
+// example of what stops a check must not be in the table of what the check reads.
+fn test_raw_asm_docs_examples_match_the_tables() {
+	docs := raw_asm_docs()
+	unread := raw_asm_docs_words(docs, 'A template with any other prefix', 'is not checked either')
+	assert unread.len > 0
+	for word in unread {
+		assert inline_asm_raw_is_prefix(word), word
+		assert word !in inline_asm_raw_read_prefixes, word
+	}
+	stops := raw_asm_docs_words(docs, 'Any other directive, such as', 'stop both checks')
+	assert stops.len > 0
+	for directive in stops {
+		assert directive !in inline_asm_raw_inert_directives, directive
+		assert !directive.starts_with('.cfi_'), directive
+	}
+	dst := raw_asm_docs_words(docs, 'destination of common instructions such as', 'and the registers')
+	assert dst.len > 0
+	for family in dst {
+		assert family in inline_asm_raw_writes_dst_families, family
+	}
+	flags := raw_asm_docs_words(docs, 'common flag-setting instruction such as', 'unless')
+	for word in flags {
+		assert word.trim_right('bwlq') in inline_asm_raw_flag_families, word
+	}
+	string_example := raw_asm_docs_words(docs, 'a string instruction such as', '. It reports')
+	for word in string_example {
+		assert word.trim_right('bwlq') in inline_asm_raw_string_families, word
+	}
+	// Each far transfer the table holds is named, the `l` forms as "a far jump, call or return".
+	far := raw_asm_docs_words(docs, 'any form of', 'a 16-bit `callw`')
+	for mnemonic in inline_asm_raw_far_transfers {
+		if mnemonic in ['ljmp', 'lcall', 'lret'] {
+			continue
+		}
+		assert mnemonic in far, mnemonic
+	}
+	assert docs.contains('a far jump, call or return')
+}
+
+// A statement without the operands its mnemonic needs is refused by the assembler; the checker
+// must not read an operand that is not there.
+fn test_operandless_statements_do_not_crash_the_check() {
+	for statement in ['div', 'idiv', 'mul', 'imul', 'mov', 'push', 'pop', 'call', 'xchg'] {
+		errors := att_width_errors('operandless_${statement}', 'module main
+
+fn main() {
+	mut x := u64(1)
+	asm amd64 raw {
+		"${statement}"
+		; "+c" (x)
+		;
+		; cc
+	}
+	println(x)
+}
+')
+		assert errors.len <= 1, statement + errors.str()
+	}
+}
+
+// raw_is_free reports whether the compiler may choose a register for an operand.
+fn raw_is_free(constraint string) bool {
+	return inline_asm_raw_read_constraint(constraint).is_free
+}
+
+fn test_operand_is_pinned_only_without_a_register_the_compiler_chooses() {
+	// Written out rather than taken from the checker's list, so a letter dropped from it fails.
+	pinned := ['a', 'b', 'c', 'd', 'S', 'D', 'A', 'i', 'n', 'I', 'J', 'K', 'L', 'M', 'N', 'O',
+		'e', 'Z', 'E', 'F', 'G', 'H', 's', 'x', 't', 'u', 'f', '0', '9', '{rdx}', '{r11}', '{RBX}',
+		'v', 'y', 'k', 'C', 'Yz', 'Yk', 'Yi', 'Ym', 'Yt', 'Y2', 'YW', 'Yd', 'Yr', 'Yv', 'Yw', 'We',
+		'Wz', 'Wd', 'Ws', 'Wb', 'Wf', 'Ww', 'Bz', 'Q', 'R', 'U', '[o]', '[mr]', 'd^', 'd$', 'd#r',
+		'd#rm', 'd ', 'd, d']
+	free := ['r', 'q', 'l', 'g', 'm', 'o', 'V', '<', '>', 'p', 'X', 'Y', 'Yp', 'YC', 'Ya', 'Yb',
+		'T', 'Tv', 'Ts', 'W', 'Wc', 'B', 'Bm', 'P', 'w', 'h', 'j', 'jc', 'z', 'd#a,r', 'd#r,m']
+	for modifier in ['', '=', '+', '=&', '+&', '%', '?', '*', '!', '^', '$'] {
+		for letter in pinned {
+			constraint := '${modifier}${letter}'
+			assert !raw_is_free(constraint), constraint
+		}
+		for letter in free {
+			constraint := '${modifier}${letter}'
+			assert raw_is_free(constraint), constraint
+			// One free letter among pinned ones, or in another alternative, frees the operand.
+			assert raw_is_free('${modifier}a${letter}'), constraint
+			assert raw_is_free('${modifier}d,${letter}'), constraint
+			assert raw_is_free('${modifier}{rdx}${letter}'), constraint
+		}
+	}
+	// A name or a brace that is not closed ends with the constraint.
+	assert inline_asm_raw_read_constraint('=[a').registers == []
+	assert inline_asm_raw_read_constraint('{rdx').registers == ['rdx']
+	assert raw_is_free('=Y')
+	// A letter after `Y`, `W`, `T`, `B` or `j` names no register, and one after `#` neither.
+	for constraint in ['Yc', 'Wd', 'Tb', 'Ba', 'jc', 'YA', 'i#a', 'i#A'] {
+		read := inline_asm_raw_read_constraint(constraint)
+		assert read.registers == [] && !read.has_pair, constraint
+	}
+	assert inline_asm_raw_read_constraint('=abcdSD').registers == ['rax', 'rbx', 'rcx', 'rdx',
+		'rsi', 'rdi']
+	assert inline_asm_raw_read_constraint('d#a,c').registers == ['rdx', 'rcx']
+	assert inline_asm_raw_read_constraint('AQ').has_pair
+	// A free alternative beside a matching one may hold the input in any register.
+	assert inline_asm_raw_read_constraint('0').is_in_changeable(map[string]bool{})
+	assert !inline_asm_raw_read_constraint('0r').is_in_changeable(map[string]bool{})
+	// V binds an operand without a constraint with `r` or `+r`, and one that names nothing may sit
+	// anywhere.
+	for constraint in ['', '=', '#d', '=#r'] {
+		assert raw_is_free(constraint), constraint
+	}
+	for constraint in ['=@ccz', '=@ccnz', '+@cca', 'a,d', '=a,=d', '0,1'] {
+		assert !raw_is_free(constraint), constraint
+	}
+}
+
+fn test_integer_value_reads_what_the_assemblers_read() {
+	for text, want in {
+		'0':                    u64(0)
+		'00':                   0
+		'010':                  8
+		'0x1F':                 31
+		'0B101':                5
+		'18446744073709551615': max_u64
+		'-1':                   max_u64
+		'~0':                   max_u64
+		'!0':                   1
+		'!7':                   0
+		'+-(2)':                max_u64 - 1
+		'((3))':                3
+	} {
+		assert inline_asm_raw_integer_value(text) or { panic('${text}: none') } == want, text
+	}
+	for text in ['', '-', '()', '(0', '(0+1)', '(0]', '0)', '1-1', '08', '0b2', '0x', '0xg', '1x5',
+		'1b1', '18446744073709551616', 'x', '0h', '1_0'] {
+		assert inline_asm_raw_integer_value(text) == none, text
+	}
+	// Deep nesting must not exhaust the stack.
+	n := 1_000_000
+	assert inline_asm_raw_integer_value('('.repeat(n) + '-(~(0))' + ')'.repeat(n)) or { 0 } == 1
+	assert inline_asm_raw_integer_value('-'.repeat(n) + '1') or { 0 } == 1
+	assert inline_asm_raw_integer_value('('.repeat(n) + '1' + ')'.repeat(n - 1)) == none
+}
+
+fn test_lea_keeps_reads_the_address() {
+	for address in ['(rbx)', '0(rbx)', '(,rbx)', '(,rbx,1)', '(0)(,rbx,(1))', '(rbx,riz,4)'] {
+		assert inline_asm_raw_lea_keeps(address, 'rbx', 64, 64), address
+	}
+	for address in ['rbx', '(rbx', 'rbx)', '(rbx)x', '(,rbx,1,2)', '(rbx,,2)', '(,riz)', '()',
+		'(,,1)', '(rcx,rbx,1)', '(,rbx,2)', '1(rbx)', 'x(rbx)', '(ebx)'] {
+		assert !inline_asm_raw_lea_keeps(address, 'rbx', 64, 64), address
+	}
+	assert inline_asm_raw_lea_keeps('(ebx)', 'bx', 16, 64)
+	assert !inline_asm_raw_lea_keeps('(si)', 'si', 16, 64)
+	assert inline_asm_raw_lea_keeps('(si)', 'si', 16, 32)
 }
