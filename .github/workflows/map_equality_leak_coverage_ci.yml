@@ -1,0 +1,74 @@
+name: Map equality leak coverage
+on:
+  pull_request:
+    paths:
+      - vlib/v/tests/builtin_maps/map_equality_mutating_operator_test.v
+      - .github/workflows/map_equality_leak_coverage_ci.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  leak-check:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      LSAN_OPTIONS: max_leaks=0:report_objects=1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/cache-apt-packages-action
+        with:
+          profile: full
+      - uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: false
+          symlink: false
+      - name: Rebuild and verify formatting
+        run: |
+          ./v self
+          if ! ./v fmt -verify vlib/v/tests/builtin_maps/map_equality_mutating_operator_test.v; then
+            ./v fmt -w vlib/v/tests/builtin_maps/map_equality_mutating_operator_test.v
+            git diff
+            exit 1
+          fi
+      - name: Compare original fixture and explicit ownership candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          export VEXE="$(pwd)/v"
+          unset VFLAGS
+          dir="$RUNNER_TEMP/map-equality-leak"
+          mkdir -p "$dir/original" "$dir/candidate"
+          git show 393da9a49c27bd540b3ec588669edd7b437e2729:vlib/v/tests/builtin_maps/map_equality_mutating_operator_test.v > "$dir/original/map_equality_mutating_operator_test.v"
+          test "$(git hash-object "$dir/original/map_equality_mutating_operator_test.v")" = d7c039806f597aad28e1e115ef74e96e4ec7b223
+          cp vlib/v/tests/builtin_maps/map_equality_mutating_operator_test.v "$dir/candidate/map_equality_mutating_operator_test.v"
+          flags=(-cc ${{ matrix.cc }} -cflags -fno-omit-frame-pointer -cflags -fsanitize=address -gc none -enable-globals -showcc -no-retry-compilation)
+          for role in original candidate; do
+            set +e
+            ./v "${flags[@]}" "$dir/$role/map_equality_mutating_operator_test.v" > "$dir/$role/runtime.log" 2>&1
+            rc=$?
+            ./v "${flags[@]}" -o "$dir/$role/generated.c" "$dir/$role/map_equality_mutating_operator_test.v" > "$dir/$role/codegen.log" 2>&1
+            gen_rc=$?
+            set -e
+            printf '%s runtime=%s codegen=%s\n' "$role" "$rc" "$gen_rc" | tee "$dir/$role/status"
+            cat "$dir/$role/runtime.log" "$dir/$role/codegen.log"
+            test "$gen_rc" -eq 0
+            if [[ "$role" == original ]]; then
+              test "$rc" -ne 0
+              grep -F 'LeakSanitizer: detected memory leaks' "$dir/$role/runtime.log"
+            else
+              test "$rc" -eq 0
+              if grep -Eq 'ERROR: (LeakSanitizer|AddressSanitizer)' "$dir/$role/runtime.log"; then exit 1; fi
+            fi
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: map-equality-leaks-${{ matrix.cc }}
+          path: ${{ runner.temp }}/map-equality-leak
