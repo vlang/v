@@ -20070,6 +20070,10 @@ fn (mut t Transformer) lower_normalized_string_literal_compare(node flat.Node) ?
 		|| !t.call_resolved_to_method(call_id, method) {
 		return none
 	}
+	// Older vlib checkouts may not provide this lowering helper.
+	if !t.is_known_fn_name(helper) {
+		return none
+	}
 	// A fresh receiver would need an ownership drop; keep the ordinary path for it.
 	if !t.expr_can_take_address(str_id)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(flat.source_type_string)) {

@@ -1153,7 +1153,8 @@ fn (mut t Transformer) lower_split_for_in(node flat.Node, key_id flat.NodeId, va
 	str_id := t.a.child(selector, 0)
 	if t.node_type(str_id) != flat.source_type_string
 		|| t.resolve_receiver_method_name(str_id, 'split') != 'string.split'
-		|| !t.call_resolved_to_method(container_id, 'string.split') {
+		|| !t.call_resolved_to_method(container_id, 'string.split')
+		|| !t.is_known_fn_name('string.split_next') {
 		return none
 	}
 	key := t.a.nodes[int(key_id)]
