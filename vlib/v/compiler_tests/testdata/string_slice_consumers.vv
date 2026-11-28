@@ -12,6 +12,10 @@ fn emit_range(mut b strings.Builder, s string, start int, end int) {
 	b.write_string(s[start..end])
 }
 
+fn copy_range(mut dst []u8, s string, start int, end int) int {
+	return copy(mut dst, s[start..end])
+}
+
 fn emit_open(mut b strings.Builder, s string) { b.write_string((s[1..])) }
 fn saved_slice(s string) string { return s[1..4] }
 fn stored_slice(s string, mut out []string) { out << s[1..4] }
@@ -52,6 +56,28 @@ fn ordered_write(mut t Trace) {
 	t.receiver().write_string(t.source()[t.lower()..t.upper()])
 }
 
+fn ordered_copy(mut dst []u8, mut t Trace) int {
+	return copy(mut dst[1..], t.source()[t.lower()..t.upper()])
+}
+
+struct CopySource {
+mut:
+	data []u8
+}
+
+fn (mut s CopySource) overwrite() int {
+	s.data[1] = `X`
+	return 0
+}
+
+fn add_counts(a int, b int) int { return a + b }
+
+fn nested_copy(mut dst []u8, mut source CopySource) int {
+	// The array stays live while the second argument mutates the shared bytes.
+	text := unsafe { tos(source.data.data, source.data.len) }
+	return add_counts(copy(mut dst, text[1..4]), source.overwrite())
+}
+
 fn guarded_equal(mut t Trace, run bool) bool {
 	return run && t.source()[t.lower()..t.upper()] == 'bcd'
 }
@@ -79,6 +105,9 @@ fn main() {
 			println(slice_equal('foo', start, end))
 		} else if os.args[1] == 'empty' {
 			println(slice_empty('foo', start))
+		} else if os.args[1] == 'copy' {
+			mut dst := []u8{}
+			println(copy_range(mut dst, 'foo', start, end))
 		} else {
 			mut b := strings.new_builder(8)
 			emit_range(mut b, 'foo', start, end)
@@ -102,6 +131,21 @@ fn main() {
 	t.log = ''
 	ordered_write(mut t)
 	if t.log != 'rslh' || t.b.str() != 'bcd' { panic('write order: ' + t.log) }
+	t.log = ''
+	mut dst := '----'.bytes()
+	if ordered_copy(mut dst, mut t) != 3 || t.log != 'slh' || dst.bytestr() != '-bcd' {
+		panic('copy order: ' + t.log)
+	}
+	mut source := CopySource{data: 'abcdef'.bytes()}
+	if nested_copy(mut dst, mut source) != 3 || dst.bytestr() != 'bcdd' || source.data[1] != `X` {
+		panic('nested copy order')
+	}
+	if copy_range(mut dst, 'aé\x00z', 1, 4) != 3 || dst.bytestr() != 'é\x00d' {
+		panic('copy range bytes')
+	}
+	if copy_range(mut dst, 'foo', 3, 3) != 0 || dst.bytestr() != 'é\x00d' {
+		panic('copy empty range')
+	}
 	t.log = ''
 	if guarded_equal(mut t, false) || !guarded_or(mut t, true) || t.log != '' {
 		panic('short circuit')
@@ -152,5 +196,10 @@ fn main() {
 	emit_range(mut header_builder, header_view, 0, header_view.len)
 	header_result := header_builder.str()
 	if header_result[1..] != header_copy { panic('receiver header overlap') }
+	mut overlap := 'abcdef'.bytes()
+	overlap_source := unsafe { tos(overlap.data, overlap.len) }
+	if copy_range(mut overlap[2..], overlap_source, 0, 5) != 4 || overlap.bytestr() != 'ababcd' {
+		panic('copy overlap')
+	}
 	println('ok')
 }
