@@ -247,3 +247,60 @@ fn test_attribute_assignment_without_a_complete_value_is_an_error() {
 	}
 	assert parse_error('<a ="v"/>') == 'XML attribute is missing name.'
 }
+
+fn test_string_parser_reports_the_end_of_the_document_and_preserves_text_on_request() {
+	source := '<r>  a\r\nb  </r> trailing'
+	document, consumed := xml.XMLDocument.from_string_with_consumed(source, preserve_text: true)!
+	assert document.root.children == [xml.XMLNodeContents('  a\r\nb  ')]
+	assert source[consumed..] == ' trailing'
+	assert xml.XMLDocument.from_string(source)!.root.children == [xml.XMLNodeContents('a\nb')]
+}
+
+fn test_inline_markup_result_must_consume_input_and_end_within_the_source() {
+	source := '<r>text<?work?> done</r>'
+	handler := fn (input string, start int) !xml.XMLInlineMarkupResult {
+		assert input[start..start + 8] == '<?work?>'
+		return xml.XMLInlineMarkupResult{ node: xml.XMLComment{'work'}, end: start + 8 }
+	}
+	document, consumed := xml.XMLDocument.from_string_with_consumed(source,
+		preserve_text: true
+		inline_markup: handler
+	)!
+	assert consumed == source.len
+	assert document.root.children == [xml.XMLNodeContents('text'),
+		xml.XMLNodeContents(xml.XMLComment{'work'}), xml.XMLNodeContents(' done')]
+	for advance in [1, source.len + 1] {
+		bad_handler := fn [advance] (_ string, start int) !xml.XMLInlineMarkupResult {
+			return xml.XMLInlineMarkupResult{ node: xml.XMLComment{'work'}, end: start + advance }
+		}
+		if _, _ := xml.XMLDocument.from_string_with_consumed(source,
+			preserve_text: true
+			inline_markup: bad_handler
+		) {
+			assert false, 'expected an invalid inline markup extent'
+		}
+	}
+}
+
+fn test_string_parser_borrows_only_plain_attribute_values_on_request() {
+	source := '<root a="borrowed" b="x&amp;y" c="café"><item a="nested"/></root>'
+	document, consumed := xml.XMLDocument.from_string_with_consumed(source, borrow_text: true)!
+	assert consumed == source.len
+	assert document.version == '1.0'
+	assert document.encoding == 'UTF-8'
+	assert document.comments.len == 0
+	assert document.doctype.name == ''
+	assert document.root.attributes['b'] or { '' } == 'x&y'
+	assert document.root.attributes['c'] or { '' } == 'café'
+
+	plain := document.root.attributes['a'] or { panic('missing root attribute') }
+	item := document.root.children[0] as xml.XMLNode
+	nested := item.attributes['a'] or { panic('missing nested attribute') }
+	assert voidptr(plain.str) == voidptr(source.substr_unsafe(9, 17).str)
+	nested_start := source.index('nested') or { panic('missing nested attribute in fixture') }
+	assert voidptr(nested.str) == voidptr(source.substr_unsafe(nested_start, nested_start + 6).str)
+
+	owned := xml.XMLDocument.from_string(source)!.root.attributes['a'] or { panic('missing owned attribute') }
+	assert owned == plain
+	assert voidptr(owned.str) != voidptr(plain.str)
+}
