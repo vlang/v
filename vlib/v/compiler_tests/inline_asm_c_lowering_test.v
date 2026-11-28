@@ -1,3 +1,4 @@
+import json2
 import os
 import v.cmdexec
 import v.tempname
@@ -789,45 +790,70 @@ fn main() {
 	assert c_source.contains('"in %[port], %k[result]\\n\\t"'), c_source
 }
 
-fn test_intel_asm_rejects_memory_capable_constraints() {
-	generate, _ := generate_inline_asm_c('intel_constraint_program', 'fn main() {
+struct InlineAsmRejection {
+	name     string
+	source   string
+	expected []string
+}
+
+struct InlineAsmDiagnostic {
+	file     string
+	severity string
+	message  string
+}
+
+fn test_amd64_inline_asm_rejects_invalid_operands_and_registers() {
+	cases := [
+		InlineAsmRejection{
+			name:     'memory_constraint'
+			source:   'fn main() {
 	value := 1
 	asm amd64 intel {
 		mov eax, value
 		; ; m (value)
 	}
 }
-')
-	assert generate.exit_code != 0, generate.output
-	assert generate.output.contains('constraint `m` is not supported for operands in structured `intel` assembly'), generate.output
-}
-
-fn test_inline_asm_rejects_immutable_outputs_for_every_constraint_spelling() {
-	for index, constraint in ['', '+r'] {
-		generate, _ := generate_inline_asm_c('immutable_asm_output_${index}', 'fn main() {
+'
+			expected: ['constraint `m` is not supported for operands in structured `intel` assembly']
+		},
+		InlineAsmRejection{
+			name:     'immutable_bare_output'
+			source:   'fn main() {
 	value := u64(1)
 	asm amd64 intel {
 		inc value
-		; ${constraint} (value)
+		;  (value)
 	}
 }
-')
-		assert generate.exit_code != 0, generate.output
-		assert generate.output.contains('`value` is immutable, declare it with `mut` to make it mutable'), generate.output
+'
+			expected: ['`value` is immutable, declare it with `mut` to make it mutable']
+		},
+		InlineAsmRejection{
+			name:     'immutable_read_write_output'
+			source:   'fn main() {
+	value := u64(1)
+	asm amd64 intel {
+		inc value
+		; +r (value)
 	}
-	non_lvalue, _ := generate_inline_asm_c('non_lvalue_asm_output', 'fn main() {
+}
+'
+			expected: ['`value` is immutable, declare it with `mut` to make it mutable']
+		},
+		InlineAsmRejection{
+			name:     'non_lvalue_output'
+			source:   'fn main() {
 	asm amd64 intel {
 		nop
 		; (u64(1))
 	}
 }
-')
-	assert non_lvalue.exit_code != 0, non_lvalue.output
-	assert non_lvalue.output.contains('inline assembly output must be an lvalue'), non_lvalue.output
-}
-
-fn test_intel_asm_rejects_constraints_in_the_wrong_operand_section() {
-	generate, _ := generate_inline_asm_c('intel_constraint_section_program', 'fn main() {
+'
+			expected: ['inline assembly output must be an lvalue']
+		},
+		InlineAsmRejection{
+			name:     'constraint_sections'
+			source:   'fn main() {
 	mut output := u64(0)
 	a := u64(1)
 	b := u64(2)
@@ -838,11 +864,126 @@ fn test_intel_asm_rejects_constraints_in_the_wrong_operand_section() {
 		; =r (a) +r (b) &r (c)
 	}
 }
-')
-	assert generate.exit_code != 0, generate.output
-	assert generate.output.contains('output constraint `r` must start with `=` or `+`'), generate.output
-	for constraint in ['=r', '+r', '&r'] {
-		assert generate.output.contains('input constraint `${constraint}` cannot use output modifiers'), generate.output
+'
+			expected: [
+				'output constraint `r` must start with `=` or `+`',
+				'input constraint `=r` cannot use output modifiers',
+				'input constraint `+r` cannot use output modifiers',
+				'input constraint `&r` cannot use output modifiers',
+			]
+		},
+		InlineAsmRejection{
+			name:     'narrow_register'
+			source:   'fn main() {
+	value := u32(7)
+	asm amd64 intel {
+		mov eax, value
+		; ; r (value)
+	}
+}
+'
+			expected: ['hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers']
+		},
+		InlineAsmRejection{
+			name:     'default_enum_narrow_register'
+			source:   'enum Kind {
+	one
+}
+
+fn main() {
+	value := Kind.one
+	asm amd64 intel {
+		mov eax, value
+		; ; r (value)
+	}
+}
+'
+			expected: ['hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers']
+		},
+		// The 64-bit mov accepted by the u64-backed enum checks the default enum as signed 32-bit.
+		InlineAsmRejection{
+			name:     'default_enum_wide_register'
+			source:   'enum Kind {
+	one
+}
+
+fn main() {
+	value := Kind.one
+	asm amd64 intel {
+		mov rax, value
+		; ; r (value)
+	}
+}
+'
+			expected: ['named source `value` has 32-bit signed type `default_enum_wide_register.Kind`, but instruction `mov` consumes the wider 64-bit register']
+		},
+		InlineAsmRejection{
+			name:     'narrow_enum_register'
+			source:   'enum Kind as u8 {
+	one
+}
+
+fn main() {
+	value := Kind.one
+	asm amd64 intel {
+		mov al, value
+		; ; r (value)
+	}
+}
+'
+			expected: ['hard register `al` is 8-bit, but named operands in structured `intel` assembly expand to 64-bit registers']
+		},
+		InlineAsmRejection{
+			name:     'register_suggestion'
+			source:   'fn main() {
+	asm amd64 {
+		mov xmm01, xmm1
+	}
+}
+'
+			expected: ['unknown register `xmm01`; did you mean `xmm1`?']
+		},
+		InlineAsmRejection{
+			name:     'clobber_suggestion'
+			source:   'fn main() {
+	asm amd64 {
+		nop
+		; ; ; raxx
+	}
+}
+'
+			expected: ['unknown clobbered register `raxx`; did you mean `rax`?']
+		},
+	]
+	root := inline_asm_tmp_path('operand_rejections')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut imports := []string{cap: cases.len}
+	for case in cases {
+		dir := os.join_path(root, case.name)
+		os.mkdir(dir)!
+		source := 'module ${case.name}\n\n' + case.source.replace_once('fn main()', 'pub fn check()')
+		os.write_file(os.join_path(dir, '${case.name}.v'), source)!
+		imports << 'import ${case.name} as _'
+	}
+	os.write_file(os.join_path(root, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')!
+	output := os.join_path(root, 'out.c')
+	result := run_inline_asm_c(['-os', 'linux', '-arch', 'amd64', '-cc', 'clang', '-json-errors',
+		'-o', output, root])
+	assert result.exit_code != 0, result.output
+
+	mut errors := map[string][]string{}
+	for line in result.output.split_into_lines() {
+		diagnostic := json2.decode[InlineAsmDiagnostic](line) or { panic(line) }
+		if diagnostic.severity == 'error' {
+			errors[os.file_name(diagnostic.file)] << diagnostic.message
+		}
+	}
+	for case in cases {
+		messages := errors['${case.name}.v']
+		for expected in case.expected {
+			assert messages.any(it.contains(expected)), '${case.name}: expected ${expected}\n${messages}'
+		}
 	}
 }
 
@@ -923,38 +1064,8 @@ fn test_arm64_asm_accepts_sme_za_register() {
 	assert c_source.contains('"ptrue pn15.b\\n\\t"'), c_source
 }
 
-fn test_intel_asm_rejects_narrow_register_operands() {
-	generate, _ := generate_inline_asm_c('intel_narrow_register_program', 'fn main() {
-	value := u32(7)
-	asm amd64 intel {
-		mov eax, value
-		; ; r (value)
-	}
-}
-')
-	assert generate.exit_code != 0, generate.output
-	assert generate.output.contains('hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers'), generate.output
-}
-
-fn test_intel_asm_validates_enum_backing_widths() {
-	default_generate, _ := generate_inline_asm_c('intel_default_enum_register_program', 'enum Kind {
-	one
-}
-
-fn main() {
-	value := Kind.one
-	asm amd64 intel {
-		mov eax, value
-		; ; r (value)
-	}
-}
-')
-	assert default_generate.exit_code != 0, default_generate.output
-	assert default_generate.output.contains('hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers'), default_generate.output
-
-	// The same 64-bit instruction that accepts a `u64` backed enum below must see the
-	// default enum as a 32-bit signed value.
-	default_wide_generate, _ := generate_inline_asm_c('intel_default_enum_wide_register_program', 'enum Kind {
+fn test_intel_asm_accepts_wide_enum_backing() {
+	generate, c_source := generate_inline_asm_c('intel_wide_enum_register_program', 'enum Kind as u64 {
 	one
 }
 
@@ -966,37 +1077,7 @@ fn main() {
 	}
 }
 ')
-	assert default_wide_generate.exit_code != 0, default_wide_generate.output
-	assert default_wide_generate.output.contains('named source `value` has 32-bit signed type `Kind`, but instruction `mov` consumes the wider 64-bit register'), default_wide_generate.output
-
-	narrow_generate, _ := generate_inline_asm_c('intel_narrow_enum_register_program', 'enum Kind as u8 {
-	one
-}
-
-fn main() {
-	value := Kind.one
-	asm amd64 intel {
-		mov al, value
-		; ; r (value)
-	}
-}
-')
-	assert narrow_generate.exit_code != 0, narrow_generate.output
-	assert narrow_generate.output.contains('hard register `al` is 8-bit, but named operands in structured `intel` assembly expand to 64-bit registers'), narrow_generate.output
-
-	wide_generate, c_source := generate_inline_asm_c('intel_wide_enum_register_program', 'enum Kind as u64 {
-	one
-}
-
-fn main() {
-	value := Kind.one
-	asm amd64 intel {
-		mov rax, value
-		; ; r (value)
-	}
-}
-')
-	assert wide_generate.exit_code == 0, wide_generate.output
+	assert generate.exit_code == 0, generate.output
 	assert c_source.contains('"mov rax, %V[value]\\n\\t"'), c_source
 }
 
@@ -1034,29 +1115,6 @@ fn test_arm64_asm_accepts_operand_keywords() {
 	assert c_source.contains('"smstart sm\\n\\t"'), c_source
 	assert c_source.contains('"smstop sm\\n\\t"'), c_source
 	assert c_source.contains('"sys #0, c7, c8, #0, x0\\n\\t"'), c_source
-}
-
-fn test_misspelled_asm_registers_are_reported_with_suggestions() {
-	generate, _ := generate_inline_asm_c('register_suggestion_program', 'fn main() {
-	asm amd64 {
-		mov xmm01, xmm1
-	}
-}
-')
-	assert generate.exit_code != 0, generate.output
-	assert generate.output.contains('unknown register `xmm01`; did you mean `xmm1`?'), generate.output
-}
-
-fn test_misspelled_asm_clobbers_are_reported_with_suggestions() {
-	generate, _ := generate_inline_asm_c('clobber_suggestion_program', 'fn main() {
-	asm amd64 {
-		nop
-		; ; ; raxx
-	}
-}
-')
-	assert generate.exit_code != 0, generate.output
-	assert generate.output.contains('unknown clobbered register `raxx`; did you mean `rax`?'), generate.output
 }
 
 fn test_asm_for_another_arch_reports_the_target_mismatch() {
