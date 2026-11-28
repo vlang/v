@@ -241,9 +241,19 @@ pub fn (s &Scope) lookup(name string) ?Type {
 // several modules declare a global `name`, the binding of the global of `module_name`.
 fn (s &Scope) module_global_index(name string, index int, module_name string) int {
 	if module_name.len > 0 && s.module_globals.names[name] {
-		qualified := s.own_binding_index('${module_name}.${name}')
-		if qualified >= 0 {
-			return qualified
+		qualified_name := '${module_name}.${name}'
+		$if ownership ? {
+			// Ownership builds keep the names of a scope only in its list.
+			for i := s.names.len - 1; i >= 0; i-- {
+				if s.names[i] == qualified_name {
+					return i
+				}
+			}
+		} $else {
+			qualified := s.own_binding_index(qualified_name)
+			if qualified >= 0 {
+				return qualified
+			}
 		}
 	}
 	return index

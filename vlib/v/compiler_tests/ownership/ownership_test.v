@@ -176,23 +176,6 @@ fn main() {
 	assert fail_user_string_receiver.exit_code != 0
 	assert fail_user_string_receiver.output.contains('use of moved value: `s`'), fail_user_string_receiver.output
 
-	fail_inferred_owned_global := run_ownership_check(v3_bin, 'inferred_owned_global', '
-struct Resource implements Owned {
-	id int
-}
-
-__global g = Resource{id: 1}
-
-fn main() {
-	x := g
-	y := g
-	_ = x
-	_ = y
-}
-')
-	assert fail_inferred_owned_global.exit_code != 0
-	assert fail_inferred_owned_global.output.contains('cannot move owned global `g`'), fail_inferred_owned_global.output
-
 	fail_owned_global_value_receiver := run_ownership_check(v3_bin, 'owned_global_value_receiver', '
 struct Resource implements Owned {
 	id int
@@ -210,53 +193,6 @@ fn main() {
 ')
 	assert fail_owned_global_value_receiver.exit_code != 0
 	assert fail_owned_global_value_receiver.output.contains('cannot move owned global `g`'), fail_owned_global_value_receiver.output
-
-	fail_forward_owned_global := run_ownership_check(v3_bin, 'forward_owned_global', '
-__global g Resource
-
-struct Resource implements Owned {
-	id int
-}
-
-fn main() {
-	x := g
-	y := g
-	_ = x
-	_ = y
-}
-')
-	assert fail_forward_owned_global.exit_code != 0
-	assert fail_forward_owned_global.output.contains('cannot move owned global `g`'), fail_forward_owned_global.output
-
-	fail_to_owned_global := run_ownership_check(v3_bin, 'to_owned_global', '
-__global g = "global".to_owned()
-
-fn main() {
-	x := g
-	y := g
-	_ = x
-	_ = y
-}
-')
-	assert fail_to_owned_global.exit_code != 0
-	assert fail_to_owned_global.output.contains('cannot move owned global `g`'), fail_to_owned_global.output
-
-	fail_owned_return_global := run_ownership_check(v3_bin, 'owned_return_global', '
-__global g = make()
-
-fn make() string {
-	return "global".to_owned()
-}
-
-fn main() {
-	x := g
-	y := g
-	_ = x
-	_ = y
-}
-')
-	assert fail_owned_return_global.exit_code != 0
-	assert fail_owned_return_global.output.contains('cannot move owned global `g`'), fail_owned_return_global.output
 
 	fail_module_owned_return_global := run_ownership_check_with_module(v3_bin, 'module_owned_return_global', '
 import foo
@@ -278,74 +214,6 @@ fn make_owned() string {
 ')
 	assert fail_module_owned_return_global.exit_code != 0
 	assert fail_module_owned_return_global.output.contains('cannot move owned global `foo.s`'), fail_module_owned_return_global.output
-
-	fail_global_return_descendant := run_ownership_check(v3_bin, 'global_call_return_owned_descendant', '
-struct Holder {
-	value string
-}
-
-__global h = make_holder()
-
-fn make_holder() Holder {
-	return Holder{value: "global".to_owned()}
-}
-
-fn main() {
-	x := h.value
-	y := h.value
-	_ = x
-	_ = y
-}
-')
-	assert fail_global_return_descendant.exit_code != 0
-	assert fail_global_return_descendant.output.contains('cannot move owned global `h.value`'), fail_global_return_descendant.output
-
-	fail_global_aggregate_owned_descendant := run_ownership_check(v3_bin, 'global_aggregate_owned_descendant_move', '
-struct Holder {
-	value string
-}
-
-__global h = Holder{value: "global".to_owned()}
-
-fn main() {
-	x := h
-	y := x.value
-	println(x.value)
-	_ = y
-}
-')
-	assert fail_global_aggregate_owned_descendant.exit_code != 0
-	assert fail_global_aggregate_owned_descendant.output.contains('cannot move owned global `h`'), fail_global_aggregate_owned_descendant.output
-
-	fail_global_array_owned_entry := run_ownership_check(v3_bin, 'global_array_owned_entry', '
-__global g = ["global".to_owned()]
-
-fn main() {
-	x := g[0]
-	y := g[0]
-	_ = x
-	_ = y
-}
-')
-	assert fail_global_array_owned_entry.exit_code != 0
-	assert fail_global_array_owned_entry.output.contains('cannot move owned global `g[0]`'), fail_global_array_owned_entry.output
-
-	fail_global_assoc_owned_field := run_ownership_check(v3_bin, 'global_assoc_owned_field', '
-struct Holder {
-	value string
-}
-
-__global g = Holder{...Holder{}, value: "global".to_owned()}
-
-fn main() {
-	x := g.value
-	y := g.value
-	_ = x
-	_ = y
-}
-')
-	assert fail_global_assoc_owned_field.exit_code != 0
-	assert fail_global_assoc_owned_field.output.contains('cannot move owned global `g.value`'), fail_global_assoc_owned_field.output
 
 	fail_module_global_assoc_base := run_ownership_check_with_module(v3_bin, 'module_global_assoc_base_owned_descendant', '
 import foo
@@ -1387,8 +1255,9 @@ fn check_ownership_module_multi_rejections(name string, cases []OwnershipModuleR
 	}
 	main_path := write_ownership_module_cases(root, cases.map(OwnershipModuleCase{it.name, it.source}))
 	// Every case reports its own errors, so the default cap of 20 printed errors is lifted.
-	result := os.exec([ownership_compiler, '-ownership', '-message-limit', '100000', '-b', 'c',
-		'-o', os.join_path(root, 'out'), main_path])
+	// Globals in modules other than `main` need -enable-globals.
+	result := os.exec([ownership_compiler, '-ownership', '-enable-globals', '-message-limit', '100000',
+		'-b', 'c', '-o', os.join_path(root, 'out'), main_path])
 	assert result.exit_code != 0, result.output
 	diagnostics := result.output.split_into_lines().filter(it.contains(': error: '))
 	for i, case in cases {
@@ -3794,5 +3663,118 @@ fn main() {
 	println(rows.len)
 }
 '},
+	])
+}
+
+fn test_ownership_global_move_rejections() {
+	check_ownership_module_rejections('global_move_rejections', [
+		OwnershipModuleRejection{'inferred_owned_global', '
+struct Resource implements Owned {
+	id int
+}
+
+__global g = Resource{id: 1}
+
+fn main() {
+	x := g
+	y := g
+	_ = x
+	_ = y
+}
+', 'x := g', 'cannot move owned global `g`'},
+		OwnershipModuleRejection{'forward_owned_global', '
+__global g Resource
+
+struct Resource implements Owned {
+	id int
+}
+
+fn main() {
+	x := g
+	y := g
+	_ = x
+	_ = y
+}
+', 'x := g', 'cannot move owned global `g`'},
+		OwnershipModuleRejection{'to_owned_global', '
+__global g = "global".to_owned()
+
+fn main() {
+	x := g
+	y := g
+	_ = x
+	_ = y
+}
+', 'x := g', 'cannot move owned global `g`'},
+		OwnershipModuleRejection{'owned_return_global', '
+__global g = make()
+
+fn make() string {
+	return "global".to_owned()
+}
+
+fn main() {
+	x := g
+	y := g
+	_ = x
+	_ = y
+}
+', 'x := g', 'cannot move owned global `g`'},
+		OwnershipModuleRejection{'global_call_return_owned_descendant', '
+struct Holder {
+	value string
+}
+
+__global h = make_holder()
+
+fn make_holder() Holder {
+	return Holder{value: "global".to_owned()}
+}
+
+fn main() {
+	x := h.value
+	y := h.value
+	_ = x
+	_ = y
+}
+', 'x := h.value', 'cannot move owned global `h.value`'},
+		OwnershipModuleRejection{'global_aggregate_owned_descendant_move', '
+struct Holder {
+	value string
+}
+
+__global h = Holder{value: "global".to_owned()}
+
+fn main() {
+	x := h
+	y := x.value
+	println(x.value)
+	_ = y
+}
+', 'x := h', 'cannot move owned global `h`'},
+		OwnershipModuleRejection{'global_array_owned_entry', '
+__global g = ["global".to_owned()]
+
+fn main() {
+	x := g[0]
+	y := g[0]
+	_ = x
+	_ = y
+}
+', 'x := g[0]', 'cannot move owned global `g[0]`'},
+		OwnershipModuleRejection{'global_assoc_owned_field', '
+struct Holder {
+	value string
+}
+
+__global g = Holder{...Holder{}, value: "global".to_owned()}
+
+fn main() {
+	x := g.value
+	y := g.value
+	_ = x
+	_ = y
+}
+', 'x := g.value', 'cannot move owned global `g.value`'},
 	])
 }
