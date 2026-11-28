@@ -559,8 +559,12 @@ fn run_line_info_compiler(args []string, dir string) os.Result {
 }
 
 fn run_line_info(dir string, spec string) string {
-	res := run_line_info_compiler(['-w', '-check', '-nocolor', '-vls-mode', '-line-info',
-		'main.v:' + '${spec}', 'main.v'], dir)
+	return run_line_info_in(dir, 'main.v:${spec}')
+}
+
+fn run_line_info_in(dir string, spec string) string {
+	res := run_line_info_compiler(['-w', '-check', '-nocolor', '-vls-mode', '-line-info', spec,
+		'main.v'], dir)
 	assert res.exit_code == 0, res.output
 	return res.output
 }
@@ -659,15 +663,6 @@ fn position_in_method_form(form method_form.MethodForm, text string) string {
 // without the receiver `Host` that the method form gives each generic function.
 fn without_host(answer string) string {
 	return answer.replace('(host_ Host) ', '').replace('(host_ main.Host) ', '')
-}
-
-// ask_in asks `-line-info` about `spec`, a file of the program of `dir` with a
-// position (`models/models.v:10:10`), checking the program from its main.v.
-fn ask_in(dir string, spec string) string {
-	res := run_line_info_compiler(['-w', '-check', '-nocolor', '-vls-mode', '-line-info', '${spec}',
-		'main.v'], dir)
-	assert res.exit_code == 0, res.output
-	return res.output.trim_space()
 }
 
 fn is_name_byte(c u8) bool {
@@ -977,14 +972,17 @@ pub fn (u User) peek() int {
 	return u.zz
 }
 ') or { panic(err) }
-	for spec, want in {
+	checks := {
 		'main.v:9:11':           ['2 peek int', '5 visible int']
 		'main.v:11:11':          ['5 hidden int', '2 peek int', '5 visible int']
 		'models/models.v:10:10': ['5 hidden int', '2 peek int', '5 visible int']
-	} {
-		answer := ask_in(dir, spec)
-		details := (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details
-		assert details.map('${it.kind} ${it.label} ${it.detail}') == want, spec
+	}
+	questions := checks.keys()
+	output := run_line_info_in(dir, questions.join('\t')).trim_right('\n')
+	answers := decode_indexed_answers(output.split('\n'), questions.len)
+	for i, spec in questions {
+		details := completion_details(answers[i])
+		assert details.map('${it.kind} ${it.label} ${it.detail}') == checks[spec], spec
 	}
 }
 
@@ -1017,9 +1015,12 @@ fn ask_many(dir string, questions []string) []string {
 
 // ask_answers checks the response indexes and returns the answers in question order.
 fn ask_answers(dir string, questions []string) []string {
-	indexed := ask_many(dir, questions)
-	assert indexed.len == questions.len, indexed.str()
-	mut answers := []string{cap: questions.len}
+	return decode_indexed_answers(ask_many(dir, questions), questions.len)
+}
+
+fn decode_indexed_answers(indexed []string, count int) []string {
+	assert indexed.len == count, indexed.str()
+	mut answers := []string{cap: count}
 	for i, response in indexed {
 		prefix := '${i}\t'
 		assert response.starts_with(prefix), response
@@ -1772,21 +1773,21 @@ fn test_a_local_of_a_generic_body_has_the_type_of_its_value() {
 fn test_a_local_of_no_known_type_has_no_hover() {
 	// The value of a call of a function that does not exist yet, as one is being
 	// written: the checker gives it no type, which is no answer, not `()`.
-	dir := os.join_path(work_dir, 'unknown_local')
-	os.mkdir_all(dir) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'module main
+	source := 'module main
 
 fn main() {
 	value := missing_function(1)
 	println(value)
 }
-') or {
-		panic(err)
-	}
-	assert ask(dir, 'hv^', 4, 'value', 0) == ''
-	assert ask(dir, 'hv^', 5, 'value', 0) == ''
-	// Where it is declared still is.
-	assert ask(dir, 'gd^', 5, 'value', 0) == 'main.v:4:1'
+'
+	lines := source.split('\n')
+	answers := ask_answers(program_dir('unknown_local', source), [
+		word_question(lines[3], 'hv^', 4, 'value', 0),
+		word_question(lines[4], 'hv^', 5, 'value', 0),
+		// Where it is declared still is.
+		word_question(lines[4], 'gd^', 5, 'value', 0),
+	])
+	assert answers == ['', '', 'main.v:4:1']
 }
 
 // program_dir writes `source` as the main.v of the directory `name` of the
@@ -3289,11 +3290,14 @@ fn test_a_type_parameter_is_declared_in_the_list_of_its_declaration() {
 		assert answers[2 * nth] == 'main.v:11:8', 'take T occurrence ${nth + 1}'
 		assert answers[2 * nth + 1] == 'main.v:15:9', 'plain T occurrence ${nth + 1}'
 	}
-	assert ask(dir, 'gd^', 20, 'T', 0) == 'main.v:19:11'
-	assert ask(dir, 'gd^', 23, 'T', 1) == 'main.v:23:10'
-	assert ask(dir, 'gd^', 24, 'T', 0) == 'main.v:23:10'
-	// The struct `T` where a type parameter does not hide it.
-	assert ask(dir, 'gd^', 28, 'T', 0) == 'main.v:7:7'
+	type_answers := ask_answers(dir, [
+		word_question(lines[19], 'gd^', 20, 'T', 0),
+		word_question(lines[22], 'gd^', 23, 'T', 1),
+		word_question(lines[23], 'gd^', 24, 'T', 0),
+		// The struct `T` where a type parameter does not hide it.
+		word_question(lines[27], 'gd^', 28, 'T', 0),
+	])
+	assert type_answers == ['main.v:19:11', 'main.v:23:10', 'main.v:23:10', 'main.v:7:7']
 }
 
 fn test_a_parameter_is_the_type_that_is_or_match_makes_it() {
