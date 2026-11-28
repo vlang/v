@@ -92,13 +92,17 @@ fn run_node(node string, runner string, wasm string) os.Result {
 	return os.exec(['${node}', '--no-warnings', '${runner}', '${wasm}'])
 }
 
+fn run_wasi(wasm string) ?os.Result {
+	node := node_path() or { return none }
+	runner := os.join_path(os.vtmp_dir(), 'wasm_run_wasi.mjs')
+	os.write_file(runner, wasi_runner_js) or { panic(err) }
+	return run_node(node, runner, wasm)
+}
+
 // run_wasi_expect runs a WASI module and asserts its trailing output lines.
 // Skips execution (compile/validate already happened) when node is absent.
 fn run_wasi_expect(wasm string, expected []string) {
-	node := node_path() or { return }
-	runner := os.join_path(os.vtmp_dir(), 'wasm_run_wasi.mjs')
-	os.write_file(runner, wasi_runner_js) or { panic(err) }
-	res := run_node(node, runner, wasm)
+	res := run_wasi(wasm) or { return }
 	assert res.exit_code == 0, res.output
 	lines := res.output.split_into_lines().map(it.trim_space()).filter(it.len > 0)
 	assert lines.len >= expected.len, res.output
@@ -738,28 +742,217 @@ pub fn answer() int { return value() * 2 }
 	}
 }
 
-fn test_wasm_imported_function_value() {
-	dir := os.join_path(os.vtmp_dir(), 'wasm_imported_fn_value_${os.getpid()}')
-	defer { os.rmdir_all(dir) or {} }
-	os.mkdir_all(os.join_path(dir, 'foo')) or { panic(err) }
-	main_v := os.join_path(dir, 'main.v')
-	wasm := os.join_path(dir, 'main.wasm')
-	os.write_file(main_v, 'module main
-import foo as helper
-fn main() {
+fn write_wasm_project(root string, files map[string]string) {
+	for relative, contents in files {
+		path := os.join_path(root, relative)
+		os.mkdir_all(os.dir(path)) or { panic(err) }
+		os.write_file(path, contents) or { panic(err) }
+	}
+}
+
+fn test_wasm_imported_calls_and_main_directory() {
+	root := os.join_path(os.vtmp_dir(), 'wasm_import_calls_${tempname.unique_token()}')
+	defer { os.rmdir_all(root) or {} }
+	// Keep the main file in a directory with the same name as an imported
+	// module. The main file must still provide the WASI entry point.
+	dir := os.join_path(root, 'moda')
+	write_wasm_project(dir, {
+		'main.v':                "import foo as helper
+import numeric
+import aliased as m
+import usea
+import useb
+import foo.bar
+import foo.alpha as fu
+import other.beta as bu
+import moda
+import constants
+
+fn imported_function_value() {
 	callback := helper.add
 	println(callback(35))
 }
-') or { panic(err) }
-	os.write_file(os.join_path(dir, 'foo', 'foo.v'), 'module foo
+
+// A bare helper in numeric.answer resolves to the same module.
+fn imported_module_numeric_call() {
+	println(numeric.answer())
+	println(numeric.add(3, 4))
+}
+
+fn imported_module_alias_call() {
+	println(m.answer())
+	println(m.add(3, 4))
+}
+
+// Two modules each `import ... as m` for different real modules; the alias
+// must resolve per file, not via a single global map.
+fn import_aliases_are_file_scoped() {
+	println(usea.go())
+	println(useb.go())
+}
+
+// `import foo.bar` selects `bar`; calls must resolve to the `module bar`
+// declaration name, not the full import path.
+fn nested_module_import_call() {
+	println(bar.answer())
+	println(bar.add(3, 4))
+}
+
+// Calls to aliased nested modules resolve to their own leaf modules.
+fn nested_imported_modules() {
+	println(fu.val())
+	println(bu.val())
+}
+
+fn main_dir_matching_import_name() {
+	println(moda.answer())
+}
+
+// A numeric const accessed through an imported-module selector (mod.name)
+// must be inlined, not emitted as 0.
+fn imported_module_const() {
+	println(constants.answer)
+	println(constants.answer + 1)
+}
+
+fn main() {
+	println('imported_function_value')
+	imported_function_value()
+	println('imported_module_numeric_call')
+	imported_module_numeric_call()
+	println('imported_module_alias_call')
+	imported_module_alias_call()
+	println('import_aliases_are_file_scoped')
+	import_aliases_are_file_scoped()
+	println('nested_module_import_call')
+	nested_module_import_call()
+	println('nested_imported_modules')
+	nested_imported_modules()
+	println('main_dir_matching_import_name')
+	main_dir_matching_import_name()
+	println('imported_module_const')
+	imported_module_const()
+}
+"
+		'foo/foo.v':             'module foo
 pub fn add(value int) int {
 	return value + 7
 }
-') or { panic(err) }
-	result := os.exec([v3_binary(), '-b', 'wasm', '-o', wasm, main_v])
+'
+		'numeric/numeric.v':     'module numeric
+
+fn helper() int {
+	return 21
+}
+
+pub fn answer() int {
+	return helper() * 2
+}
+
+pub fn add(a int, b int) int {
+	return a + b
+}
+'
+		'aliased/aliased.v':     'module aliased
+
+pub fn answer() int {
+	return 42
+}
+
+pub fn add(a int, b int) int {
+	return a + b
+}
+'
+		'mc/mc.v':               'module mc
+
+pub fn val() int {
+	return 100
+}
+'
+		'md/md.v':               'module md
+
+pub fn val() int {
+	return 200
+}
+'
+		'usea/usea.v':           'module usea
+
+import mc as m
+
+pub fn go() int {
+	return m.val()
+}
+'
+		'useb/useb.v':           'module useb
+
+import md as m
+
+pub fn go() int {
+	return m.val()
+}
+'
+		'foo/bar/bar.v':         'module bar
+
+pub fn answer() int {
+	return 42
+}
+
+pub fn add(a int, b int) int {
+	return a + b
+}
+'
+		'foo/alpha/alpha.v':     'module alpha
+
+pub fn val() int {
+	return 111
+}
+'
+		'other/beta/beta.v':     'module beta
+
+pub fn val() int {
+	return 222
+}
+'
+		'moda/moda.v':           'module moda
+
+pub fn answer() int {
+	return 42
+}
+'
+		'constants/constants.v': 'module constants
+
+pub const answer = 42
+'
+	})
+	wasm := os.join_path(dir, 'main.wasm')
+	result := os.exec([v3_binary(), '-b', 'wasm', '-o', wasm, os.join_path(dir, 'main.v')])
 	assert result.exit_code == 0, result.output
+	assert !result.output.contains('unsupported'), result.output
 	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['42'])
+	run_wasi_expect(wasm, [
+		'imported_function_value',
+		'42',
+		'imported_module_numeric_call',
+		'42',
+		'7',
+		'imported_module_alias_call',
+		'42',
+		'7',
+		'import_aliases_are_file_scoped',
+		'100',
+		'200',
+		'nested_module_import_call',
+		'42',
+		'7',
+		'nested_imported_modules',
+		'111',
+		'222',
+		'main_dir_matching_import_name',
+		'42',
+		'imported_module_const',
+		'42',
+		'43',
+	])
 }
 
 fn test_wasm_control_flow_and_int_print() {
@@ -956,44 +1149,6 @@ fn test_wasm_string_literal_escapes_not_double_decoded() {
 	}
 }
 
-fn test_wasm_imported_module_numeric_call() {
-	v3_bin := v3_binary()
-	dir := os.join_path(os.vtmp_dir(), 'wasm_modtest')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'),
-		'import moda\n\nfn main() {\n\tprintln(moda.answer())\n\tprintln(moda.add(3, 4))\n}\n') or {
-		panic(err)
-	}
-	// answer() calls a bare helper() in the same module, which must resolve to
-	// moda.helper (not main-module helper).
-	os.write_file(os.join_path(dir, 'moda', 'moda.v'),
-		'module moda\n\nfn helper() int {\n\treturn 21\n}\n\npub fn answer() int {\n\treturn helper() * 2\n}\n\npub fn add(a int, b int) int {\n\treturn a + b\n}\n') or {
-		panic(err)
-	}
-	out_wasm := os.join_path(dir, 'main.wasm')
-	main_v := os.join_path(dir, 'main.v')
-	res :=
-		os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
-	assert res.exit_code == 0, res.output
-	assert_valid_wasm(out_wasm)
-	// No fallback warnings: the imported module calls must resolve.
-	assert !res.output.contains('unsupported call'), res.output
-
-	node := node_path() or { return }
-	runner := os.join_path(os.vtmp_dir(), 'wasm_run_wasi.mjs')
-	os.write_file(runner, wasi_runner_js) or { panic(err) }
-	rres := run_node(node, runner, out_wasm)
-	assert rres.exit_code == 0, rres.output
-	lines := rres.output.split_into_lines().map(it.trim_space()).filter(it.len > 0)
-	expected := ['42', '7']
-	assert lines.len >= expected.len, rres.output
-	for i, want in expected {
-		got := lines[lines.len - expected.len + i]
-		assert got == want, 'line ${i}: got ${got}, want ${want} (full: ${rres.output})'
-	}
-}
-
 fn test_wasm_module_scoped_globals() {
 	v3_bin := v3_binary()
 	// main and an imported module both declare `__global counter`. They must map
@@ -1029,29 +1184,6 @@ fn test_wasm_module_scoped_globals() {
 		got := lines[lines.len - expected.len + i]
 		assert got == want, 'line ${i}: got ${got}, want ${want} (full: ${rres.output})'
 	}
-}
-
-fn test_wasm_imported_module_alias_call() {
-	v3_bin := v3_binary()
-	dir := os.join_path(os.vtmp_dir(), 'wasm_modalias')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'),
-		'import moda as m\n\nfn main() {\n\tprintln(m.answer())\n\tprintln(m.add(3, 4))\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'moda', 'moda.v'),
-		'module moda\n\npub fn answer() int {\n\treturn 42\n}\n\npub fn add(a int, b int) int {\n\treturn a + b\n}\n') or {
-		panic(err)
-	}
-	out_wasm := os.join_path(dir, 'main.wasm')
-	main_v := os.join_path(dir, 'main.v')
-	res :=
-		os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
-	assert res.exit_code == 0, res.output
-	assert_valid_wasm(out_wasm)
-	assert !res.output.contains('unsupported call'), res.output
-	run_wasi_expect(out_wasm, ['42', '7'])
 }
 
 fn test_wasm_global_updates() {
@@ -1138,41 +1270,6 @@ fn main() {
 		'4',
 		'251',
 	])
-}
-
-fn test_wasm_import_aliases_are_file_scoped() {
-	v3_bin := v3_binary()
-	// Two modules each `import ... as m` for different real modules; the alias
-	// must resolve per file, not via a single global map.
-	dir := os.join_path(os.vtmp_dir(), 'wasm_aliascol')
-	os.rmdir_all(dir) or {}
-	for sub in ['mc', 'md', 'usea', 'useb'] {
-		os.mkdir_all(os.join_path(dir, sub)) or { panic(err) }
-	}
-	os.write_file(os.join_path(dir, 'main.v'),
-		'import usea\nimport useb\n\nfn main() {\n\tprintln(usea.go())\n\tprintln(useb.go())\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'mc', 'mc.v'),
-		'module mc\n\npub fn val() int {\n\treturn 100\n}\n') or { panic(err) }
-	os.write_file(os.join_path(dir, 'md', 'md.v'),
-		'module md\n\npub fn val() int {\n\treturn 200\n}\n') or { panic(err) }
-	os.write_file(os.join_path(dir, 'usea', 'usea.v'),
-		'module usea\n\nimport mc as m\n\npub fn go() int {\n\treturn m.val()\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'useb', 'useb.v'),
-		'module useb\n\nimport md as m\n\npub fn go() int {\n\treturn m.val()\n}\n') or {
-		panic(err)
-	}
-	out_wasm := os.join_path(dir, 'main.wasm')
-	main_v := os.join_path(dir, 'main.v')
-	res :=
-		os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
-	assert res.exit_code == 0, res.output
-	assert_valid_wasm(out_wasm)
-	assert !res.output.contains('unsupported call'), res.output
-	run_wasi_expect(out_wasm, ['100', '200'])
 }
 
 fn test_wasm_numeric_operations() {
@@ -1429,79 +1526,6 @@ fn test_wasm_output_path_is_exact() {
 	assert_valid_wasm(out_path)
 }
 
-fn test_wasm_nested_module_import_call() {
-	v3_bin := v3_binary()
-	// `import foo.bar` selects `bar`; calls must resolve to the `module bar`
-	// declaration name, not the full import path.
-	dir := os.join_path(os.vtmp_dir(), 'wasm_nestmod')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'foo', 'bar')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'),
-		'import foo.bar\n\nfn main() {\n\tprintln(bar.answer())\n\tprintln(bar.add(3, 4))\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'foo', 'bar', 'bar.v'),
-		'module bar\n\npub fn answer() int {\n\treturn 42\n}\n\npub fn add(a int, b int) int {\n\treturn a + b\n}\n') or {
-		panic(err)
-	}
-	out_wasm := os.join_path(dir, 'main.wasm')
-	main_v := os.join_path(dir, 'main.v')
-	res :=
-		os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
-	assert res.exit_code == 0, res.output
-	assert_valid_wasm(out_wasm)
-	assert !res.output.contains('unsupported call'), res.output
-	run_wasi_expect(out_wasm, ['42', '7'])
-}
-
-fn test_wasm_nested_imported_modules() {
-	v3_bin := v3_binary()
-	// Nested modules imported under different aliases must resolve to their own
-	// functions. (Two nested modules that share the same leaf name collapse to a
-	// single identity in the shared import-resolution layer — the C backend emits
-	// only one such function too — so distinct leaves are used here.)
-	dir := os.join_path(os.vtmp_dir(), 'wasm_nestedmods')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'foo', 'alpha')) or { panic(err) }
-	os.mkdir_all(os.join_path(dir, 'bar', 'beta')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'),
-		'import foo.alpha as fu\nimport bar.beta as bu\n\nfn main() {\n\tprintln(fu.val())\n\tprintln(bu.val())\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'foo', 'alpha', 'alpha.v'),
-		'module alpha\n\npub fn val() int {\n\treturn 111\n}\n') or { panic(err) }
-	os.write_file(os.join_path(dir, 'bar', 'beta', 'beta.v'),
-		'module beta\n\npub fn val() int {\n\treturn 222\n}\n') or { panic(err) }
-	out_wasm := os.join_path(dir, 'main.wasm')
-	main_v := os.join_path(dir, 'main.v')
-	res :=
-		os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
-	assert res.exit_code == 0, res.output
-	assert_valid_wasm(out_wasm)
-	assert !res.output.contains('unsupported call'), res.output
-	run_wasi_expect(out_wasm, ['111', '222'])
-}
-
-fn test_wasm_main_dir_matching_import_name() {
-	v3_bin := v3_binary()
-	// The main file lives in a directory whose name matches an imported module;
-	// `fn main` must still be treated as main-module (export main/_start).
-	dir := os.join_path(os.vtmp_dir(), 'wasm_dircollide', 'moda')
-	os.rmdir_all(os.dir(dir)) or {}
-	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'),
-		'import moda\n\nfn main() {\n\tprintln(moda.answer())\n}\n') or { panic(err) }
-	os.write_file(os.join_path(dir, 'moda', 'moda.v'),
-		'module moda\n\npub fn answer() int {\n\treturn 42\n}\n') or { panic(err) }
-	out_wasm := os.join_path(dir, 'main.wasm')
-	main_v := os.join_path(dir, 'main.v')
-	res :=
-		os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', '${main_v}'])
-	assert res.exit_code == 0, res.output
-	assert_valid_wasm(out_wasm)
-	run_wasi_expect(out_wasm, ['42'])
-}
-
 fn test_wasm_user_function_named_memory() {
 	v3_bin := v3_binary()
 	// A user `fn memory()` must not collide with the exported linear memory;
@@ -1521,24 +1545,73 @@ fn test_wasm_init_runs_before_main() {
 	run_wasi_expect(wasm, ['init', 'main'])
 }
 
-fn test_wasm_imported_module_init() {
-	v3_bin := v3_binary()
-	dir := os.join_path(os.vtmp_dir(), 'wasm_initmod')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'),
-		"import moda\n\nfn main() {\n\tprintln('main')\n\tprintln(moda.answer())\n}\n") or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'moda', 'moda.v'),
-		"module moda\n\nfn init() {\n\tprintln('moda init')\n}\n\npub fn answer() int {\n\treturn 42\n}\n") or {
-		panic(err)
-	}
-	out_wasm := os.join_path(dir, 'main.wasm')
-	res := os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', os.join_path(dir, 'main.v')])
+fn test_wasm_imported_initializers() {
+	dir := os.join_path(os.vtmp_dir(), 'wasm_import_inits_${tempname.unique_token()}')
+	defer { os.rmdir_all(dir) or {} }
+	// initonly is never called. With a -> b, b's initializer must run before a's.
+	write_wasm_project(dir, {
+		'main.v':              "import moda
+import initonly
+import a
+
+fn main() {
+	println('main')
+	println(moda.answer())
+	println(a.av())
+}
+"
+		'moda/moda.v':         "module moda
+
+fn init() {
+	println('moda init')
+}
+
+pub fn answer() int {
+	return 42
+}
+"
+		'initonly/initonly.v': "module initonly
+
+fn init() {
+	println('initonly init')
+}
+"
+		'a/a.v':               "module a
+
+import b
+
+fn init() {
+	println('a init')
+}
+
+pub fn av() int {
+	return b.bv()
+}
+"
+		'b/b.v':               "module b
+
+fn init() {
+	println('b init')
+}
+
+pub fn bv() int {
+	return 5
+}
+"
+	})
+	wasm := os.join_path(dir, 'main.wasm')
+	result := os.exec([v3_binary(), '-b', 'wasm', '-o', wasm, os.join_path(dir, 'main.v')])
+	assert result.exit_code == 0, result.output
+	assert_valid_wasm(wasm)
+
+	res := run_wasi(wasm) or { return }
 	assert res.exit_code == 0, res.output
-	assert_valid_wasm(out_wasm)
-	run_wasi_expect(out_wasm, ['moda init', 'main', '42'])
+	lines := res.output.split_into_lines().map(it.trim_space()).filter(it.len > 0)
+	assert lines.len == 7, res.output
+	inits := lines[..4]
+	assert inits.sorted() == ['a init', 'b init', 'initonly init', 'moda init'], res.output
+	assert inits.index('b init') < inits.index('a init'), res.output
+	assert lines[4..] == ['main', '42', '5'], res.output
 }
 
 fn test_wasm_char_literals() {
@@ -1549,89 +1622,21 @@ fn test_wasm_char_literals() {
 	run_wasi_expect(wasm, ['65', '65', '48', '10'])
 }
 
-fn test_wasm_init_only_imported_module() {
-	v3_bin := v3_binary()
-	// An imported module with only an init() (no called function) must still
-	// run its init before main.
-	dir := os.join_path(os.vtmp_dir(), 'wasm_initonly')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), "import moda\n\nfn main() {\n\tprintln('main')\n}\n") or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'moda', 'moda.v'),
-		"module moda\n\nfn init() {\n\tprintln('moda init')\n}\n") or { panic(err) }
-	out_wasm := os.join_path(dir, 'main.wasm')
-	res := os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', os.join_path(dir, 'main.v')])
-	assert res.exit_code == 0, res.output
-	assert_valid_wasm(out_wasm)
-	run_wasi_expect(out_wasm, ['moda init', 'main'])
-}
-
-fn test_wasm_init_dependency_order() {
-	v3_bin := v3_binary()
-	// main -> a -> b: inits run dependency-first (b, then a), then main.
-	dir := os.join_path(os.vtmp_dir(), 'wasm_initdep')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'a')) or { panic(err) }
-	os.mkdir_all(os.join_path(dir, 'b')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'),
-		"import a\n\nfn main() {\n\tprintln('main')\n\tprintln(a.av())\n}\n") or { panic(err) }
-	os.write_file(os.join_path(dir, 'a', 'a.v'),
-		"module a\n\nimport b\n\nfn init() {\n\tprintln('a init')\n}\n\npub fn av() int {\n\treturn b.bv()\n}\n") or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'b', 'b.v'),
-		"module b\n\nfn init() {\n\tprintln('b init')\n}\n\npub fn bv() int {\n\treturn 5\n}\n") or {
-		panic(err)
-	}
-	out_wasm := os.join_path(dir, 'main.wasm')
-	res := os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', os.join_path(dir, 'main.v')])
-	assert res.exit_code == 0, res.output
-	assert_valid_wasm(out_wasm)
-	run_wasi_expect(out_wasm, ['b init', 'a init', 'main', '5'])
-}
-
-fn test_wasm_imported_module_const() {
-	v3_bin := v3_binary()
-	// A numeric const accessed through an imported-module selector (mod.name)
-	// must be inlined, not emitted as 0.
-	dir := os.join_path(os.vtmp_dir(), 'wasm_constmod')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(os.join_path(dir, 'moda')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'),
-		'import moda\n\nfn main() {\n\tprintln(moda.answer)\n\tprintln(moda.answer + 1)\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'moda', 'moda.v'), 'module moda\n\npub const answer = 42\n') or {
-		panic(err)
-	}
-	out_wasm := os.join_path(dir, 'main.wasm')
-	res := os.exec([v3_bin, '-b', 'wasm', '-o', '${out_wasm}', os.join_path(dir, 'main.v')])
-	assert res.exit_code == 0, res.output
-	assert_valid_wasm(out_wasm)
-	assert !res.output.contains('unsupported'), res.output
-	run_wasi_expect(out_wasm, ['42', '43'])
-}
-
 fn test_wasm_labeled_break_continue() {
-	v3_bin := v3_binary()
 	// `break label` exits the labeled outer loop (count 1, not 3); `continue
 	// label` advances the outer loop (count 3, not 9); plain inner break works.
 	src := 'fn main() {\n\tmut cb := 0\n\touter: for i := 0; i < 3; i++ {\n\t\tfor j := 0; j < 3; j++ {\n\t\t\tcb++\n\t\t\tif j == 0 {\n\t\t\t\tbreak outer\n\t\t\t}\n\t\t}\n\t}\n\tprintln(cb)\n\tmut cc := 0\n\to2: for i := 0; i < 3; i++ {\n\t\tfor j := 0; j < 3; j++ {\n\t\t\tcc++\n\t\t\tcontinue o2\n\t\t}\n\t}\n\tprintln(cc)\n\tmut cn := 0\n\tfor i := 0; i < 3; i++ {\n\t\tfor j := 0; j < 3; j++ {\n\t\t\tcn++\n\t\t\tbreak\n\t\t}\n\t}\n\tprintln(cn)\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_labeled')
+	dir := os.join_path(os.vtmp_dir(), 'wasm_labeled_${tempname.unique_token()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	main_v := os.join_path(dir, 'wasm_labeled.v')
+	wasm := os.join_path(dir, 'wasm_labeled.wasm')
+	os.write_file(main_v, src) or { panic(err) }
+	result := os.exec([v3_binary(), '-b', 'wasm', '-o', wasm, main_v])
+	assert result.exit_code == 0, result.output
+	assert !result.output.contains('unsupported statement: label_stmt'), result.output
 	assert_valid_wasm(wasm)
-	assert !res_contains_unsupported(v3_bin, src), 'labeled loop emitted a warning'
 	run_wasi_expect(wasm, ['1', '3', '3'])
-}
-
-fn res_contains_unsupported(v3_bin string, src string) bool {
-	src_path := os.join_path(os.vtmp_dir(), 'wasm_labeled_warn.v')
-	out := os.join_path(os.vtmp_dir(), 'wasm_labeled_warn.wasm')
-	os.write_file(src_path, src) or { panic(err) }
-	res :=
-		os.exec([v3_bin, '-b', 'wasm', '-o', '${out}', src_path])
-	return res.output.contains('unsupported statement: label_stmt')
 }
 
 fn test_wasm_global_initializers() {
