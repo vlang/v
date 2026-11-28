@@ -31,6 +31,10 @@ functions retain their ordinary symbols when called through a C binding.
 Mixed Objective-C and Objective-C++ source contexts retain the fallback; `-no-retry-compilation`
 rejects unsupported contexts instead of changing compilers.
 
+V remembers when a large cold source graph needs to bypass the module cache. On filesystems
+with coarse timestamps, it checks the contents of recently written V sources to reuse that
+decision on the next build. Source edits invalidate the recorded decision.
+
 The C compiler supplies a fresh dependency manifest before cache reuse. Editing a nested header
 invalidates dependent artifacts. The native compiler rejects date/time macros before publishing
 the owner and V module objects. Embedded resources remain dependencies of their owning V modules,

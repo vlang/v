@@ -255,6 +255,36 @@ fn test_large_cold_cache_marker_is_scoped_to_the_input_set() {
 	assert first != with_list
 }
 
+fn test_large_cold_cache_marker_keeps_content_signatures_as_metadata_ages() {
+	root := os.join_path(os.vtmp_dir(), 'v3_large_cold_cache_no_metadata_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	name := 'V3_TEST_NO_FILE_METADATA'
+	previous := os.getenv_opt(name)
+	defer {
+		if value := previous {
+			os.setenv(name, value, true)
+		} else {
+			os.unsetenv(name)
+		}
+	}
+	source_path := os.join_path(root, 'main.v')
+	os.write_file(source_path, 'fn main() { println(1) }\n')!
+	os.utime(source_path, 1_650_000_000, 1_650_000_000)!
+	marker_path := v3_large_cold_cache_marker_path(os.join_path(root, 'cache'), source_path, [])
+
+	os.setenv(name, source_path, true)
+	assert write_v3_large_cold_cache_marker(marker_path, [source_path])
+	assert valid_v3_large_cold_cache_marker(marker_path)
+	os.unsetenv(name)
+	assert valid_v3_large_cold_cache_marker(marker_path)
+
+	os.write_file(source_path, 'fn main() { println(2) }\n')!
+	os.utime(source_path, 1_650_000_000, 1_650_000_000)!
+	assert !valid_v3_large_cold_cache_marker(marker_path)
+	assert !os.exists(marker_path)
+}
+
 fn test_whole_program_cache_is_not_persistent_for_test_inputs() {
 	old_v3cache := os.getenv('V3CACHE')
 	had_v3cache := 'V3CACHE' in os.environ()
