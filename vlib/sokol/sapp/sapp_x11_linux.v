@@ -1141,7 +1141,7 @@ fn x11_create_window(visual_ &C.Visual, depth int) {
 		x11_window_height = (display_height * 4) / 5
 	}
 	// wamask = CWBorderPixel | CWColormap | CWEventMask
-	wamask := u64(0x800 | 0x2000 | 0x800)
+	wamask := cw_border_pixel | cw_colormap | cw_event_mask
 	x11_grab_error_handler()
 	g_sapp_state.x11.window = C.XCreateWindow(g_sapp_state.x11.display, g_sapp_state.x11.root, 0,
 		0, u32(x11_window_width), u32(x11_window_height), 0, dep, input_output, vis, wamask, &wa)

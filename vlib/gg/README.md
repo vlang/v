@@ -80,6 +80,90 @@ fn frame(mut ctx gg.Context) {
 }
 ```
 
+## 3D drawing
+
+`gg` stays a 2D-first library, but it can render simple depth-tested 3D.
+Set `depth: true` in `gg.Config` to request a depth buffer, then bracket 3D
+drawing between `ctx.begin_3d(camera)` and `ctx.end_3d()`:
+
+```v cgen
+module main
+
+import gg
+
+fn main() {
+	mut ctx := gg.new_context(
+		width:        640
+		height:       480
+		window_title: '3D cube'
+		depth:        true
+		frame_fn:     frame
+	)
+	ctx.run()
+}
+
+fn frame(data voidptr) {
+	ctx := unsafe { &gg.Context(data) }
+	ctx.begin()
+	mut camera := gg.Camera3D{}
+	camera.orbit(30, 20, 7)
+	ctx.set_camera(camera)
+	ctx.begin_3d() or { panic(err.msg()) }
+	ctx.draw_cube(gg.Vec3{0, 0, 0}, gg.Vec3{2, 2, 2}, gg.red)
+	ctx.end_3d()
+	ctx.end()
+}
+```
+
+`Camera3D` has `position`, `target`, `up`, `fovy`, `near`, `far` and a
+`projection` of `.perspective` or `.orthographic`. `camera.orbit(yaw, pitch,
+distance)` places the camera around its target using degrees;
+`orbit_by(dx, dy, zoom)` handles mouse drag and scroll, `fly(...)` handles
+first-person movement, and `cam.update(mode, ctx, dt)` drives a camera directly
+from gg input state with `.orbital`, `.first_person`, `.free` or `.custom`.
+The math types work on every backend; the drawing methods live in `.c.v` files
+and use the Sokol renderer. 3D drawing uses depth testing with backface culling;
+`ctx.end_3d()` restores the regular 2D
+painter-order pipelines, so HUD and text can be drawn afterwards.
+
+The built-in primitives are `draw_cube()`, `draw_cube_wires()`, `draw_plane()`,
+`draw_grid()`, `draw_line_3d()`, `draw_sphere()` and `draw_cylinder()`;
+wireframe variants include `draw_cube_wires()` and `draw_mesh_wires()`. For
+custom geometry, `Mesh3D` plus `gen_mesh_cube/plane/sphere/cylinder` and
+`ctx.draw_mesh()` draw indexed triangles with a position, rotation and scale.
+Call `ctx.set_camera(cam)` once to make 3D helpers use it; `ctx.ray_from_mouse(e)`,
+`ctx.pick_at(e, colliders)`, `ray_mesh()` and `world_to_screen()` build on it.
+`Model3D` + `load_model()` + `ctx.draw_model()` bundle geometry, material and
+transform into one draw. `Material3D` adds a directional `Light3D`, fog and an
+optional texture; `draw_material_mesh()` and `draw_billboard()` render them.
+Lighting and fog are baked into vertex colors, so no custom shader is needed.
+`draw_axes()`, `draw_aabb()` and `debug_mode3d()` add one-call debug overlays;
+`draw_text_3d()` anchors a label at a world position. More primitives are
+tracked in https://github.com/vlang/v/issues/32523. See `examples/gg/3d_cube.v`,
+`3d_material.v`, `3d_picking.v` and `3d_debug.v`.
+`examples/gg/3d_textured_cube.v` switches between a textured and a flat-colored
+cube with the space bar.
+`load_mesh_obj()` loads a static Wavefront `.obj`. `load_mesh_gltf()` reads a
+glTF 2.0 `.gltf` (embedded/base64 or external buffers) and `load_mesh_glb()`
+reads the binary `.glb` form; both return static mesh primitives with float
+attributes and 8/16/32-bit indices. Neither loader reads skins, animations or
+texture images.
+`mat4_from_m4()` and `mat4_to_m4()` bridge `gg.m4.Mat4` and the matrix type
+used by `gg/render`. `m4` applies matrices to row vectors while `gg/render`
+uses column vectors, so the helpers transform the basis vectors instead of
+copying the 16 floats; this keeps `m4.mul_vec()` and the render matrix
+equivalent.
+
+## CPU rendering
+
+`gg` can draw without a window or GPU: `ctx.render_cpu(w, h, clear_color)`
+rasterizes the recorded 2D commands into a `render.Frame` with a pixel buffer
+and `save_ppm()`. `ctx.render_cpu_3d(w, h, clear_color, camera)` adds a depth
+buffer, so the same 3D camera, meshes, lighting and fog render to memory. Both
+work with a `Context` created normally; the GPU window is simply never opened.
+Depth-tested CPU drawing rejects fragments behind the camera or past the far
+plane, and interpolates texture coordinates with perspective correction.
+
 ## Multi-Window Applications
 
 `gg.App` is an additive multi-window facade for programs that need to manage
@@ -461,3 +545,148 @@ the calculations and drawing there in shaders.
 `color_from_string` accepts CSS hexadecimal colors in `#RGB`, `#RGBA`, `#RRGGBB`, and
 `#RRGGBBAA` forms. Short forms repeat each digit; alpha is the last component. Invalid
 hexadecimal digits or lengths return black, as do unknown color names.
+
+## Addon modules (opt-in)
+
+`gg` keeps a small core for windows, drawing, cameras, math and 3D. Larger
+helpers live in opt-in submodules imported explicitly, so `import gg` alone does
+not pull in JSON or audio dependencies. This also lets core `gg` compile on the
+wasm backend. The addon modules are:
+
+```v
+import gg
+import gg.anim
+import gg.game
+import gg.fx
+import gg.debug
+import gg.loaders
+```
+
+All data and simulation helpers are pure V. Drawing and audio-device helpers
+are native only, as with the rest of `gg`; the current JavaScript compatibility
+backend does not expose `gg`'s drawing calls.
+
+### Animation and procedural (`gg.anim`)
+
+- `Easing` and `ease(t, kind)` provide the Robert Penner curve family: quad,
+  cubic, quart, quint, sine, expo, circ, back, elastic and bounce, with in,
+  out and in-out variants. Input is clamped to `[0, 1]`.
+- `Tween[T]` and `new_tween()` interpolate any type over time. Pass a blend
+  function: `lerp_f32`, `lerp_color`, `lerp_vec2`, `lerp_vec3`, or your own.
+  `looping`, `easing`, `progress()`, `value()` and `reset()` are available.
+- `Timeline` fires named cues once as time advances; `Spring` gives damped
+  motion for cameras and UI.
+- `Noise` is a seeded generator with `value2d()`, `perlin2d()` and `fbm2d()`.
+- Curves: `catmull_rom()`, `sample_catmull()`, `bezier2()`, `catmull_tangent()`
+  and `resample_polyline()`.
+- Colors: `color_to_hsl()`/`hsl_to_color()`, `color_to_hsv()`/`hsv_to_color()`,
+  `palette_gradient()` and four starter palettes.
+- Clips: `Joint`, `AnimKey`, `AnimTrack`, `AnimClip` and `AnimPlayer` provide
+  step/linear keyframe sampling, looping and per-joint poses.
+
+### Game helpers (`gg.game`)
+
+- Collision: `Rect`, `Circle` and `AABB` overlap tests, `point_in_polygon()`,
+  `rect_mtv()` separation, sphere/box tests and `ray_aabb()`.
+- `InputState` tracks held keys and buttons plus press/release edges and named
+  action bindings. Feed it from `event_fn`, then call `end_frame()` after
+  gameplay reads it. `Gamepad` is a backend-neutral state container.
+- `FixedStep`, `FrameStats` and `StateMachine` cover the main loop.
+- `TileMap` offers tile access, solid tests and rect/circle collision; `draw()`
+  is native only. `GridPathfinder` and `grid_from_tilemap()` provide A*.
+- Geometry: `closest_point_on_segment`, `segments_intersect`, `polygon_area`,
+  `polygon_centroid` and `convex_hull`. Mesh generators `gen_mesh_lathe`,
+  `gen_mesh_extrude` and `gen_mesh_tube` build indexed `gg.Mesh3D` values.
+- 3D math: `Sphere`, `Plane`, `Triangle`, `OBB` with separating-axis overlap,
+  `Frustum` built from a perspective camera, and an `Octree` broadphase.
+- Procedural generation: `LSystem`, `turtle_segments()`, `voronoi_cells()`,
+  `generate_maze()` and `cellular_step()`.
+
+### Advanced (`gg.fx`)
+
+- `ParticleEmitter` simulates pooled particles with rate, lifetime, speed,
+  spread, gravity, drag and color fade.
+- CPU post-processing: `post_grayscale`, `post_brightness`, `post_contrast`,
+  `post_saturate`, `post_invert`, `post_vignette`, `post_box_blur`,
+  `post_tonemap` and `post_bloom` on interleaved RGBA8 buffers.
+- Audio: `dsp_gain`, `dsp_fade`, `dsp_normalize`, `dsp_generate_sine`,
+  `dsp_lowpass`, `dsp_mix_into`, `dsp_to_stereo` and `SoundVoice` with volume,
+  pan and looping for native playback through `mix_voices`.
+- UI/charts: `UITheme`, `ui_panel`, `ui_button`, `ui_slider`, `ui_toggle`,
+  `ui_hud`, `draw_line_chart` and `draw_bar_chart`.
+- `PassChain` applies named CPU post-processing passes in order, like a small
+  EffectComposer for RGBA8 buffers.
+
+### Tooling (`gg.debug`, `gg.loaders`)
+
+- `DebugLog` is a bounded on-screen console, `FrameGraph` records frame times,
+  and `Gizmos` queues lines, circles, rectangles and crosses.
+- `SaveStore` offers typed accessors, generic JSON values, JSON serialization
+  and `save()`/`load_save_store()` file helpers.
+- `gg.scene` adds an opt-in `Node` hierarchy with `find`/`traverse`, a typed
+  `Signal[T]` observer bus, and an `App` container for composable systems with
+  init/frame/cleanup hooks.
+- `load_mesh_obj`, `load_mesh_gltf`, `load_mesh_glb` and `load_model` load
+  static meshes; skins and animation clips are intentionally not imported.
+
+### Extended opt-in modules
+
+- `gg.gpu` exposes `ShaderSource` and `ShaderMaterial` uniform slots, plus a
+  native `create_shader()` that builds a sokol shader from GLSL sources. It
+  requires an initialized `sokol.gfx` context.
+- `gg.loaders` can import glTF skins (`load_gltf_skin`) and animation clips
+  (`load_gltf_clips`) into the `gg.anim` clip model. Only FLOAT accessors and
+  data-URI/external buffers are supported.
+- `gg.physics` provides sphere rigid bodies, gravity and sphere/floor contact
+  resolution. Full rigid-body rotation and joint constraints are not included.
+- `gg.splat` has both paths: `rasterize` is a pure-V CPU renderer for headless
+  and web targets, while `GpuSplatRenderer` projects clouds into instanced
+  Gaussian quads drawn with sokol on native targets.
+- `gg.texture` parses KTX2 headers, maps Vulkan format ids and decodes DXT1,
+  ETC1 (full individual/differential modes with intensity modifiers), all
+  eight BC7 modes (including CEM endpoint component counts) and ASTC void
+  extents (LDR/HDR) plus 4x4, 5x5, 6x6 and 8x8 LDR blocks via
+  `decode_astc_sized`. It also generates RGBA mipmaps.
+- `gg.xr` derives left/right stereo cameras from a head camera and provides
+  side-by-side viewports. Headset tracking belongs to your XR runtime.
+- `gg.ecs` provides generation-counted entities, sparse-set `Storage[T]`
+  components and `Transform`.
+- `gg.physics` now adds box/capsule colliders, X-axis sweep-and-prune
+  broadphase, distance/spring joints and a character controller.
+- `gg.netcode` offers a byte packet stream, snapshot interpolation and a
+  native UDP peer with sequence/ack headers. JS/WASM have no transport.
+- `gg.spatial` adds gain/pan/filter buses, a positional voice with distance
+  attenuation, and looping streams. Compressed audio decoding is not included.
+- `gg.hdr` now has wide-gamut color-space conversion, 3D LUTs and auto-exposure;
+  `gg.raytrace` adds temporal accumulation and bilateral denoising.
+- `gg.gpu` exposes fullscreen tonemap/blur/bloom shaders and an instanced GPU
+  particle renderer (native only). `gg.texture` adds ETC1, BC7 and ASTC decode
+  plus mipmaps.
+- CPU/GPU parity: `gg.fx` CPU filters pair with `gg.gpu` fullscreen passes;
+  `gg.splat` has CPU and sokol GPU renderers; `gg.hdr` float render targets
+  feed GPU post chains; `gg.raytrace` has both a general CPU path tracer and
+  a sokol `GpuTracer` that ray marches small sphere scenes on the GPU.
+- `gg.loaders.load_scene_gltf` imports meshes, materials, nodes with TRS,
+  cameras, images and KHR punctual lights in one pass.
+- `gg.raytrace` is a pure-V CPU path tracer. `Scene` stores spheres,
+  triangles, materials and a BVH; `Ray`/`Hit` carry normals and UVs; materials
+  support diffuse, metal, dielectric and emissive responses. `Renderer` traces
+  a `gg.Camera3D` into a `gg.hdr` HDRImage with multi-sample anti-aliasing and
+  recursive bounces, then tone maps through `gg.hdr`. `add_mesh` imports
+  `gg.Mesh3D` geometry. `GpuTracer` provides a sokol GPU path for simple
+  sphere scenes; the CPU tracer remains the general implementation.
+- `gg.hdr` adds linear-light HDR rendering helpers: `ColorHDR` (f32 components
+  that may exceed 1), float RGBA buffers with exposure, ACES/Reinhard tone
+  mapping and bloom, and Radiance RGBE `.hdr` read/write (`decode_rgbe`,
+  `load_rgbe`, `encode_rgbe`, `save_rgbe`). Native builds also get
+  `FloatRenderTarget` for `.rgba16f`/`.rgba32f` offscreen passes. The CPU API
+  is pure V; file I/O uses `os`, which currently has WASM backend limitations
+  in this checkout, and native float targets need a live `sokol.gfx` context.
+
+Starter examples are `examples/gg/anim_base.v`, `procedural_base.v`,
+`game_base.v`, `advanced_base.v`, `tooling_base.v`, `extended_base.v`,
+`hdr_base.v` and `raytrace_base.v`.
+The interpolation math
+used by the addons is in `vlib/math`: `interp`, `ema`, `gradient`, `linspace`,
+`arange` and `activation`. Custom GPU shader slots and full post-processing
+passes remain outside `gg`; use `gg/render` and `RenderTexture2D` directly.

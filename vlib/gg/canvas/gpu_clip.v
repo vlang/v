@@ -1393,6 +1393,89 @@ fn same_paint_uniforms(a PaintUniforms, b PaintUniforms) bool {
 		&& a.clip.radius_plus_half[1] == b.clip.radius_plus_half[1]
 }
 
+// The uniform-slot lookup used to be a linear scan over up to
+// max_batch_colors (4096) entries for every draw. These helpers build a
+// hash bucket key that is equal whenever same_paint_uniforms is true, so a
+// bucket lookup can replace the scan. Equality is still confirmed with
+// same_paint_uniforms before a slot is reused, so a hash collision only
+// costs an extra comparison and can never merge two different paints.
+fn hash_step(h u64, v int) u64 {
+	return (h ^ u64(v)) * u64(0x100000001b3)
+}
+
+fn hash_f32_step(h u64, v f32) u64 {
+	return hash_step(h, int(v * 1024))
+}
+
+fn paint_uniform_fingerprint(u PaintUniforms) u64 {
+	mut h := u64(0xcbf29ce484222325)
+	h = hash_step(h, if u.local_to_device { 1 } else { 0 })
+	h = hash_step(h, if u.with_color { 1 } else { 0 })
+	h = hash_step(h, if u.stroke_xform { 1 } else { 0 })
+	h = hash_step(h, if u.clipped { 1 } else { 0 })
+	h = hash_step(h, int(u.shading))
+	if u.shading.is_gradient() {
+		g := u.gradient
+		for v in g.upper2x2 {
+			h = hash_f32_step(h, v)
+		}
+		for v in g.translation {
+			h = hash_f32_step(h, v)
+		}
+		for v in g.offsets {
+			h = hash_f32_step(h, v)
+		}
+		h = hash_step(h, g.tile_mode)
+		h = hash_step(h, g.color_space)
+		h = hash_step(h, g.do_unpremul)
+		h = hash_f32_step(h, g.mode)
+		h = hash_f32_step(h, g.range)
+		h = hash_f32_step(h, g.paint_color.r)
+		h = hash_f32_step(h, g.paint_color.g)
+		h = hash_f32_step(h, g.paint_color.b)
+		h = hash_f32_step(h, g.paint_color.a)
+		for c in g.colors {
+			h = hash_f32_step(h, c.r)
+			h = hash_f32_step(h, c.g)
+			h = hash_f32_step(h, c.b)
+			h = hash_f32_step(h, c.a)
+		}
+	} else if u.shading == .image {
+		im := u.image
+		for v in im.upper2x2 {
+			h = hash_f32_step(h, v)
+		}
+		for v in im.translation {
+			h = hash_f32_step(h, v)
+		}
+		for v in im.inv_dimensions {
+			h = hash_f32_step(h, v)
+		}
+		h = hash_f32_step(h, im.mode)
+	} else if !u.local_to_device || u.with_color {
+		h = hash_f32_step(h, u.color.r)
+		h = hash_f32_step(h, u.color.g)
+		h = hash_f32_step(h, u.color.b)
+		h = hash_f32_step(h, u.color.a)
+	}
+	if u.local_to_device {
+		for v in u.matrix {
+			h = hash_f32_step(h, v)
+		}
+	}
+	if u.clipped {
+		for v in u.clip.rect {
+			h = hash_f32_step(h, v)
+		}
+		for v in u.clip.edge_select {
+			h = hash_step(h, int(v))
+		}
+		h = hash_f32_step(h, u.clip.radius_plus_half[0])
+		h = hash_f32_step(h, u.clip.radius_plus_half[1])
+	}
+	return h
+}
+
 // snap_scissor mirrors ClipStack's snap_scissor(): `a` rounded out to the
 // next multiple of 4 pixels and clipped to the device.
 fn snap_scissor(a Rect, device Rect) Rect {

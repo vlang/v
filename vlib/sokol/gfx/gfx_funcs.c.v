@@ -5,7 +5,6 @@ fn C.sg_setup(const_desc &C.sg_desc)
 fn C.sg_shutdown()
 fn C.sg_isvalid() bool
 fn C.sg_reset_state_cache()
-fn C.sg_install_trace_hooks(const_trace_hooks &C.sg_trace_hooks) C.sg_trace_hooks
 fn C.sg_push_debug_group(const_name &char)
 fn C.sg_pop_debug_group()
 fn C.sg_add_commit_listener(listener C.sg_commit_listener) bool

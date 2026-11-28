@@ -58,6 +58,27 @@ jobs:
       - name: Run only essential tests
         run: VTEST_JUST_ESSENTIAL=1 ./v -silent test-self
 
+      # The Ubuntu musl-gcc image only has glibc X11 libraries. Compile these
+      # CPU-only gg regressions here, with Alpine's native-musl X11/GL toolchain.
+      - name: Install musl-native graphics development libraries
+        run: apk add --no-cache libx11-dev libxi-dev libxcursor-dev libxrandr-dev mesa-dev
+      - name: Run the five gg CPU regressions with musl GCC
+        run: |
+          set -eu
+          test -f /usr/include/X11/Xlib.h
+          test -f /usr/include/X11/extensions/Xrandr.h
+          test -f /usr/include/EGL/egl.h
+          for test_file in \
+            vlib/gg/color_float_and_str_test.v \
+            vlib/gg/draw_geometry_test.v \
+            vlib/gg/draw_segments_test.v \
+            vlib/gg/draw_rect_filled_test.v \
+            vlib/gg/text_pipeline_test.c.v
+          do
+            echo "Testing musl-native gg: $test_file"
+            ./v -new-compiler -cc gcc -gc none -d use_bundled_libgc -no-retry-compilation -silent "$test_file"
+          done
+
   docker-alpine-musl-tcc:
     runs-on: ubuntu-24.04
     env:
