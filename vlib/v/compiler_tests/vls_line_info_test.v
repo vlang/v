@@ -1675,9 +1675,14 @@ fn test_a_call_of_a_generic_method_on_a_struct_literal_has_the_type_it_returns()
 	// the type that the literal writes.
 	source := 'module main\n\nstruct Host {}\n\nfn (h Host) first_of[T](xs []T) T {\n\treturn xs[0]\n}\n\nfn inside[A](values []A) A {\n\tinferred := Host{}.first_of(values)\n\ttyped := Host{}.first_of[A](values)\n\tprintln(typed)\n\treturn inferred\n}\n\nfn main() {\n\tprintln(inside([1]))\n}\n'
 	dir := program_dir('literal_receiver', source)
-	assert ask(dir, 'hv^', line_of(source, '\tinferred := Host{}.first_of(values)'), 'inferred',
-		0) == hover_of('inferred A')
-	assert ask(dir, 'hv^', line_of(source, '\ttyped := Host{}.first_of[A](values)'), 'typed', 0) == hover_of('typed A')
+	inferred := '\tinferred := Host{}.first_of(values)'
+	typed := '\ttyped := Host{}.first_of[A](values)'
+	answers := ask_answers(dir, [
+		word_question(inferred, 'hv^', line_of(source, inferred), 'inferred', 0),
+		word_question(typed, 'hv^', line_of(source, typed), 'typed', 0),
+	])
+	assert answers[0] == hover_of('inferred A')
+	assert answers[1] == hover_of('typed A')
 }
 
 // line_of is the 1-based number of the line of `source` that reads `text`.
@@ -4052,26 +4057,43 @@ fn main() {
 }
 "
 
-// method_value asks `code` about the `nth` `word` of the line of
-// method_values_program that reads `text`.
+// method_value asks a single question about method_values_program.
 fn method_value(code string, text string, word string, nth int) string {
-	return ask(program_dir('method_values', method_values_program), code, line_of(method_values_program,
-		text), word, nth)
+	return ask_at(program_dir('method_values', method_values_program),
+		method_value_question(code, text, word, nth))
+}
+
+fn method_value_question(code string, text string, word string, nth int) string {
+	return word_question(text, code, line_of(method_values_program, text), word, nth)
 }
 
 fn test_a_method_named_without_a_call_is_the_method() {
 	// `p.label` without a call is the method `label`, of a struct or of a
 	// generic struct, as `p.label()` is: its hover and its declaration.
-	for code in ['hv^', 'gd^'] {
-		plain := method_value(code, '\tprintln(p.label() + p.describe() + b.label())', 'label', 0)
-		boxed := method_value(code, '\tprintln(p.label() + p.describe() + b.label())', 'label', 1)
+	codes := ['hv^', 'gd^']
+	calls := '\tprintln(p.label() + p.describe() + b.label())'
+	mut questions := []string{cap: 10}
+	for code in codes {
+		questions << [
+			method_value_question(code, calls, 'label', 0),
+			method_value_question(code, calls, 'label', 1),
+			method_value_question(code, '\tplain_label := p.label', 'label', 0),
+			method_value_question(code, '\tbox_label := b.label', 'label', 0),
+			method_value_question(code, '\tagain := b.label', 'label', 0),
+		]
+	}
+	batched := ask_answers(program_dir('method_values', method_values_program), questions)
+	for i, code in codes {
+		answers := batched[i * 5..(i + 1) * 5]
+		plain := answers[0]
+		boxed := answers[1]
 		assert plain != '' && boxed != ''
 		if code == 'gd^' {
 			assert plain != boxed
 		}
-		assert method_value(code, '\tplain_label := p.label', 'label', 0) == plain
-		assert method_value(code, '\tbox_label := b.label', 'label', 0) == boxed
-		assert method_value(code, '\tagain := b.label', 'label', 0) == boxed
+		assert answers[2] == plain
+		assert answers[3] == boxed
+		assert answers[4] == boxed
 	}
 }
 
