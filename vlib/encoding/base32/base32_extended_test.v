@@ -196,6 +196,29 @@ fn test_decode_padding_bytes_are_not_data_symbols() {
 	}
 }
 
+fn test_decode_rejects_data_after_padding() {
+	for c in [
+		ErrorCase{'MZXW6===A', 'illegal base32 data at input byte 8'},
+		ErrorCase{'MZXW6===?', 'illegal base32 data at input byte 8'},
+		ErrorCase{'MZXW6====A', 'illegal base32 data at input byte 9'},
+		ErrorCase{'MZXW6YTBMY======A', 'illegal base32 data at input byte 16'},
+	] {
+		base32.decode(c.input.bytes()) or {
+			assert err.msg() == c.expected, c.input
+			continue
+		}
+		assert false, '${c.input} must be rejected'
+	}
+}
+
+fn test_decode_rejects_data_after_custom_padding() {
+	enc := base32.new_std_encoding_with_padding(`*`)
+	enc.decode_string('MZXW6***\r\nA') or {
+		return
+	}
+	assert false, 'data after custom padding must be rejected'
+}
+
 // The doc comment on `decode` says "\r and \n are ignored", and now the
 // implementation matches it. See base32_newlines_test.v for the full set.
 fn test_decode_ignores_newlines() {
