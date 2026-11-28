@@ -322,6 +322,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					types.unwrap_pointer((clean_container_type as types.Alias).base_type)
 			}
 			mut map_snapshot_var := ''
+			mut map_equality_owned_key := ''
 			mut map_writeback_target := ''
 			mut map_writeback_key := ''
 			mut map_writeback_value := ''
@@ -391,6 +392,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 						// Authored keys may escape or survive map mutation. Equality
 						// keys only serve read-only lookups while both maps are alive.
 						g.writeln('${key_var} = string__clone(${key_var});')
+						if node.owns_map_equality_key() {
+							map_equality_owned_key = key_var
+						}
 					}
 				}
 				snapshot_val_slot := '${key_values}.values + ${iter_var} * ${key_values}.value_bytes'
@@ -602,6 +606,11 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			}
 			if !node.skip_ownership_drops() {
 				g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
+			}
+			if map_equality_owned_key.len > 0 {
+				// The synthetic equality loop has no escaping key or authored
+				// control flow. Release the copy after the final lookup.
+				g.writeln('string__free(&${map_equality_owned_key});')
 			}
 			g.trim_defers(defer_start)
 			g.loop_depth--

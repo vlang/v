@@ -26,6 +26,11 @@ fn (left MapEqualityMutation) == (right MapEqualityMutation) bool {
 }
 
 fn test_map_equality_keeps_keys_alive_across_mutating_value_operators() {
+	// The global initializer creates empty maps before the first assignment.
+	unsafe {
+		equality_left.free()
+		equality_right.free()
+	}
 	for delete_right in [false, true] {
 		equality_key = 'map-equality-dynamic-key-${17}'
 		equality_delete_right = delete_right

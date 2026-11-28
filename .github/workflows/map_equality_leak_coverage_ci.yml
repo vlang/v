@@ -3,6 +3,10 @@ on:
   pull_request:
     paths:
       - vlib/v/tests/builtin_maps/map_equality_mutating_operator_test.v
+      - vlib/v/flat/flat.v
+      - vlib/v/transform/expr.v
+      - vlib/v/gen/c/for.v
+      - vlib/v/gen/c/map_equality_key_borrow_test.v
       - .github/workflows/map_equality_leak_coverage_ci.yml
   workflow_dispatch:
 permissions:
@@ -32,8 +36,8 @@ jobs:
       - name: Rebuild and verify formatting
         run: |
           ./v self
-          if ! ./v fmt -verify vlib/v/tests/builtin_maps/map_equality_mutating_operator_test.v; then
-            ./v fmt -w vlib/v/tests/builtin_maps/map_equality_mutating_operator_test.v
+          if ! ./v fmt -verify vlib/v/tests/builtin_maps/map_equality_mutating_operator_test.v vlib/v/flat/flat.v vlib/v/transform/expr.v vlib/v/gen/c/for.v vlib/v/gen/c/map_equality_key_borrow_test.v; then
+            ./v fmt -w vlib/v/tests/builtin_maps/map_equality_mutating_operator_test.v vlib/v/flat/flat.v vlib/v/transform/expr.v vlib/v/gen/c/for.v vlib/v/gen/c/map_equality_key_borrow_test.v
             git diff
             exit 1
           fi
@@ -72,3 +76,29 @@ jobs:
         with:
           name: map-equality-leaks-${{ matrix.cc }}
           path: ${{ runner.temp }}/map-equality-leak
+
+  compiler-regression:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/cache-apt-packages-action
+        with:
+          profile: full
+      - uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: false
+          symlink: false
+      - name: Rebuild and run focused compiler regression
+        run: |
+          ./v self
+          ./v fmt -verify vlib/v/flat/flat.v vlib/v/transform/expr.v vlib/v/gen/c/for.v vlib/v/gen/c/map_equality_key_borrow_test.v vlib/v/tests/builtin_maps/map_equality_mutating_operator_test.v
+          ./v -silent vlib/v/gen/c/map_equality_key_borrow_test.v
+          ./v -silent vlib/v/tests/builtin_maps/map_equality_mutating_operator_test.v
+      - name: Compiler and C backend regression
+        run: |
+          sudo apt-get install -y gobjc libobjc-14-dev
+          ./v -silent vlib/v/compiler_errors_test.v
+          ./v -silent test vlib/v/
+          ./v -silent test vlib/v/gen/c/
