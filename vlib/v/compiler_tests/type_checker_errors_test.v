@@ -49,7 +49,7 @@ struct TypeCheckerDiagnostic {
 	message  string
 }
 
-fn run_bad_module_batch(compiler string, cases []TypeCheckerRejection) {
+fn run_bad_module_batch(compiler string, cases []TypeCheckerRejection, flags ...string) {
 	root := unique_temp_path('rejections')
 	mut imports := []string{cap: cases.len}
 	for case in cases {
@@ -58,8 +58,8 @@ fn run_bad_module_batch(compiler string, cases []TypeCheckerRejection) {
 		imports << 'import ${name} as _'
 	}
 	write_project_file(root, 'main.v', 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')
-	result := run_type_checker_compiler(compiler, ['-nocache', root, '-json-errors', '-b', 'c',
-		'-o', unique_temp_path('rejected_program')])
+	result := run_type_checker_compiler(compiler, ['-nocache', root, ...flags, '-json-errors',
+		'-b', 'c', '-o', unique_temp_path('rejected_program')])
 	assert result.exit_code != 0, 'expected compile failure, got success: ${result.output}'
 	assert !result.output.contains('C compilation failed'), result.output
 	project_prefix := os.file_name(root) + '.'
@@ -983,121 +983,6 @@ fn main() {
 		// target has to be rejected here rather than at `.id = src.id` in the C.
 		TypeCheckerRejection{'bad_generic_array_elem_unimplemented_interface', 'interface HasId {\n\tid int\n}\n\nstruct NoId {\n\tv int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\t_ := take([NoId{\n\t\tv: 1\n\t}])\n}\n', generic_array_return_error('[]bad_generic_array_elem_unimplemented_interface.NoId', '[]bad_generic_array_elem_unimplemented_interface.HasId')},
 	])
-
-	// These receiver-context fixtures include identical diagnostic messages.
-	run_bad(v3_bin, 'bad_generic_receiver_method_argument_count', 'struct HasValue {}
-
-fn (v HasValue) value() int {
-	return 1
-}
-
-fn read[T](value T) int {
-	return value.value(1)
-}
-
-fn main() {
-	_ := read(HasValue{})
-}
-', 'argument count mismatch for `value.value`: expected 0, got 1')
-	run_bad(v3_bin, 'bad_generic_receiver_method_return_context', 'struct HasValue {}
-
-fn (v HasValue) value() int {
-	return 1
-}
-
-fn read[T](value T) bool {
-	return value.value()
-}
-
-fn main() {
-	_ := read(HasValue{})
-}
-', 'cannot return `int` as `bool`')
-	run_bad(v3_bin, 'bad_generic_receiver_method_condition_context', 'struct HasValue {}
-
-fn (v HasValue) value() int {
-	return 1
-}
-
-fn read[T](value T) {
-	if value.value() {}
-}
-
-fn main() {
-	read(HasValue{})
-}
-', 'cannot use `int` as `bool`')
-	run_bad(v3_bin, 'bad_generic_receiver_method_negated_condition', 'struct HasValue {}
-
-fn (v HasValue) value() int {
-	return 1
-}
-
-fn read[T](value T) {
-	if !(value.value()) {}
-}
-
-fn main() {
-	read(HasValue{})
-}
-', 'cannot use `int` as `bool`')
-	run_bad(v3_bin, 'bad_generic_receiver_method_logical_condition', 'struct HasValue {}
-
-fn (v HasValue) value() int {
-	return 1
-}
-
-fn read[T](value T) {
-	if true && value.value() {}
-}
-
-fn main() {
-	read(HasValue{})
-}
-', 'cannot use `int` as `bool`')
-	run_bad(v3_bin, 'bad_generic_receiver_method_comparison_operand', 'struct HasValue {}
-
-fn (v HasValue) value() int {
-	return 1
-}
-
-fn read[T](value T) bool {
-	return value.value() == true
-}
-
-fn main() {
-	_ := read(HasValue{})
-}
-', 'cannot use `int` as `bool`')
-	run_bad(v3_bin, 'bad_generic_receiver_method_assignment_context', 'struct HasValue {}
-
-fn (v HasValue) value() int {
-	return 1
-}
-
-fn read[T](value T) {
-	mut ok := false
-	ok = value.value()
-}
-
-fn main() {
-	read(HasValue{})
-}
-', 'cannot use `int` as `bool`')
-	run_bad(v3_bin, 'bad_generic_function_field_argument_count', 'struct HasCallback {
-	cb fn (int)
-}
-
-fn invoke[T](value T) {
-	value.cb()
-}
-
-fn main() {
-	invoke(HasCallback{
-		cb: fn (n int) {}
-	})
-}
-', 'argument count mismatch for `value.cb`: expected 1, got 0')
 }
 
 // These diagnostics are emitted after instantiation without source locations.
@@ -1128,15 +1013,130 @@ fn check_generic_instantiation_rejections(cases []TypeCheckerRejection) {
 			errors[diagnostic.message.replace(project_prefix, '')]++
 		}
 	}
-	// Every fixture in this batch has a distinct diagnostic.
+	// Specialization errors may have no source location. Compare the exact counts,
+	// including errors reported by more than one receiver context.
+	mut expected_errors := map[string]int{}
 	for case in cases {
-		assert errors[case.expected] == 1, '${case.name}: expected `${case.expected}` once\n${result.output}'
+		expected_errors[case.expected]++
 	}
-	assert errors.len == cases.len, result.output
+	assert errors == expected_errors, result.output
 }
 
 fn test_generic_instantiation_rejections() {
 	check_generic_instantiation_rejections([
+		TypeCheckerRejection{'bad_generic_receiver_method_argument_count', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) int {
+	return value.value(1)
+}
+
+fn main() {
+	_ := read(HasValue{})
+}
+', 'argument count mismatch for `value.value`: expected 0, got 1'},
+		TypeCheckerRejection{'bad_generic_receiver_method_return_context', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) bool {
+	return value.value()
+}
+
+fn main() {
+	_ := read(HasValue{})
+}
+', 'cannot return `int` as `bool`'},
+		TypeCheckerRejection{'bad_generic_receiver_method_condition_context', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) {
+	if value.value() {}
+}
+
+fn main() {
+	read(HasValue{})
+}
+', 'cannot use `int` as `bool`'},
+		TypeCheckerRejection{'bad_generic_receiver_method_negated_condition', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) {
+	if !(value.value()) {}
+}
+
+fn main() {
+	read(HasValue{})
+}
+', 'cannot use `int` as `bool`'},
+		TypeCheckerRejection{'bad_generic_receiver_method_logical_condition', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) {
+	if true && value.value() {}
+}
+
+fn main() {
+	read(HasValue{})
+}
+', 'cannot use `int` as `bool`'},
+		TypeCheckerRejection{'bad_generic_receiver_method_comparison_operand', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) bool {
+	return value.value() == true
+}
+
+fn main() {
+	_ := read(HasValue{})
+}
+', 'cannot use `int` as `bool`'},
+		TypeCheckerRejection{'bad_generic_receiver_method_assignment_context', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) {
+	mut ok := false
+	ok = value.value()
+}
+
+fn main() {
+	read(HasValue{})
+}
+', 'cannot use `int` as `bool`'},
+		TypeCheckerRejection{'bad_generic_function_field_argument_count', 'struct HasCallback {
+	cb fn (int)
+}
+
+fn invoke[T](value T) {
+	value.cb()
+}
+
+fn main() {
+	invoke(HasCallback{
+		cb: fn (n int) {}
+	})
+}
+', 'argument count mismatch for `value.cb`: expected 1, got 0'},
 		TypeCheckerRejection{'bad_generic_missing_explicit_call', 'fn invoke[T]() {
 	missing[T]()
 }
@@ -1457,9 +1457,11 @@ fn test_match_multi_return_tails_require_explicit_tuple() {
 		TypeCheckerRejection{'bad_flag_enum_match_not_exhaustive', '@[flag]\nenum Perm {\n\tread\n\twrite\n}\nfn f(p Perm) int {\n\tmatch p {\n\t\t.read { return 1 }\n\t\t.write { return 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(Perm.read)))\n}\n', 'missing return'},
 		TypeCheckerRejection{'bad_multi_return_if_tail_return', 'fn pair(flag bool) (int, int) {\n\treturn if flag {\n\t\t1\n\t\t2\n\t} else {\n\t\t3\n\t\t4\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n', 'if expression branches cannot produce multiple return values'},
 	])
-	run_bad_with_flags(v3_bin, 'bad_multi_return_match_tail_decl_assign', 'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values', '-check')
-	run_bad_with_flags(v3_bin, 'bad_multi_return_match_call_mixed_tuple_tail_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values', '-check')
-	run_bad_with_flags(v3_bin, 'bad_multi_return_match_tail_return', 'fn pair(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple return values', '-check')
+	run_bad_module_batch(v3_bin, [
+		TypeCheckerRejection{'bad_multi_return_match_tail_decl_assign', 'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values'},
+		TypeCheckerRejection{'bad_multi_return_match_call_mixed_tuple_tail_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values'},
+		TypeCheckerRejection{'bad_multi_return_match_tail_return', 'fn pair(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple return values'},
+	], '-check')
 }
 
 fn test_pr_review_struct_sum_scope_and_gated_regressions() {
