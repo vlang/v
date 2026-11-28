@@ -1822,9 +1822,37 @@ fn (mut g Gen) gen_instr(val_id int) {
 	}
 }
 
+fn (mut g Gen) gen_constant_shift(op ssa.OpCode, lhs_id int, count u64, width int, result_id int) {
+	if count >= u64(width) {
+		asm_xor_eax_eax(mut g)
+	} else {
+		g.load_val_to_reg(0, lhs_id)
+		modrm := match op {
+			.shl { u8(0xe0) }
+			.ashr { u8(0xf8) }
+			.lshr { u8(0xe8) }
+			else { panic('amd64: invalid integer shift ${op}') }
+		}
+		asm_shift_rax_imm(mut g, modrm, u8(count))
+		if op == .shl {
+			typ := g.m.type_store.types[g.m.values[result_id].typ]
+			if typ.kind == .int_t && typ.width > 0 && typ.width < 64 {
+				g.canonicalize_narrow_int(typ)
+			}
+		}
+	}
+	g.store_reg_to_val(0, result_id)
+}
+
 fn (mut g Gen) gen_integer_shift(op ssa.OpCode, lhs_id int, rhs_id int, result_id int) {
 	width := g.m.type_store.types[g.m.values[lhs_id].typ].width
 	width_const := if width > 0 && width < 64 { width } else { 64 }
+	count := g.m.values[rhs_id]
+	if count.kind == .constant {
+		g.gen_constant_shift(op, lhs_id, u64(g.integer_constant_value(count)), width_const,
+			result_id)
+		return
+	}
 	width_value := g.m.get_or_add_const(g.m.values[rhs_id].typ, '${width_const}')
 	g.load_val_to_reg(0, rhs_id)
 	g.load_val_to_reg(1, width_value)
@@ -1845,13 +1873,8 @@ fn (mut g Gen) gen_integer_shift(op ssa.OpCode, lhs_id int, rhs_id int, result_i
 	jmp_disp := g.elf.text_data.len
 	g.emit_u32(0)
 	oversized := g.elf.text_data.len
-	if op == .ashr {
-		g.load_val_to_reg(0, lhs_id)
-		asm_cqo(mut g)
-		asm_mov_rax_rdx(mut g)
-	} else {
-		asm_xor_eax_eax(mut g)
-	}
+	// V shifts by the operand width or more yield zero for every shift op.
+	asm_xor_eax_eax(mut g)
 	done := g.elf.text_data.len
 	g.write_u32(jae_disp, u32(oversized - (jae_disp + 4)))
 	g.write_u32(jmp_disp, u32(done - (jmp_disp + 4)))

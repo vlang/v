@@ -3,6 +3,44 @@ module arm64
 import v.ssa
 import os
 
+fn arm64_constant_shift_words(op ssa.OpCode, width int, unsigned bool, count string) []u32 {
+	mut m := ssa.Module.new()
+	typ := if unsigned { m.type_store.get_uint(width) } else { m.type_store.get_int(width) }
+	count_type := m.type_store.get_int(64)
+	func_id := m.new_function('shift', typ)
+	block := m.add_block(func_id, 'entry')
+	lhs := m.add_value(.argument, typ, 'value', 0)
+	m.func_add_param(func_id, lhs)
+	rhs := m.get_or_add_const(count_type, count)
+	result := m.add_instr(op, block, typ, [lhs, rhs])
+	mut g := Gen.new(m)
+	g.reset_value_slots(&m.funcs[func_id])
+	g.set_stack_slot(lhs, -8)
+	g.set_stack_slot(result, -16)
+	g.gen_instr(result)
+	return g.text_words
+}
+
+fn test_constant_integer_shifts_emit_immediate_instructions() {
+	// ldur x8, [x29, #-8]; lsl/asr/lsr x8, x8, #17; stur x8, [x29, #-16]
+	for i, op in [ssa.OpCode.shl, .ashr, .lshr] {
+		shift := [u32(0xd36fb908), 0x9351fd08, 0xd351fd08][i]
+		assert arm64_constant_shift_words(op, 64, false, '17') == [u32(0xf85f83a8), shift, 0xf81f03a8]
+	}
+}
+
+fn test_constant_left_shift_wraps_to_byte_width() {
+	// ldur; lsl x8, x8, #7; sxtb/ubfx; stur
+	assert arm64_constant_shift_words(.shl, 8, false, '7') == [u32(0xf85f83a8), 0xd379e108, 0x93401d08,
+		0xf81f03a8]
+	assert arm64_constant_shift_words(.shl, 8, true, '7') == [u32(0xf85f83a8), 0xd379e108, 0xd3401d08,
+		0xf81f03a8]
+	// movz x8, #0; stur x8, [x29, #-16]
+	for count in ['8', '64', '-1'] {
+		assert arm64_constant_shift_words(.shl, 8, false, count) == [u32(0xd2800008), 0xf81f03a8]
+	}
+}
+
 fn test_pruning_keeps_exported_bodies_aliases_and_dependencies() {
 	mut m := ssa.Module.new()
 	m.target = ssa.TargetData{ os: 'linux', arch: 'arm64' }

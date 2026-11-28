@@ -173,3 +173,13 @@ fn test_vector_registers_occupy_the_same_bits_as_scalar_ones() {
 	assert (vector >> rn_shift) & rd_mask == (scalar >> rn_shift) & rd_mask
 	assert (vector >> rm_shift) & rd_mask == (scalar >> rm_shift) & rd_mask
 }
+
+fn test_immediate_shift_encoders_match_reference() {
+	// Encodings from clang targeting AArch64.
+	assert asm_lsl_imm(8, 9, 17) == 0xD36FB928
+	assert asm_lsl_imm(10, 11, 63) == 0xD341016A
+	assert asm_asr_imm(8, 9, 17) == 0x9351FD28
+	assert asm_asr_imm(10, 11, 63) == 0x937FFD6A
+	assert asm_lsr_imm(8, 9, 17) == 0xD351FD28
+	assert asm_lsr_imm(10, 11, 63) == 0xD37FFD6A
+}

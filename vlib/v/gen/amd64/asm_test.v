@@ -2,6 +2,71 @@ module amd64
 
 import v.ssa
 
+fn test_amd64_known_shift_counts_skip_runtime_guard() {
+	for i, op in [ssa.OpCode.shl, .ashr, .lshr] {
+		for count in ['17', '63', '-1', '64', '9223372036854775808'] {
+			mut m := ssa.Module.new()
+			typ := m.type_store.get_int(64)
+			lhs := m.add_value(.argument, typ, 'value', 0)
+			rhs := m.get_or_add_const(typ, count)
+			result := m.add_value(.instruction, typ, '', 0)
+			mut g := Gen.new(m)
+			g.reg_map[lhs] = int(rdi)
+			g.reg_map[result] = int(rax)
+
+			g.gen_integer_shift(op, lhs, rhs, result)
+
+			if count in ['17', '63'] {
+				modrm := [u8(0xe0), 0xf8, 0xe8][i]
+				assert g.elf.text_data == [u8(0x48), 0x89, 0xf8, 0x48, 0xc1, modrm, u8(count.int())]
+			} else {
+				assert g.elf.text_data == [u8(0x31), 0xc0]
+			}
+		}
+	}
+}
+
+fn test_amd64_immediate_left_shift_wraps_to_byte_width() {
+	mut m := ssa.Module.new()
+	count_type := m.type_store.get_int(64)
+	rhs := m.get_or_add_const(count_type, '7')
+	for unsigned in [false, true] {
+		typ := if unsigned { m.type_store.get_uint(8) } else { m.type_store.get_int(8) }
+		lhs := m.add_value(.argument, typ, 'value', 0)
+		result := m.add_value(.instruction, typ, '', 0)
+		mut g := Gen.new(m)
+		g.reg_map[lhs] = int(rdi)
+		g.reg_map[result] = int(rax)
+
+		g.gen_integer_shift(.shl, lhs, rhs, result)
+
+		// mov rax, rdi; shl rax, 7; movsx/movzx rax, al
+		extend := if unsigned { u8(0xb6) } else { u8(0xbe) }
+		assert g.elf.text_data == [u8(0x48), 0x89, 0xf8, 0x48, 0xc1, 0xe0, 7, 0x48, 0x0f, extend,
+			0xc0]
+	}
+}
+
+fn test_amd64_runtime_arithmetic_shift_zeros_oversized_counts() {
+	mut m := ssa.Module.new()
+	typ := m.type_store.get_int(64)
+	lhs := m.add_value(.argument, typ, 'value', 0)
+	rhs := m.add_value(.argument, typ, 'count', 1)
+	result := m.add_value(.instruction, typ, '', 0)
+	mut g := Gen.new(m)
+	g.reg_map[lhs] = int(rdi)
+	g.reg_map[rhs] = int(rsi)
+	g.reg_map[result] = int(rax)
+
+	g.gen_integer_shift(.ashr, lhs, rhs, result)
+
+	code := g.elf.text_data
+	// jae skips the regular shift to reach xor eax, eax.
+	assert code[11..17] == [u8(0x0f), 0x83, 14, 0, 0, 0]
+	// sar rax, cl; jmp past xor eax, eax.
+	assert code[23..] == [u8(0x48), 0xd3, 0xf8, 0xe9, 2, 0, 0, 0, 0x31, 0xc0]
+}
+
 fn test_amd64_prologue_and_stack_encodings() {
 	mut g := Gen.new(ssa.Module.new())
 	asm_endbr64(mut g)
