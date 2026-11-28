@@ -3533,17 +3533,7 @@ fn main() {
 	assert out == '1250025000'
 }
 
-struct LocalCallbackFixture {
-	name            string
-	source          string
-	cleanup_target  string
-	returns_holder  bool
-	checks_receiver bool
-}
-
-fn test_scope_local_callbacks_preserve_receivers_and_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	counter_source := '@[heap]
+const local_callback_counter_source = '@[heap]
 struct Counter {
 mut:
 	value int
@@ -3553,10 +3543,22 @@ fn (counter &Counter) read() int {
 	return counter.value
 }
 '
+
+struct LocalCallbackFixture {
+	name                string
+	source              string
+	cleanup_target      string
+	returns_holder      bool
+	checks_receiver     bool
+	expected            string = '1250025000'
+	exact_cleanup_count int
+}
+
+fn test_scope_local_callbacks_preserve_receivers_and_are_reclaimed() {
 	cases := [
 		LocalCallbackFixture{
 			name:           'local_callback_field_hot_loop'
-			source:         counter_source + '
+			source:         local_callback_counter_source + '
 fn zero() int {
 	return 0
 }
@@ -3600,7 +3602,7 @@ fn main() {
 		},
 		LocalCallbackFixture{
 			name:           'local_callback_initializer_field_hot_loop'
-			source:         counter_source + '
+			source:         local_callback_counter_source + '
 struct Holder {
 	callback fn () int
 }
@@ -3639,7 +3641,7 @@ fn main() {
 		},
 		LocalCallbackFixture{
 			name:           'local_callback_aggregate_reassign_hot_loop'
-			source:         counter_source + '
+			source:         local_callback_counter_source + '
 fn zero() int {
 	return 0
 }
@@ -3671,7 +3673,7 @@ fn main() {
 		},
 		LocalCallbackFixture{
 			name:           'local_callback_array_initializer_hot_loop'
-			source:         counter_source + '
+			source:         local_callback_counter_source + '
 fn make_callbacks(value int) []fn () int {
 	mut counter := Counter{
 		value: value
@@ -3701,7 +3703,7 @@ fn main() {
 		},
 		LocalCallbackFixture{
 			name:           'local_callback_array_field_alias_hot_loop'
-			source:         counter_source + '
+			source:         local_callback_counter_source + '
 fn make_callback(value int) fn () int {
 	counter := Counter{
 		value: value
@@ -3732,7 +3734,7 @@ fn main() {
 		},
 		LocalCallbackFixture{
 			name:           'local_callback_array_index_assign_hot_loop'
-			source:         counter_source + '
+			source:         local_callback_counter_source + '
 fn zero() int {
 	return 0
 }
@@ -3756,7 +3758,7 @@ fn main() {
 		},
 		LocalCallbackFixture{
 			name:            'local_dynamic_callback_array_index_assign_hot_loop'
-			source:          counter_source + '
+			source:          local_callback_counter_source + '
 fn zero() int {
 	return 0
 }
@@ -3782,7 +3784,7 @@ fn main() {
 		},
 		LocalCallbackFixture{
 			name:           'local_callback_array_append_hot_loop'
-			source:         counter_source + '
+			source:         local_callback_counter_source + '
 fn main() {
 	mut total := 0
 	for i in 0 .. 50_000 {
@@ -3802,7 +3804,7 @@ fn main() {
 		},
 		LocalCallbackFixture{
 			name:           'local_bulk_callback_array_append_hot_loop'
-			source:         counter_source + '
+			source:         local_callback_counter_source + '
 fn main() {
 	mut total := 0
 	for i in 0 .. 50_000 {
@@ -3822,7 +3824,7 @@ fn main() {
 		},
 		LocalCallbackFixture{
 			name:           'local_callback_fixed_array_initializer_hot_loop'
-			source:         counter_source + '
+			source:         local_callback_counter_source + '
 fn main() {
 	mut total := 0
 	for i in 0 .. 50_000 {
@@ -3841,7 +3843,7 @@ fn main() {
 		},
 		LocalCallbackFixture{
 			name:           'local_multi_callback_decl_hot_loop'
-			source:         counter_source + '
+			source:         local_callback_counter_source + '
 fn main() {
 	mut total := 0
 	for i in 0 .. 50_000 {
@@ -3859,13 +3861,23 @@ fn main() {
 			cleanup_target: 'callback);'
 		},
 	]
-	fixtures := cases.map(TransformFixture{it.name, it.source, '1250025000'})
-	good_bin := run_good_module_batch_with_flags(v3_bin, 'local_callback_cleanup', '', fixtures)
+	run_local_callback_cleanup_batch('local_callback_cleanup', cases)
+}
+
+fn run_local_callback_cleanup_batch(name string, cases []LocalCallbackFixture) {
+	v3_bin := build_v3_review_transform()
+	fixtures := cases.map(TransformFixture{it.name, it.source, it.expected})
+	good_bin := run_good_module_batch_with_flags(v3_bin, name, '', fixtures)
 	c_source := os.read_file(good_bin + '.c') or { panic(err) }
 	for i, case in cases {
 		module_name := 'fixture_${i}'
 		body := c_fn_body(c_source, 'void ${module_name}__exercise(void) {')
-		assert body.contains('closure__closure_try_destroy(${case.cleanup_target}'), '${case.name}: ${body}'
+		cleanup := 'closure__closure_try_destroy(${case.cleanup_target}'
+		if case.exact_cleanup_count > 0 {
+			assert body.count(cleanup) == case.exact_cleanup_count, '${case.name}: ${body}'
+		} else {
+			assert body.contains(cleanup), '${case.name}: ${body}'
+		}
 		if case.returns_holder {
 			make_body := c_fn_body(c_source, '${module_name}__Holder ${module_name}__make_holder(i64 value) {')
 			assert make_body.len > 0, '${case.name}: make_holder body missing from generated C'
@@ -3877,18 +3889,11 @@ fn main() {
 	}
 }
 
-fn test_callback_array_prefix_before_spread_preserves_receiver_identity_and_is_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
+fn test_container_callbacks_are_reclaimed() {
+	run_local_callback_cleanup_batch('container_callback_cleanup', [
+		LocalCallbackFixture{
+			name:           'local_callback_array_spread_prefix_hot_loop'
+			source:         local_callback_counter_source + '
 fn main() {
 	other_callbacks := []fn () int{}
 	mut total := 0
@@ -3904,23 +3909,11 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'local_callback_array_spread_prefix_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(__array_closure_'), c_source
-	assert out == '1250025000'
-}
-
-fn test_scope_local_callback_map_initializers_preserve_receiver_identity_and_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
+			cleanup_target: '__array_closure_'
+		},
+		LocalCallbackFixture{
+			name:           'local_callback_map_initializer_hot_loop'
+			source:         local_callback_counter_source + '
 fn make_callbacks(value int) map[string]fn () int {
 	mut counter := Counter{
 		value: value
@@ -3950,23 +3943,11 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'local_callback_map_initializer_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(__map_val_'), c_source
-	assert out == '1250025000'
-}
-
-fn test_scope_local_computed_key_callback_maps_preserve_receiver_and_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
+			cleanup_target: '__map_val_'
+		},
+		LocalCallbackFixture{
+			name:            'local_computed_key_callback_map_hot_loop'
+			source:          local_callback_counter_source + '
 fn main() {
 	mut total := 0
 	for i in 0 .. 50_000 {
@@ -3984,24 +3965,12 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'local_computed_key_callback_map_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(__map_val_'), c_source
-	assert c_source.contains('.receiver = counter'), c_source
-	assert out == '1250025000'
-}
-
-fn test_scope_local_dynamic_callback_map_index_assignments_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
+			cleanup_target:  '__map_val_'
+			checks_receiver: true
+		},
+		LocalCallbackFixture{
+			name:           'local_dynamic_callback_map_index_assign_hot_loop'
+			source:         local_callback_counter_source + '
 fn zero() int {
 	return 0
 }
@@ -4024,23 +3993,11 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'local_dynamic_callback_map_index_assign_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(__map_val_'), c_source
-	assert out == '1250025000'
-}
-
-fn test_callback_map_initializer_captures_each_overwritten_entry_for_cleanup() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
+			cleanup_target: '__map_val_'
+		},
+		LocalCallbackFixture{
+			name:                'overwritten_callback_map_entries_hot_loop'
+			source:              local_callback_counter_source + '
 fn main() {
 	mut total := 0
 	for i in 0 .. 50_000 {
@@ -4064,23 +4021,12 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'overwritten_callback_map_entries_hot_loop', '', source)
-	assert c_source.count('closure__closure_try_destroy(__map_val_') == 2, c_source
-	assert out == '1250025000'
-}
-
-fn test_computed_key_map_nested_callbacks_preserve_receiver_and_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
+			cleanup_target:      '__map_val_'
+			exact_cleanup_count: 2
+		},
+		LocalCallbackFixture{
+			name:           'computed_key_nested_callback_map_hot_loop'
+			source:         local_callback_counter_source + '
 struct Holder {
 	callback fn () int
 }
@@ -4104,14 +4050,11 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'computed_key_nested_callback_map_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
-	assert out == '1250025000'
-}
-
-fn test_scope_owned_pointer_reassignment_keeps_field_closure_cleanup() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
+			cleanup_target: '__field_closure_'
+		},
+		LocalCallbackFixture{
+			name:           'fresh_pointer_reassignment_closure'
+			source:         '@[heap]
 struct Holder {
 mut:
 	callback fn () int = unsafe { nil }
@@ -4130,14 +4073,12 @@ fn main() {
 	println(total)
 }
 '
-	c_source := gen_c_from_source(v3_bin, 'fresh_pointer_reassignment_closure_c', source)
-	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
-	assert run_good(v3_bin, 'fresh_pointer_reassignment_closure', source) == '3'
-}
-
-fn test_scope_owned_indexed_pointer_field_keeps_closure_cleanup() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
+			cleanup_target: '__field_closure_'
+			expected:       '3'
+		},
+		LocalCallbackFixture{
+			name:           'indexed_pointer_field_closure'
+			source:         '@[heap]
 struct Holder {
 mut:
 	callback fn () int = unsafe { nil }
@@ -4158,9 +4099,34 @@ fn main() {
 	println(total)
 }
 '
-	c_source := gen_c_from_source(v3_bin, 'indexed_pointer_field_closure_c', source)
-	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
-	assert run_good(v3_bin, 'indexed_pointer_field_closure', source) == '3'
+			cleanup_target: '__field_closure_'
+			expected:       '3'
+		},
+		LocalCallbackFixture{
+			name:           'nested_callback_array_field_hot_loop'
+			source:         local_callback_counter_source + '
+struct Holder {
+	callbacks []fn () int
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		holder := Holder{
+			callbacks: [counter.read]
+		}
+		counter.value++
+		total += holder.callbacks[0]()
+	}
+	println(int_str(total))
+}
+'
+			cleanup_target: '__array_closure_'
+		},
+	])
 }
 
 fn test_reassigned_non_escaping_bound_method_closures_are_reclaimed() {
@@ -11902,43 +11868,6 @@ fn main() {
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	assert main_body.count('closure__closure_try_destroy(') >= 2, main_body
 	assert out == '370000'
-}
-
-fn test_nested_callback_array_fields_preserve_receiver_identity_and_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
-struct Holder {
-	callbacks []fn () int
-}
-
-fn main() {
-	mut total := 0
-	for i in 0 .. 50_000 {
-		mut counter := Counter{
-			value: i
-		}
-		holder := Holder{
-			callbacks: [counter.read]
-		}
-		counter.value++
-		total += holder.callbacks[0]()
-	}
-	println(int_str(total))
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'nested_callback_array_field_hot_loop', '', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	assert main_body.contains('closure__closure_try_destroy(__array_closure_'), main_body
-	assert out == '1250025000'
 }
 
 fn test_generic_mut_parameter_typeof_keeps_pointer_shape() {
