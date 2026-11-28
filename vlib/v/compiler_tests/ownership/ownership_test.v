@@ -464,42 +464,6 @@ pub __global g = Resource{id: 1}
 	assert fail_aliased_owned_global.output.contains('cannot move owned global `foo.g`'), fail_aliased_owned_global.output
 }
 
-fn test_ownership_plain_reassignment_clears_owned_state() {
-	v3_bin := ownership_compiler
-
-	ok_function_defer_return_branch := run_ownership_check(v3_bin, 'function_defer_return_branch_does_not_leak', "
-fn main() {
-	cond := false
-	s := 'hello'.to_owned()
-	if cond {
-		defer(fn) {
-			println(s)
-		}
-		return
-	}
-	t := s
-	_ = t
-}
-")
-	assert ok_function_defer_return_branch.exit_code == 0, ok_function_defer_return_branch.output
-
-	ok_function_defer_loop_return := run_ownership_check(v3_bin, 'function_defer_loop_return_does_not_leak', "
-fn main() {
-	cond := false
-	s := 'hello'.to_owned()
-	for cond {
-		defer(fn) {
-			println(s)
-		}
-		return
-	}
-	t := s
-	_ = t
-}
-")
-	assert ok_function_defer_loop_return.exit_code == 0, ok_function_defer_loop_return.output
-}
-
 fn test_ownership_loop_defer_and_assignment_move_rejections() {
 	check_ownership_move_rejections('loop_defer_and_assignment_moves', [
 		OwnershipMoveRejection{'zero_loop_preserves_owned', "
@@ -598,17 +562,6 @@ fn test_ownership_loop_defer_and_assignment_move_rejections() {
 
 fn test_ownership_fn_literal_uses_isolated_frame() {
 	v3_bin := ownership_compiler
-	ok_shadow_param := run_ownership_check(v3_bin, 'fn_literal_shadow_param_return', "
-fn main() {
-	s := 'hello'.to_owned()
-	f := fn (s string) string {
-		return s
-	}
-	println(s)
-	_ = f
-}
-	")
-	assert ok_shadow_param.exit_code == 0, ok_shadow_param.output
 
 	fail_owned_fn_literal_param := run_ownership_check(v3_bin, 'fn_literal_owned_param_from_call', "
 fn take(s string) {
@@ -688,39 +641,6 @@ fn main() {
 	assert ok_lambda_match_branch_local.exit_code == 0, ok_lambda_match_branch_local.output
 }
 
-fn test_ownership_scoped_owned_locals_do_not_poison_outer() {
-	v3_bin := ownership_compiler
-	ok := run_ownership_check(v3_bin, 'scoped_owned_local', "
-fn main() {
-	cond := true
-	s := 'outer'.to_owned()
-	if cond {
-		inner := 'inner'.to_owned()
-		t := inner
-		println(t)
-	}
-	println(s)
-}
-")
-	assert ok.exit_code == 0, ok.output
-
-	ok_guard := run_ownership_check(v3_bin, 'if_guard_scoped_owned_local', "
-fn maybe_string() ?string {
-	return 'inner'
-}
-
-fn main() {
-	s := 'outer'.to_owned()
-	if inner := maybe_string() {
-		t := inner
-		println(t)
-	}
-	println(s)
-}
-	")
-	assert ok_guard.exit_code == 0, ok_guard.output
-}
-
 fn test_ownership_rejects_local_shadowing() {
 	v3_bin := ownership_compiler
 	for i, body in [
@@ -742,35 +662,6 @@ fn main() {
 	}
 }
 
-fn test_ownership_reassigned_reference_releases_old_borrow() {
-	v3_bin := ownership_compiler
-	ok := run_ownership_check(v3_bin, 'reassign_ref_releases_borrow', "
-fn main() {
-	mut s := 's'.to_owned()
-	mut t := 't'.to_owned()
-	mut r := &s
-	r = &t
-	u := s
-	println(u)
-	_ = r
-}
-")
-	assert ok.exit_code == 0, ok.output
-
-	ok_block := run_ownership_check(v3_bin, 'block_borrow_released', "
-fn main() {
-	s := 'hello'.to_owned()
-	{
-		r := &s
-		_ = r
-	}
-	u := s
-	println(u)
-}
-")
-	assert ok_block.exit_code == 0, ok_block.output
-}
-
 fn test_ownership_move_on_call_and_borrowed_call_ok() {
 	v3_bin := ownership_compiler
 	fail := run_ownership_check(v3_bin, 'move_call', "
@@ -787,19 +678,6 @@ fn main() {
 	assert fail.exit_code != 0
 	assert fail.output.contains('use of moved value: `s`'), fail.output
 	assert fail.output.contains('value moved into function `take`'), fail.output
-
-	ok := run_ownership_check(v3_bin, 'borrow_call', "
-fn borrow(s &string) {
-	_ = s
-}
-
-fn main() {
-	s := 'hello'.to_owned()
-	borrow(&s)
-	println(s)
-}
-")
-	assert ok.exit_code == 0, ok.output
 
 	fail_imported_mut_receiver := run_ownership_check_with_module(v3_bin, 'imported_method_mut_receiver', '
 import foo
@@ -956,38 +834,8 @@ fn main() {
 
 fn test_ownership_returning_owned_value_and_param() {
 	v3_bin := ownership_compiler
-	ok_local_return := run_ownership_check(v3_bin, 'return_local_owned', "
-fn make() string {
-	s := 'hello'.to_owned()
-	return s
-}
-
-fn main() {
-	s := make()
-	println(s)
-}
-")
-	assert ok_local_return.exit_code == 0, ok_local_return.output
 
 	// Owning calls copy literals, so their returned copies keep move tracking.
-
-	ok_cloned_param_literal_after_owned_call := run_ownership_check(v3_bin, 'cloned_return_param_literal_after_owned_call', "
-fn main() {
-	owned := 'hello'.to_owned()
-	x := pass(owned)
-	println(x)
-	y := pass('literal')
-	z := y.clone()
-	assert z == y
-	assert unsafe { z.str != y.str }
-	println(y)
-}
-
-fn pass(s string) string {
-	return s
-}
-	")
-	assert ok_cloned_param_literal_after_owned_call.exit_code == 0, ok_cloned_param_literal_after_owned_call.output
 
 	ok_nested_fn_literal_return := run_ownership_check(v3_bin, 'nested_fn_literal_return_ignored', "
 fn run(f fn () string) {
@@ -3867,5 +3715,134 @@ fn main() {
 	_ = t
 }
 "},
+	])
+}
+
+fn test_ownership_accepts_scoped_borrow_and_return_programs() {
+	check_ownership_module_acceptances('scoped_borrow_and_return_acceptances', [
+		OwnershipModuleCase{'function_defer_return_branch_does_not_leak', "
+fn main() {
+	cond := false
+	s := 'hello'.to_owned()
+	if cond {
+		defer(fn) {
+			println(s)
+		}
+		return
+	}
+	t := s
+	_ = t
+}
+"},
+		OwnershipModuleCase{'function_defer_loop_return_does_not_leak', "
+fn main() {
+	cond := false
+	s := 'hello'.to_owned()
+	for cond {
+		defer(fn) {
+			println(s)
+		}
+		return
+	}
+	t := s
+	_ = t
+}
+"},
+		OwnershipModuleCase{'fn_literal_shadow_param_return', "
+fn main() {
+	s := 'hello'.to_owned()
+	f := fn (s string) string {
+		return s
+	}
+	println(s)
+	_ = f
+}
+	"},
+		OwnershipModuleCase{'scoped_owned_local', "
+fn main() {
+	cond := true
+	s := 'outer'.to_owned()
+	if cond {
+		inner := 'inner'.to_owned()
+		t := inner
+		println(t)
+	}
+	println(s)
+}
+"},
+		OwnershipModuleCase{'if_guard_scoped_owned_local', "
+fn maybe_string() ?string {
+	return 'inner'
+}
+
+fn main() {
+	s := 'outer'.to_owned()
+	if inner := maybe_string() {
+		t := inner
+		println(t)
+	}
+	println(s)
+}
+	"},
+		OwnershipModuleCase{'reassign_ref_releases_borrow', "
+fn main() {
+	mut s := 's'.to_owned()
+	mut t := 't'.to_owned()
+	mut r := &s
+	r = &t
+	u := s
+	println(u)
+	_ = r
+}
+"},
+		OwnershipModuleCase{'block_borrow_released', "
+fn main() {
+	s := 'hello'.to_owned()
+	{
+		r := &s
+		_ = r
+	}
+	u := s
+	println(u)
+}
+"},
+		OwnershipModuleCase{'borrow_call', "
+fn borrow(s &string) {
+	_ = s
+}
+
+fn main() {
+	s := 'hello'.to_owned()
+	borrow(&s)
+	println(s)
+}
+"},
+		OwnershipModuleCase{'return_local_owned', "
+fn make() string {
+	s := 'hello'.to_owned()
+	return s
+}
+
+fn main() {
+	s := make()
+	println(s)
+}
+"},
+		OwnershipModuleCase{'cloned_return_param_literal_after_owned_call', "
+fn main() {
+	owned := 'hello'.to_owned()
+	x := pass(owned)
+	println(x)
+	y := pass('literal')
+	z := y.clone()
+	assert z == y
+	assert unsafe { z.str != y.str }
+	println(y)
+}
+
+fn pass(s string) string {
+	return s
+}
+	"},
 	])
 }
