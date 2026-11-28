@@ -108,14 +108,126 @@ fn run_wasi_expect(wasm string, expected []string) {
 	}
 }
 
-fn test_wasm_block_scoping_preserves_outer_locals() {
-	v3_bin := v3_binary()
-	// A for-initializer and a loop-body declaration must not alter outer locals:
-	// after the loops the outer i and x remain 10 and 1.
-	src := 'fn main() {\n\ti := 10\n\tfor inner_i := 0; inner_i < 1; inner_i++ {\n\t}\n\tprintln(i)\n\tx := 1\n\tfor j := 0; j < 2; j++ {\n\t\tinner_x := j + 2\n\t\tprintln(inner_x)\n\t}\n\tprintln(x)\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_scope')
+fn test_wasm_local_scopes_and_assignments() {
+	wasm := compile_to_wasm(v3_binary(), "// A for-initializer and a loop-body declaration must not alter outer locals:
+// after the loops the outer i and x remain 10 and 1.
+fn block_scoping_preserves_outer_locals() {
+	i := 10
+	for inner_i := 0; inner_i < 1; inner_i++ {
+	}
+	println(i)
+	x := 1
+	for j := 0; j < 2; j++ {
+		inner_x := j + 2
+		println(inner_x)
+	}
+	println(x)
+}
+
+// A body-local value must not replace the counter used by the post `i++`; the
+// outer loop counter must still advance. The count/break bound keeps the
+// test terminating even if the fix regresses (it would loop otherwise).
+fn for_post_uses_loop_var_with_body_local() {
+	mut i := 0
+	mut count := 0
+	for ; i < 3; i++ {
+		value := 10
+		_ = value
+		count++
+		if count > 100 {
+			break
+		}
+	}
+	println(i)
+	println(count)
+}
+
+// The inner `value := x + 1` initializer reads the outer x (5), giving 6,
+// and the outer x is unchanged afterwards.
+fn inner_initializer_reads_outer() {
+	x := 5
+	{
+		value := x + 1
+		println(value)
+	}
+	println(x)
+}
+
+
+fn parallel_multi_assign_swaps() {
+	mut a := 1
+	mut b := 2
+	a, b = b, a
+	println(a)
+	println(b)
+}
+
+// Both initializers of a parallel declaration must be evaluated against the
+// enclosing scope, so `a, b := x + 1, x + 2` reads the outer x for both,
+// giving a == 6 and b == 7.
+fn multi_decl_buffers_rhs() {
+	x := 5
+	{
+		a, b := x + 1, x + 2
+		println(a)
+		println(b)
+	}
+}
+
+fn classify(n int) int {
+	return if n > 0 { 1 } else if n < 0 { -1 } else { 0 }
+}
+
+// `if` used as a value (decl rhs, return, else-if chain) selects the branch
+// value rather than producing zero.
+fn if_expression_value() {
+	x := if 3 > 2 { 10 } else { 20 }
+	println(x)
+	println(classify(5))
+	println(classify(-5))
+	println(classify(0))
+}
+
+fn main() {
+	println('block_scoping_preserves_outer_locals')
+	block_scoping_preserves_outer_locals()
+	println('for_post_uses_loop_var_with_body_local')
+	for_post_uses_loop_var_with_body_local()
+	println('inner_initializer_reads_outer')
+	inner_initializer_reads_outer()
+	println('parallel_multi_assign_swaps')
+	parallel_multi_assign_swaps()
+	println('multi_decl_buffers_rhs')
+	multi_decl_buffers_rhs()
+	println('if_expression_value')
+	if_expression_value()
+}
+", 'wasm_local_scopes_and_assignments')
 	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['10', '2', '3', '1'])
+	run_wasi_expect(wasm, [
+		'block_scoping_preserves_outer_locals',
+		'10',
+		'2',
+		'3',
+		'1',
+		'for_post_uses_loop_var_with_body_local',
+		'3',
+		'3',
+		'inner_initializer_reads_outer',
+		'6',
+		'5',
+		'parallel_multi_assign_swaps',
+		'2',
+		'1',
+		'multi_decl_buffers_rhs',
+		'6',
+		'7',
+		'if_expression_value',
+		'10',
+		'1',
+		'-1',
+		'0',
+	])
 }
 
 fn test_wasm_narrow_integer_casts_and_arithmetic_wrap() {
@@ -817,17 +929,6 @@ fn test_wasm_module_scoped_globals() {
 	}
 }
 
-fn test_wasm_for_post_uses_loop_var_with_body_local() {
-	v3_bin := v3_binary()
-	// A body-local value must not replace the counter used by the post `i++`; the
-	// outer loop counter must still advance. The count/break bound keeps the
-	// test terminating even if the fix regresses (it would loop otherwise).
-	src := 'fn main() {\n\tmut i := 0\n\tmut count := 0\n\tfor ; i < 3; i++ {\n\t\tvalue := 10\n\t\t_ = value\n\t\tcount++\n\t\tif count > 100 {\n\t\t\tbreak\n\t\t}\n\t}\n\tprintln(i)\n\tprintln(count)\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_loopshadow')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['3', '3'])
-}
-
 fn test_wasm_imported_module_alias_call() {
 	v3_bin := v3_binary()
 	dir := os.join_path(os.vtmp_dir(), 'wasm_modalias')
@@ -849,24 +950,6 @@ fn test_wasm_imported_module_alias_call() {
 	assert_valid_wasm(out_wasm)
 	assert !res.output.contains('unsupported call'), res.output
 	run_wasi_expect(out_wasm, ['42', '7'])
-}
-
-fn test_wasm_inner_initializer_reads_outer() {
-	v3_bin := v3_binary()
-	// The inner `value := x + 1` initializer reads the outer x (5), giving 6,
-	// and the outer x is unchanged afterwards.
-	src := 'fn main() {\n\tx := 5\n\t{\n\t\tvalue := x + 1\n\t\tprintln(value)\n\t}\n\tprintln(x)\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_shadow_init')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['6', '5'])
-}
-
-fn test_wasm_parallel_multi_assign_swaps() {
-	v3_bin := v3_binary()
-	src := 'fn main() {\n\tmut a := 1\n\tmut b := 2\n\ta, b = b, a\n\tprintln(a)\n\tprintln(b)\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_swap')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['2', '1'])
 }
 
 fn test_wasm_parallel_multi_assign_swaps_globals() {
@@ -1152,17 +1235,6 @@ fn main() {
 	])
 }
 
-fn test_wasm_multi_decl_buffers_rhs() {
-	v3_bin := v3_binary()
-	// Both initializers of a parallel declaration must be evaluated against the
-	// enclosing scope, so `a, b := x + 1, x + 2` reads the outer x for both,
-	// giving a == 6 and b == 7.
-	src := 'fn main() {\n\tx := 5\n\t{\n\t\ta, b := x + 1, x + 2\n\t\tprintln(a)\n\t\tprintln(b)\n\t}\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_multidecl')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['6', '7'])
-}
-
 fn test_wasm_output_path_is_exact() {
 	v3_bin := v3_binary()
 	src_path := os.join_path(os.vtmp_dir(), 'wasm_exactpath.v')
@@ -1203,16 +1275,6 @@ fn test_wasm_nested_module_import_call() {
 	assert_valid_wasm(out_wasm)
 	assert !res.output.contains('unsupported call'), res.output
 	run_wasi_expect(out_wasm, ['42', '7'])
-}
-
-fn test_wasm_if_expression_value() {
-	v3_bin := v3_binary()
-	// `if` used as a value (decl rhs, return, else-if chain) selects the branch
-	// value rather than producing zero.
-	src := 'fn classify(n int) int {\n\treturn if n > 0 { 1 } else if n < 0 { -1 } else { 0 }\n}\n\nfn main() {\n\tx := if 3 > 2 { 10 } else { 20 }\n\tprintln(x)\n\tprintln(classify(5))\n\tprintln(classify(-5))\n\tprintln(classify(0))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_ifexpr')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['10', '1', '-1', '0'])
 }
 
 fn test_wasm_moduleless_numeric_constants_before_and_after_optimization() {
@@ -1439,69 +1501,131 @@ fn test_wasm_global_postfix() {
 	run_wasi_expect(wasm, ['4', '251'])
 }
 
-fn test_wasm_global_narrow_cast_initializer() {
-	v3_bin := v3_binary()
-	// A narrowing cast initializer on an inferred narrow global must be
-	// wrapped to the global's width at compile time, so the first read already
-	// sees the V value (u8(u16(300))=44, i8(i16(128))=-128, u16(u32(70000))=4464).
-	src := '__global b = u8(u16(300))\n__global s = i8(i16(128))\n__global w = u16(u32(70000))\n\nfn main() {\n\tprintln(int(b))\n\tprintln(int(s))\n\tprintln(int(w))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_narrow_init')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['44', '-128', '4464'])
+fn test_wasm_global_initializers() {
+	wasm := compile_to_wasm(v3_binary(), "__global narrow_byte = u8(u16(300))
+__global s = i8(i16(128))
+__global w = u16(u32(70000))
+
+// A narrowing cast initializer on an inferred narrow global must be
+// wrapped to the global's width at compile time, so the first read already
+// sees the V value (u8(u16(300))=44, i8(i16(128))=-128, u16(u32(70000))=4464).
+fn global_narrow_cast_initializer() {
+	println(int(narrow_byte))
+	println(int(s))
+	println(int(w))
 }
 
-fn test_wasm_global_const_expr_initializers() {
-	v3_bin := v3_binary()
-	// A const-expression initializer (binary ops, const-identifier references,
-	// shifts) is folded into the wasm global's constant init, not zeroed.
-	src := 'const base = 10\n\n__global a = 1 + 2\n__global c = base * 4 + 1\n__global e = 1 << 4\n__global f = (7 - 2) * 3\n__global neg = -5 + 2\n__global big = i64(1) << 40\n\nfn main() {\n\tprintln(a)\n\tprintln(c)\n\tprintln(e)\n\tprintln(f)\n\tprintln(neg)\n\tprintln(big)\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_const_expr')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['3', '41', '16', '15', '-3', '1099511627776'])
+const base = 10
+
+__global a = 1 + 2
+__global c = base * 4 + 1
+__global e = 1 << 4
+__global f = (7 - 2) * 3
+__global neg = -5 + 2
+__global big = i64(1) << 40
+
+// A const-expression initializer (binary ops, const-identifier references,
+// shifts) is folded into the wasm global's constant init, not zeroed.
+fn global_const_expr_initializers() {
+	println(a)
+	println(c)
+	println(e)
+	println(f)
+	println(neg)
+	println(big)
 }
 
-fn test_wasm_global_nested_cast_initializer() {
-	v3_bin := v3_binary()
-	// A nested cast initializer keeps each cast's width: the inner cast narrows
-	// before the wider outer cast, so `int(u8(u16(300)))` is 44, not 300, and a folded
-	// float initializer rounds through an int cast (1.5 + 2.0 -> 3).
-	src := '__global b = int(u8(u16(300)))\n__global g = int(i8(i16(128)))\n__global h = u8(u16(300)) + u8(100)\n__global fl = 1.5 + 2.0\n\nfn main() {\n\tprintln(b)\n\tprintln(g)\n\tprintln(int(h))\n\tprintln(int(fl))\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_nested_cast')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['44', '-128', '144', '3'])
+__global b = int(u8(u16(300)))
+__global g = int(i8(i16(128)))
+__global h = u8(u16(300)) + u8(100)
+__global fl = 1.5 + 2.0
+
+// A nested cast initializer keeps each cast's width: the inner cast narrows
+// before the wider outer cast, so `int(u8(u16(300)))` is 44, not 300, and a folded
+// float initializer rounds through an int cast (1.5 + 2.0 -> 3).
+fn global_nested_cast_initializer() {
+	println(b)
+	println(g)
+	println(int(h))
+	println(int(fl))
 }
 
-fn test_wasm_global_infix_narrows_before_outer_cast() {
-	v3_bin := v3_binary()
-	// A folded infix initializer must wrap to its own resolved type before a
-	// wider outer cast observes it: `u8(250)+u8(10)` narrows to 4 (not 260)
-	// before the surrounding `int`, matching normal codegen.
-	src := '__global x = int(u8(250) + u8(10))\n__global y = int(u8(200) + u8(100))\n\nfn main() {\n\tprintln(x)\n\tprintln(y)\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_infix_cast')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['4', '44'])
+__global x = int(u8(250) + u8(10))
+__global y = int(u8(200) + u8(100))
+
+// A folded infix initializer must wrap to its own resolved type before a
+// wider outer cast observes it: `u8(250)+u8(10)` narrows to 4 (not 260)
+// before the surrounding `int`, matching normal codegen.
+fn global_infix_narrows_before_outer_cast() {
+	println(x)
+	println(y)
 }
 
-fn test_wasm_global_float_cast_of_large_literal() {
-	v3_bin := v3_binary()
-	// A float cast of a large non-negative integer literal must stay positive,
-	// like gen_cast: f64(9223372036854775808) (2^63) must not flip sign through
-	// parse_int_literal's wrapped i64, so `x > 0.0` holds.
-	src := '__global x = f64(9223372036854775808)\n\nfn main() {\n\tprintln(x > 0.0)\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_float_cast')
-	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['true'])
+__global large_float = f64(9223372036854775808)
+
+// A float cast of a large non-negative integer literal must stay positive,
+// like gen_cast: f64(9223372036854775808) (2^63) must not flip sign through
+// parse_int_literal's wrapped i64.
+fn global_float_cast_of_large_literal() {
+	println(large_float > 0.0)
 }
 
-fn test_wasm_global_unsigned_const_fold() {
-	v3_bin := v3_binary()
-	// Unsigned constant initializers must fold with unsigned div/rem/compare:
-	// folded operands are i64 bit patterns (u64 max -> -1), so signed division
-	// would mis-fold `u64(max) / u64(2)` to 0 instead of 9223372036854775807.
-	src := '__global half = u64(18446744073709551615) / u64(2)\n__global rem = u64(18446744073709551615) % u64(10)\n__global cmp = u64(18446744073709551615) > u64(1)\n\nfn main() {\n\tprintln(half)\n\tprintln(rem)\n\tprintln(cmp)\n}\n'
-	wasm := compile_to_wasm(v3_bin, src, 'wasm_global_unsigned_fold')
+__global half = u64(18446744073709551615) / u64(2)
+__global rem = u64(18446744073709551615) % u64(10)
+__global cmp = u64(18446744073709551615) > u64(1)
+
+// Unsigned constant initializers must fold with unsigned div/rem/compare:
+// folded operands are i64 bit patterns (u64 max -> -1), so signed division
+// would mis-fold `u64(max) / u64(2)` to 0 instead of 9223372036854775807.
+fn global_unsigned_const_fold() {
+	println(half)
+	println(rem)
+	println(cmp)
+}
+
+fn main() {
+	println('global_narrow_cast_initializer')
+	global_narrow_cast_initializer()
+	println('global_const_expr_initializers')
+	global_const_expr_initializers()
+	println('global_nested_cast_initializer')
+	global_nested_cast_initializer()
+	println('global_infix_narrows_before_outer_cast')
+	global_infix_narrows_before_outer_cast()
+	println('global_float_cast_of_large_literal')
+	global_float_cast_of_large_literal()
+	println('global_unsigned_const_fold')
+	global_unsigned_const_fold()
+}
+", 'wasm_global_initializers')
 	assert_valid_wasm(wasm)
-	run_wasi_expect(wasm, ['9223372036854775807', '5', 'true'])
+	run_wasi_expect(wasm, [
+		'global_narrow_cast_initializer',
+		'44',
+		'-128',
+		'4464',
+		'global_const_expr_initializers',
+		'3',
+		'41',
+		'16',
+		'15',
+		'-3',
+		'1099511627776',
+		'global_nested_cast_initializer',
+		'44',
+		'-128',
+		'144',
+		'3',
+		'global_infix_narrows_before_outer_cast',
+		'4',
+		'44',
+		'global_float_cast_of_large_literal',
+		'true',
+		'global_unsigned_const_fold',
+		'9223372036854775807',
+		'5',
+		'true',
+	])
 }
 
 const wasi_runner_js = "import { WASI } from 'node:wasi';
