@@ -1,0 +1,51 @@
+name: Native backend host contract regression
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/tests/freestanding_regressions_test.v'
+      - 'vlib/v/tests/syscalls_os_test.v'
+      - '.github/workflows/native_backend_host_contract_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Verify exact unsupported target and runtime diagnostics
+        shell: pwsh
+        run: |
+          foreach ($test in @('vlib/v/tests/freestanding_regressions_test.v', 'vlib/v/tests/syscalls_os_test.v')) {
+            .\v.exe fmt -verify $test
+            if ($LASTEXITCODE -ne 0) { throw "Format verification failed: $test" }
+            .\v.exe -cc gcc -no-retry-compilation -silent $test
+            if ($LASTEXITCODE -ne 0) { throw "Original regression failed: $test" }
+          }
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Preserve original native execution and syscall regressions
+        run: |
+          ./v fmt -w vlib/v/tests/freestanding_regressions_test.v vlib/v/tests/syscalls_os_test.v
+          git diff --exit-code
+          ./v fmt -verify vlib/v/tests/freestanding_regressions_test.v
+          ./v fmt -verify vlib/v/tests/syscalls_os_test.v
+          ./v -cc gcc -silent vlib/v/tests/freestanding_regressions_test.v
+          ./v -cc gcc -silent vlib/v/tests/syscalls_os_test.v
