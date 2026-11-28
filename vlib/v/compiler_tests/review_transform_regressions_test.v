@@ -3533,9 +3533,17 @@ fn main() {
 	assert out == '1250025000'
 }
 
-fn test_scope_local_callback_fields_preserve_receiver_identity_and_are_reclaimed() {
+struct LocalCallbackFixture {
+	name            string
+	source          string
+	cleanup_target  string
+	returns_holder  bool
+	checks_receiver bool
+}
+
+fn test_scope_local_callbacks_preserve_receivers_and_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := '@[heap]
+	counter_source := '@[heap]
 struct Counter {
 mut:
 	value int
@@ -3544,7 +3552,11 @@ mut:
 fn (counter &Counter) read() int {
 	return counter.value
 }
-
+'
+	cases := [
+		LocalCallbackFixture{
+			name:           'local_callback_field_hot_loop'
+			source:         counter_source + '
 fn zero() int {
 	return 0
 }
@@ -3583,25 +3595,12 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'local_callback_field_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
-	make_body := c_fn_body(c_source, 'main__Holder main__make_holder(')
-	assert !make_body.contains('__field_closure_'), make_body
-	assert out == '1250025000'
-}
-
-fn test_scope_local_callback_initializer_fields_preserve_receiver_identity_and_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
+			cleanup_target: '__field_closure_'
+			returns_holder: true
+		},
+		LocalCallbackFixture{
+			name:           'local_callback_initializer_field_hot_loop'
+			source:         counter_source + '
 struct Holder {
 	callback fn () int
 }
@@ -3635,26 +3634,12 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'local_callback_initializer_field_hot_loop', '', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	assert main_body.contains('closure__closure_try_destroy(__field_closure_'), main_body
-	make_body := c_fn_body(c_source, 'main__Holder main__make_holder(')
-	assert !make_body.contains('__field_closure_'), make_body
-	assert out == '1250025000'
-}
-
-fn test_scope_local_callback_whole_aggregate_reassignments_preserve_receiver_identity_and_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
+			cleanup_target: '__field_closure_'
+			returns_holder: true
+		},
+		LocalCallbackFixture{
+			name:           'local_callback_aggregate_reassign_hot_loop'
+			source:         counter_source + '
 fn zero() int {
 	return 0
 }
@@ -3682,23 +3667,11 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'local_callback_aggregate_reassign_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
-	assert out == '1250025000'
-}
-
-fn test_scope_local_callback_array_initializers_preserve_receiver_identity_and_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
+			cleanup_target: '__field_closure_'
+		},
+		LocalCallbackFixture{
+			name:           'local_callback_array_initializer_hot_loop'
+			source:         counter_source + '
 fn make_callbacks(value int) []fn () int {
 	mut counter := Counter{
 		value: value
@@ -3724,23 +3697,11 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'local_callback_array_initializer_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(__array_closure_'), c_source
-	assert out == '1250025000'
-}
-
-fn test_locally_extracted_callback_array_fields_remain_scope_owned() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
+			cleanup_target: '__array_closure_'
+		},
+		LocalCallbackFixture{
+			name:           'local_callback_array_field_alias_hot_loop'
+			source:         counter_source + '
 fn make_callback(value int) fn () int {
 	counter := Counter{
 		value: value
@@ -3767,23 +3728,11 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'local_callback_array_field_alias_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(__array_closure_'), c_source
-	assert out == '1250025000'
-}
-
-fn test_scope_local_callback_array_index_assignments_preserve_receiver_identity_and_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
+			cleanup_target: '__array_closure_'
+		},
+		LocalCallbackFixture{
+			name:           'local_callback_array_index_assign_hot_loop'
+			source:         counter_source + '
 fn zero() int {
 	return 0
 }
@@ -3803,23 +3752,11 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'local_callback_array_index_assign_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
-	assert out == '1250025000'
-}
-
-fn test_scope_local_dynamic_callback_array_index_assignments_preserve_receiver_and_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
+			cleanup_target: '__field_closure_'
+		},
+		LocalCallbackFixture{
+			name:            'local_dynamic_callback_array_index_assign_hot_loop'
+			source:          counter_source + '
 fn zero() int {
 	return 0
 }
@@ -3840,24 +3777,12 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'local_dynamic_callback_array_index_assign_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(__field_closure_'), c_source
-	assert c_source.contains('.receiver = counter'), c_source
-	assert out == '1250025000'
-}
-
-fn test_scope_local_callback_array_appends_preserve_receiver_identity_and_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
+			cleanup_target:  '__field_closure_'
+			checks_receiver: true
+		},
+		LocalCallbackFixture{
+			name:           'local_callback_array_append_hot_loop'
+			source:         counter_source + '
 fn main() {
 	mut total := 0
 	for i in 0 .. 50_000 {
@@ -3873,23 +3798,11 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'local_callback_array_append_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(__arr_val_'), c_source
-	assert out == '1250025000'
-}
-
-fn test_scope_local_bulk_callback_array_appends_preserve_receiver_and_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
+			cleanup_target: '__arr_val_'
+		},
+		LocalCallbackFixture{
+			name:           'local_bulk_callback_array_append_hot_loop'
+			source:         counter_source + '
 fn main() {
 	mut total := 0
 	for i in 0 .. 50_000 {
@@ -3905,23 +3818,11 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'local_bulk_callback_array_append_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(__array_closure_'), c_source
-	assert out == '1250025000'
-}
-
-fn test_scope_local_callback_fixed_array_initializers_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
+			cleanup_target: '__array_closure_'
+		},
+		LocalCallbackFixture{
+			name:           'local_callback_fixed_array_initializer_hot_loop'
+			source:         counter_source + '
 fn main() {
 	mut total := 0
 	for i in 0 .. 50_000 {
@@ -3936,23 +3837,11 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'local_callback_fixed_array_initializer_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(__array_closure_'), c_source
-	assert out == '1250025000'
-}
-
-fn test_multi_variable_callback_declarations_preserve_receiver_identity_and_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
+			cleanup_target: '__array_closure_'
+		},
+		LocalCallbackFixture{
+			name:           'local_multi_callback_decl_hot_loop'
+			source:         counter_source + '
 fn main() {
 	mut total := 0
 	for i in 0 .. 50_000 {
@@ -3967,9 +3856,25 @@ fn main() {
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'local_multi_callback_decl_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
-	assert out == '1250025000'
+			cleanup_target: 'callback);'
+		},
+	]
+	fixtures := cases.map(TransformFixture{it.name, it.source, '1250025000'})
+	good_bin := run_good_module_batch_with_flags(v3_bin, 'local_callback_cleanup', '', fixtures)
+	c_source := os.read_file(good_bin + '.c') or { panic(err) }
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		body := c_fn_body(c_source, 'void ${module_name}__exercise(void) {')
+		assert body.contains('closure__closure_try_destroy(${case.cleanup_target}'), '${case.name}: ${body}'
+		if case.returns_holder {
+			make_body := c_fn_body(c_source, '${module_name}__Holder ${module_name}__make_holder(i64 value) {')
+			assert make_body.len > 0, '${case.name}: make_holder body missing from generated C'
+			assert !make_body.contains('__field_closure_'), '${case.name}: ${make_body}'
+		}
+		if case.checks_receiver {
+			assert body.contains('.receiver = counter'), '${case.name}: ${body}'
+		}
+	}
 }
 
 fn test_callback_array_prefix_before_spread_preserves_receiver_identity_and_is_reclaimed() {
