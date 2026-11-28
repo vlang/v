@@ -1665,227 +1665,6 @@ fn main() {
 ")
 	assert ok_return_conditional_move_does_not_leak.exit_code == 0, ok_return_conditional_move_does_not_leak.output
 
-	fail_or_fallback_return := run_ownership_check(v3_bin, 'or_fallback_return_owned', "
-fn main() {
-	s1 := make()
-	s2 := s1
-	println(s1)
-	_ = s2
-}
-
-fn maybe() ?string {
-	return none
-}
-
-fn make() string {
-	return maybe() or { 'hello'.to_owned() }
-}
-")
-	assert fail_or_fallback_return.exit_code != 0
-	assert fail_or_fallback_return.output.contains('use of moved value: `s1`'), fail_or_fallback_return.output
-
-	fail_select_prescan_return := run_ownership_check(v3_bin, 'select_prescan_return_owned', "
-fn main() {
-	s1 := make()
-	s2 := s1
-	println(s1)
-	_ = s2
-}
-
-fn make() string {
-	ch := chan bool{cap: 1}
-	mut s := 'hello'.to_owned()
-	select {
-		ch <- true {
-			s = ''
-		}
-		else {}
-	}
-	return s
-}
-")
-	assert fail_select_prescan_return.exit_code != 0
-	assert fail_select_prescan_return.output.contains('use of moved value: `s1`'), fail_select_prescan_return.output
-
-	fail_value_if_side_effect_return := run_ownership_check(v3_bin, 'value_if_side_effect_prescan_return_owned', "
-fn main() {
-	s1 := make(true)
-	s2 := s1
-	println(s1)
-	_ = s2
-}
-
-fn make(cond bool) string {
-	mut s := ''
-	_ := if cond {
-		s = 'hello'.to_owned()
-		0
-	} else {
-		0
-	}
-	return s
-}
-")
-	assert fail_value_if_side_effect_return.exit_code != 0
-	assert fail_value_if_side_effect_return.output.contains('use of moved value: `s1`'), fail_value_if_side_effect_return.output
-
-	fail_defer_prescan_return := run_ownership_check(v3_bin, 'defer_prescan_return_owned', "
-fn main() {
-	s1 := make()
-	s2 := s1
-	println(s1)
-	_ = s2
-}
-
-fn make() string {
-	mut s := 'hello'.to_owned()
-	defer {
-		s = ''
-	}
-	return s
-}
-")
-	assert fail_defer_prescan_return.exit_code != 0
-	assert fail_defer_prescan_return.output.contains('use of moved value: `s1`'), fail_defer_prescan_return.output
-
-	fail_loop_break_prescan_return := run_ownership_check(v3_bin, 'loop_break_prescan_return_owned', "
-fn main() {
-	s1 := make()
-	s2 := s1
-	println(s1)
-	_ = s2
-}
-
-fn make() string {
-	mut s := 'hello'.to_owned()
-	for {
-		break
-		s = ''
-	}
-	return s
-}
-")
-	assert fail_loop_break_prescan_return.exit_code != 0
-	assert fail_loop_break_prescan_return.output.contains('use of moved value: `s1`'), fail_loop_break_prescan_return.output
-
-	fail_return_default_field_local := run_ownership_check(v3_bin, 'return_default_field_local_prescan', "
-struct Holder {
-	value string = 'field'.to_owned()
-}
-
-fn main() {
-	h := make()
-	x := h.value
-	println(h.value)
-	_ = x
-}
-
-fn make() Holder {
-	h := Holder{}
-	return h
-}
-")
-	assert fail_return_default_field_local.exit_code != 0
-	assert fail_return_default_field_local.output.contains('use of moved value: `h.value`'), fail_return_default_field_local.output
-
-	fail_return_array_init_local := run_ownership_check(v3_bin, 'return_array_init_local_prescan', "
-fn main() {
-	arr := make()
-	x := arr[0]
-	println(arr[0])
-	_ = x
-}
-
-fn make() []string {
-	a := []string{len: 1, init: 'item'.to_owned()}
-	return a
-}
-")
-	assert fail_return_array_init_local.exit_code != 0
-	assert fail_return_array_init_local.output.contains('use of moved value'), fail_return_array_init_local.output
-
-	fail_return_assoc_local := run_ownership_check(v3_bin, 'return_assoc_local_prescan', "
-struct Holder {
-	value string
-}
-
-fn main() {
-	h := make()
-	x := h.value
-	println(h.value)
-	_ = x
-}
-
-fn make() Holder {
-	base := Holder{value: 'field'.to_owned()}
-	h := Holder{...base}
-	return h
-}
-")
-	assert fail_return_assoc_local.exit_code != 0
-	assert fail_return_assoc_local.output.contains('use of moved value: `h.value`'), fail_return_assoc_local.output
-
-	fail_conditional_param_return := run_ownership_check(v3_bin, 'conditional_return_param', "
-fn main() {
-	cond := true
-	owned := 'hello'.to_owned()
-	x := choose(cond, owned, '')
-	y := x
-	println(x)
-	_ = y
-}
-
-fn choose(cond bool, a string, b string) string {
-	return if cond { a } else { b }
-}
-")
-	assert fail_conditional_param_return.exit_code != 0
-	assert fail_conditional_param_return.output.contains('use of moved value: `x`'), fail_conditional_param_return.output
-
-	fail_match_param_return := run_ownership_check(v3_bin, 'match_return_param', "
-enum Pick {
-	a
-	b
-}
-
-fn main() {
-	owned := 'hello'.to_owned()
-	x := choose(Pick.a, owned, '')
-	y := x
-	println(x)
-	_ = y
-}
-
-fn choose(p Pick, a string, b string) string {
-	return match p {
-		.a { a }
-		.b { b }
-	}
-}
-")
-	assert fail_match_param_return.exit_code != 0
-	assert fail_match_param_return.output.contains('use of moved value: `x`'), fail_match_param_return.output
-
-	fail_or_fallback_param_return := run_ownership_check(v3_bin, 'or_fallback_return_param', "
-fn main() {
-	owned := 'hello'.to_owned()
-	x := pass(owned)
-	y := x
-	println(x)
-	_ = y
-}
-
-fn maybe() ?string {
-	return none
-}
-
-fn pass(a string) string {
-	return maybe() or { a }
-}
-")
-	assert fail_or_fallback_param_return.exit_code != 0
-	assert fail_or_fallback_param_return.output.contains('use of moved value: `x`'), fail_or_fallback_param_return.output
-
 	fail_module_return := run_ownership_check_with_module(v3_bin, 'module_return_owned', '
 import foo
 
@@ -2144,6 +1923,199 @@ fn make() (int, string) {
 ", 's'},
 	]
 	check_ownership_module_move_rejections('return_move_rejections', cases)
+}
+
+fn test_ownership_return_prescan_move_rejections() {
+	check_ownership_module_move_rejections('return_prescan_move_rejections', [
+		OwnershipModuleMoveRejection{'or_fallback_return_owned', "
+fn main() {
+	s1 := make()
+	s2 := s1
+	println(s1)
+	_ = s2
+}
+
+fn maybe() ?string {
+	return none
+}
+
+fn make() string {
+	return maybe() or { 'hello'.to_owned() }
+}
+", 's1'},
+		OwnershipModuleMoveRejection{'select_prescan_return_owned', "
+fn main() {
+	s1 := make()
+	s2 := s1
+	println(s1)
+	_ = s2
+}
+
+fn make() string {
+	ch := chan bool{cap: 1}
+	mut s := 'hello'.to_owned()
+	select {
+		ch <- true {
+			s = ''
+		}
+		else {}
+	}
+	return s
+}
+", 's1'},
+		OwnershipModuleMoveRejection{'value_if_side_effect_prescan_return_owned', "
+fn main() {
+	s1 := make(true)
+	s2 := s1
+	println(s1)
+	_ = s2
+}
+
+fn make(cond bool) string {
+	mut s := ''
+	_ := if cond {
+		s = 'hello'.to_owned()
+		0
+	} else {
+		0
+	}
+	return s
+}
+", 's1'},
+		OwnershipModuleMoveRejection{'defer_prescan_return_owned', "
+fn main() {
+	s1 := make()
+	s2 := s1
+	println(s1)
+	_ = s2
+}
+
+fn make() string {
+	mut s := 'hello'.to_owned()
+	defer {
+		s = ''
+	}
+	return s
+}
+", 's1'},
+		OwnershipModuleMoveRejection{'loop_break_prescan_return_owned', "
+fn main() {
+	s1 := make()
+	s2 := s1
+	println(s1)
+	_ = s2
+}
+
+fn make() string {
+	mut s := 'hello'.to_owned()
+	for {
+		break
+		s = ''
+	}
+	return s
+}
+", 's1'},
+		OwnershipModuleMoveRejection{'return_default_field_local_prescan', "
+struct Holder {
+	value string = 'field'.to_owned()
+}
+
+fn main() {
+	h := make()
+	x := h.value
+	println(h.value)
+	_ = x
+}
+
+fn make() Holder {
+	h := Holder{}
+	return h
+}
+", 'h.value'},
+		OwnershipModuleMoveRejection{'return_array_init_local_prescan', "
+fn main() {
+	arr := make()
+	x := arr[0]
+	println(arr[0])
+	_ = x
+}
+
+fn make() []string {
+	a := []string{len: 1, init: 'item'.to_owned()}
+	return a
+}
+", 'arr[*]'},
+		OwnershipModuleMoveRejection{'return_assoc_local_prescan', "
+struct Holder {
+	value string
+}
+
+fn main() {
+	h := make()
+	x := h.value
+	println(h.value)
+	_ = x
+}
+
+fn make() Holder {
+	base := Holder{value: 'field'.to_owned()}
+	h := Holder{...base}
+	return h
+}
+", 'h.value'},
+		OwnershipModuleMoveRejection{'conditional_return_param', "
+fn main() {
+	cond := true
+	owned := 'hello'.to_owned()
+	x := choose(cond, owned, '')
+	y := x
+	println(x)
+	_ = y
+}
+
+fn choose(cond bool, a string, b string) string {
+	return if cond { a } else { b }
+}
+", 'x'},
+		OwnershipModuleMoveRejection{'match_return_param', "
+enum Pick {
+	a
+	b
+}
+
+fn main() {
+	owned := 'hello'.to_owned()
+	x := choose(Pick.a, owned, '')
+	y := x
+	println(x)
+	_ = y
+}
+
+fn choose(p Pick, a string, b string) string {
+	return match p {
+		.a { a }
+		.b { b }
+	}
+}
+", 'x'},
+		OwnershipModuleMoveRejection{'or_fallback_return_param', "
+fn main() {
+	owned := 'hello'.to_owned()
+	x := pass(owned)
+	y := x
+	println(x)
+	_ = y
+}
+
+fn maybe() ?string {
+	return none
+}
+
+fn pass(a string) string {
+	return maybe() or { a }
+}
+", 'x'},
+	])
 }
 
 fn check_ownership_module_move_rejections(name string, cases []OwnershipModuleMoveRejection) {
