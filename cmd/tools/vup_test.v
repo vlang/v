@@ -263,6 +263,66 @@ fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
 	}
 }
 
+// A relative cache setting is joined to the folder `v up` was started from as it is written, so a
+// `..` after a link in it is taken as the system takes it, by the update's own builds and by the
+// cache wipe alike. A `v up` started from a folder that was removed stops at a relative setting,
+// before it calls the compiler.
+fn test_vup_takes_relative_cache_paths_as_the_system_does() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	previous_dir := os.getwd()
+	defer {
+		os.chdir(previous_dir) or {}
+		os.rmdir_all(root) or {}
+	}
+	project := os.join_path(root, 'project')
+	elsewhere := os.join_path(root, 'elsewhere')
+	os.mkdir_all(project)!
+	os.mkdir_all(os.join_path(elsewhere, 'deep'))!
+	os.symlink(os.join_path(elsewhere, 'deep'), os.join_path(project, 'link'))!
+	log := os.join_path(root, 'cache_paths.log')
+	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
+		'printf "%s|%s|%s|%s|%s\\n" "\$1" "\$VCACHE" "\$VTMP" "\$V3CACHE" "\$VTOOLS_CACHE_DIR" >> ' +
+		os.quoted_path(log) + '\necho "V 0.5.2 abcdef0"\nexit 0\n')!
+	settings := ['link/../module cache', 'link/../tmp cache', 'link/../v3 cache', 'link/../tool cache']
+	os.chdir(project)!
+	os.write_file(log, '')!
+	result := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
+		'VCACHE=${settings[0]}', 'VTMP=${settings[1]}', 'V3CACHE=${settings[2]}',
+		'VTOOLS_CACHE_DIR=${settings[3]}', tool, '-skip_current'])
+	assert result.exit_code == 0, result.output
+	calls := os.read_file(log)!.split_into_lines()
+	expected := settings.map(project + os.path_separator + it).join('|')
+	assert calls.len >= 2 && calls.any(it.starts_with('wipe-cache|')), calls.str()
+	for call in calls {
+		assert call.all_after('|') == expected, calls.str()
+	}
+	// The system takes `link/..` to be `elsewhere`, where `v up` made the VTMP folder.
+	assert os.is_dir(os.join_path(elsewhere, 'tmp cache')), result.output
+	assert !os.exists(os.join_path(project, 'tmp cache')), result.output
+	gone := os.join_path(root, 'gone')
+	os.mkdir_all(gone)!
+	os.chdir(gone)!
+	os.rmdir(gone)!
+	for name in ['VCACHE', 'VTMP', 'V3CACHE', 'VTOOLS_CACHE_DIR'] {
+		os.write_file(log, '')!
+		mut env := ['PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v')]
+		for other in ['VCACHE', 'VTMP', 'V3CACHE', 'VTOOLS_CACHE_DIR'] {
+			env << if other == name {
+				'${other}=relative'
+			} else {
+				'${other}=' + os.join_path(root, 'absolute ${other}')
+			}
+		}
+		stopped := os.exec(['env', ...env, tool])
+		assert stopped.exit_code == 1, '${name}: ${stopped.output}'
+		assert stopped.output.contains('v up: ${name} holds the relative path `relative`'), stopped.output
+		assert os.read_file(log)! == '', '${name}: ${stopped.output}'
+	}
+}
+
 fn test_vup_wipes_caches_when_the_checkout_changes_without_rebuilding() ! {
 	$if windows {
 		return
@@ -623,6 +683,87 @@ fn test_vup_with_skills_still_names_held_back_skills_when_there_is_nothing_to_re
 	assert result.output.contains(held_back_hint), result.output
 	// Nothing to refresh, so the compiler was never asked to.
 	assert !os.exists(os.join_path(root, 'skills.log')), os.read_file(os.join_path(root, 'skills.log')) or { '' }
+}
+
+// On Windows `v up` takes a setting that is no whole path as Windows and the wipe take it: from the
+// folder that is current on the drive it names (`C:cache`), from the root of the current drive
+// (`\cache`), or from the working folder, with `..` as text, also when that folder is a link, which
+// is not followed. `v up` builds and runs tools there that a test cannot stand in for, so its
+// `caller_path` is built from vup.v's own source into a small program, which this test runs. The
+// paths it must give are spelled out from the folders the test makes, not asked of V.
+fn test_vup_takes_settings_as_windows_and_the_wipe_take_them() ! {
+	$if !windows {
+		return
+	}
+	// A checkout can have Windows line ends.
+	source := os.read_file(os.join_path(vroot, 'cmd', 'tools', 'vup.v'))!.replace('\r\n', '\n')
+	imports := source.split_into_lines().filter(it.starts_with('import ') && it != 'import os')
+	start := source.index('\nfn caller_path(') or { return error('vup.v has no caller_path') }
+	length := source[start + 1..].index('\n}\n') or { return error('caller_path has no end') }
+	function := source[start..start + 1 + length + 3]
+	root := os.join_path(os.abs_path(os.vtmp_dir()), 'vup_caller_path_${os.getpid()}')
+	project := os.join_path(root, 'project')
+	plain := os.join_path(project, 'plain')
+	link := os.join_path(project, 'link')
+	deep := os.join_path(root, 'elsewhere', 'deep')
+	previous_dir := os.getwd()
+	previous_vtmp := os.getenv_opt('VTMP')
+	os.mkdir_all(plain)!
+	os.mkdir_all(deep)!
+	defer {
+		os.chdir(previous_dir) or {}
+		if value := previous_vtmp {
+			os.setenv('VTMP', value, true)
+		} else {
+			os.unsetenv('VTMP')
+		}
+		// The junction itself, before what is around it.
+		os.rmdir(link) or {}
+		os.rmdir_all(root) or {}
+	}
+	junction := os.exec(['cmd', '/c', 'mklink', '/J', link, deep])
+	assert junction.exit_code == 0, junction.output
+	file := os.join_path(root, 'caller_path.v')
+	os.write_file(file, 'import os\n' +
+		imports.filter(function.contains('${it.all_after_last('.')}.')).join('\n') +
+		'\n' + function +
+		'\nfn main() {\n\tprintln(caller_path(os.args[1], os.args[2], os.getwd()))\n}\n')!
+	tool := os.join_path(root, 'caller_path.exe')
+	build := os.exec([vexe, '-o', tool, file])
+	assert build.exit_code == 0, build.output
+	drive := root[..2]
+	assert drive[1] == `:`, root
+	for wd in [link, plain] {
+		os.chdir(wd)!
+		for written, expected in {
+			'${drive}cache':                  os.join_path_single(wd, 'cache')
+			'${drive}..\\cache':              os.join_path_single(project, 'cache')
+			'${drive}../cache':               os.join_path_single(project, 'cache')
+			'${drive}':                       wd
+			'${drive}.':                      wd
+			'\\v_rooted_setting':             '${drive}\\v_rooted_setting'
+			'/v_rooted_setting':              '${drive}\\v_rooted_setting'
+			'cache':                          os.join_path_single(wd, 'cache')
+			'cache.':                         os.join_path_single(wd, 'cache')
+			'..\\cache':                      os.join_path_single(project, 'cache')
+			'../cache':                       os.join_path_single(project, 'cache')
+			'${root}\\whole\\cache':          '${root}\\whole\\cache'
+			// Windows reads such a path as it stands, and would make another folder's of it.
+			'\\\\?\\${root}\\whole\\dotted.': '\\\\?\\${root}\\whole\\dotted.'
+		} {
+			os.setenv('VTMP', root, true)
+			result := os.exec([tool, 'VTMP', written])
+			assert result.exit_code == 0, result.output
+			assert result.output.trim_space() == expected, '${wd}: ${written}: ${result.output}'
+			if written.ends_with('cache') || written.ends_with('cache.') {
+				// What `v up` makes of a setting is the folder that a wipe started here takes it for.
+				os.setenv('VTMP', written, true)
+				wipe := os.exec([vexe, 'wipe-cache', '--vtmp', '--dry-run'])
+				assert wipe.exit_code == 0, wipe.output
+				assert wipe.output.contains(' folder ${expected}'), '${wd}: ${written}: ${wipe.output}'
+			}
+		}
+	}
 }
 
 fn test_refresh_candidates_splits_refreshable_from_held_back() ! {

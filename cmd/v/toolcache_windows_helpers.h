@@ -144,6 +144,33 @@ V_TOOLCACHE_WINDOWS_SCOPE int v_toolcache_read_file(void *handle, void *buffer, 
 	return ReadFile((HANDLE)handle, buffer, (DWORD)size, (LPDWORD)read, NULL);
 }
 
+/* Copies the name under which its folder lists what `path` reaches into `name`, which holds `size`
+ * characters. FindFirstFileW reads the folder's entry, so a link there is not followed. It takes the
+ * last name in `path` as a pattern, so the entry it finds counts only when its long or its short
+ * name is `want`, that last name, ignoring case. */
+V_TOOLCACHE_WINDOWS_SCOPE int v_toolcache_listed_name(const unsigned short *path,
+	const unsigned short *want, unsigned short *name, int size) {
+	WIN32_FIND_DATAW found;
+	HANDLE search = FindFirstFileW((LPCWSTR)path, &found);
+	if (search == INVALID_HANDLE_VALUE) {
+		return 0;
+	}
+	FindClose(search);
+	if (lstrcmpiW((LPCWSTR)want, found.cFileName) != 0
+		&& (found.cAlternateFileName[0] == 0
+			|| lstrcmpiW((LPCWSTR)want, found.cAlternateFileName) != 0)) {
+		return 0;
+	}
+	int length = lstrlenW(found.cFileName);
+	if (length >= size) {
+		return 0;
+	}
+	for (int i = 0; i <= length; i++) {
+		name[i] = (unsigned short)found.cFileName[i];
+	}
+	return 1;
+}
+
 static int v_toolcache_sid_can_write(PSID sid, PSID owner) {
 	return EqualSid(sid, owner)
 		|| IsWellKnownSid(sid, WinCreatorOwnerSid)

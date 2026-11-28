@@ -4,6 +4,7 @@ import os
 import v.skills
 import v.util.version
 import v.util.recompilation
+import v.util.winpath
 
 const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 
@@ -89,18 +90,19 @@ fn main() {
 	app := new_app()
 	recompilation.must_be_enabled(app.vroot, 'Please install V from source, to use `v up` .')
 	// Keep caller-relative cache locations stable for wipe-cache after entering the checkout.
+	start := os.getwd()
 	vcache := os.getenv_opt('VCACHE') or { os.join_path(os.vmodules_dir(), '.cache') }
 	if vcache.trim_space() != '' {
-		os.setenv('VCACHE', os.abs_path(vcache), true)
+		os.setenv('VCACHE', caller_path('VCACHE', vcache, start), true)
 	}
-	for name in ['V3CACHE', 'VTOOLS_CACHE_DIR'] {
+	for name in ['V3CACHE', 'VTOOLS_CACHE_DIR', 'VTMP'] {
 		if cache := os.getenv_opt(name) {
 			if cache.trim_space() != '' {
-				os.setenv(name, os.abs_path(cache), true)
+				os.setenv(name, caller_path(name, cache, start), true)
 			}
 		}
 	}
-	os.setenv('VTMP', os.abs_path(os.vtmp_dir()), true)
+	os.setenv('VTMP', caller_path('VTMP', os.vtmp_dir(), start), true)
 	os.chdir(app.vroot)!
 	println('Updating V...')
 	previous_checkout_hash := version.githash(app.vroot) or { '' }
@@ -157,6 +159,33 @@ fn main() {
 		exit(1)
 	}
 	app.finish_update(needs_cache_wipe)
+}
+
+// caller_path makes the cache folder `path`, which the setting `name` holds, absolute from the
+// folder `start` that `v up` was started from, before `v up` enters the checkout. A `..` in it is
+// left for the system to take, as the folder above the one the path has led to so far, through any
+// link on the way: that is how builds and `v wipe-cache` take it, while `os.abs_path` takes it as
+// text. Windows takes `..` as text too, and it takes `C:cache` from the folder that is current on
+// drive `C:`, and `\cache` from the root of the current drive. Windows itself makes such a path and a
+// relative one absolute, all of it at once, as for the wipe; a link that the current folder is, is
+// not followed. A tool that V starts is not told which folder is current on a drive other than the
+// current one, so `Q:cache` is taken from the root of `Q:` there, and not as the wipe takes it. When
+// `start` has no name (it was removed, or a folder above it may not be read), a relative path names
+// no folder that can be told, and `v up` stops.
+fn caller_path(name string, path string, start string) string {
+	// On Windows `os.is_abs_path` takes `\cache` for absolute, which is another folder after a change
+	// of drive. Elsewhere `winpath` gives the path as it is.
+	separators := [u8(`\\`), `/`]
+	no_drive := path.len > 0 && path[0] in separators && !(path.len > 1 && path[1] in separators)
+	full := if no_drive || !os.is_abs_path(path) { winpath.absolute_path(path) } else { path }
+	if os.is_abs_path(full) {
+		return full
+	}
+	if start == '' {
+		eprintln('v up: ${name} holds the relative path `${path}`, and the folder `v up` was started from has no name (it was removed, or a folder above it may not be read), so there is no telling which folder that is.')
+		exit(1)
+	}
+	return start.trim_right(os.path_separator) + os.path_separator + path
 }
 
 // finish_update reports the result and clears caches only when the update requires it.
