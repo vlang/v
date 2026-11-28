@@ -3087,13 +3087,11 @@ fn test_a_value_of_a_type_parameter_shows_what_the_type_parameter_is_there() {
 
 fn test_a_type_parameter_of_an_unknown_constraint_says_nothing_more() {
 	// `[T Nope]` is reported: its hover does not tell what `T` can be.
-	dir := os.join_path(work_dir, 'unknown_constraint')
-	os.mkdir_all(dir) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'module main\n\nfn wrong[T Nope](a T) T {\n\treturn a\n}\n\nfn main() {}\n') or {
-		panic(err)
-	}
-	assert ask(dir, 'hv^', 3, 'T', 0) == hover_of('[T Nope]')
-	assert ask(dir, 'hv^', 4, 'a', 0) == hover_of('a T')
+	source := 'module main\n\nfn wrong[T Nope](a T) T {\n\treturn a\n}\n\nfn main() {}\n'
+	assert_hovers('unknown_constraint', source, [
+		HoverExpectation{'fn wrong[T Nope](a T) T {', 'T', '[T Nope]'},
+		HoverExpectation{'\treturn a', 'a', 'a T'},
+	])
 }
 
 fn test_a_type_parameter_shows_its_constraint_and_what_it_is_there() {
@@ -3151,15 +3149,17 @@ fn test_a_type_parameter_is_declared_in_the_list_of_its_declaration() {
 }
 
 fn test_a_parameter_is_the_type_that_is_or_match_makes_it() {
-	// As a local is: `if s is Circle {` and a branch of `match s {`.
-	assert narrowed('hv^', '\t\treturn s.r', 's', 0) == hover_of('s main.Circle')
-	assert narrowed('hv^', '\t\tSquare { s.side }', 's', 0) == hover_of('s main.Square')
-	// An interface narrowed to a struct refers to the object the interface holds
-	// (master's #29058): `if n is User {` makes `n` a `&User`.
-	assert narrowed('hv^', '\t\treturn n.age', 'n', 0) == hover_of('n &main.User')
-	// Where it is declared, and outside those branches, its declared type.
-	assert narrowed('hv^', 'fn area(s Shape) f64 {', 's', 0) == hover_of('s main.Shape')
-	assert narrowed('hv^', '\treturn match s {', 's', 0) == hover_of('s main.Shape')
+	assert_hovers('narrowing', narrowing_program, [
+		// As a local is: `if s is Circle {` and a branch of `match s {`.
+		HoverExpectation{'\t\treturn s.r', 's', 's main.Circle'},
+		HoverExpectation{'\t\tSquare { s.side }', 's', 's main.Square'},
+		// An interface narrowed to a struct refers to the object the interface holds
+		// (master's #29058): `if n is User {` makes `n` a `&User`.
+		HoverExpectation{'\t\treturn n.age', 'n', 'n &main.User'},
+		// Where it is declared, and outside those branches, its declared type.
+		HoverExpectation{'fn area(s Shape) f64 {', 's', 's main.Shape'},
+		HoverExpectation{'\treturn match s {', 's', 's main.Shape'},
+	])
 }
 
 const skipped_branches_program = "module main
