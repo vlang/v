@@ -172,18 +172,6 @@ fn main() {
 }
 ')
 	assert ok.exit_code == 0, ok.output
-
-	fail := run_ownership_check(v3_bin, 'borrow_literal_temporary', '
-fn borrowed_len(value &string) int {
-	return value.len
-}
-
-fn main() {
-	assert borrowed_len("literal") == 7
-}
-')
-	assert fail.exit_code != 0
-	assert fail.output.contains('literal argument cannot be passed as reference parameter `&string`'), fail.output
 }
 
 fn test_ownership_move_on_assign_and_clone_escape() {
@@ -209,56 +197,6 @@ fn main() {
 }
 ")
 	assert ok.exit_code == 0, ok.output
-
-	fail_clone_move := run_ownership_check(v3_bin, 'clone_move', "
-fn main() {
-	s1 := 'hello'.to_owned()
-	s2 := s1.clone()
-	s3 := s2
-	println(s2)
-	println(s1)
-	_ = s3
-}
-")
-	assert fail_clone_move.exit_code != 0
-	assert fail_clone_move.output.contains('use of moved value: `s2`'), fail_clone_move.output
-
-	fail_clone_owned_temporary := run_ownership_check(v3_bin, 'clone_owned_temporary', "
-fn main() {
-	a := 'hello'.to_owned().clone()
-	b := a
-	println(a)
-	_ = b
-}
-")
-	assert fail_clone_owned_temporary.exit_code != 0
-	assert fail_clone_owned_temporary.output.contains('use of moved value: `a`'), fail_clone_owned_temporary.output
-
-	fail_clone_owned_return_temporary := run_ownership_check(v3_bin, 'clone_owned_return_temporary', "
-fn main() {
-	a := make_owned().clone()
-	b := a
-	println(a)
-	_ = b
-}
-
-fn make_owned() string {
-	return 'hello'.to_owned()
-}
-")
-	assert fail_clone_owned_return_temporary.exit_code != 0
-	assert fail_clone_owned_return_temporary.output.contains('use of moved value: `a`'), fail_clone_owned_return_temporary.output
-
-	fail_paren_owned := run_ownership_check(v3_bin, 'paren_to_owned_move', "
-fn main() {
-	s := ('hello'.to_owned())
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert fail_paren_owned.exit_code != 0
-	assert fail_paren_owned.output.contains('use of moved value: `s`'), fail_paren_owned.output
 
 	fail_if_expr_owned := run_ownership_check(v3_bin, 'if_expr_owned_result', "
 fn main() {
@@ -369,18 +307,6 @@ fn main() {
 }
 	')
 	assert ok_non_owned_clone_return.exit_code == 0, ok_non_owned_clone_return.output
-
-	fail_plain_struct_clone := run_ownership_check(v3_bin, 'plain_struct_clone_unknown', '
-struct Plain {
-	id int
-}
-
-fn main() {
-	_ := Plain{id: 1}.clone()
-}
-	')
-	assert fail_plain_struct_clone.exit_code != 0
-	assert fail_plain_struct_clone.output.contains('unknown method or field: `Plain.clone`'), fail_plain_struct_clone.output
 
 	ok_iclone_default_clone := run_ownership_check(v3_bin, 'iclone_default_clone', '
 struct Resource implements IClone {
@@ -705,26 +631,6 @@ fn main() {
 ")
 	assert ok_defer_read_after_reassign_at_exit.exit_code == 0, ok_defer_read_after_reassign_at_exit.output
 
-	fail_defer_after_return_move := run_ownership_check(v3_bin, 'defer_after_return_move', "
-fn take(s string) {
-	_ = s
-}
-
-fn make() string {
-	s := 'hello'.to_owned()
-	defer {
-		take(s)
-	}
-	return s
-}
-
-fn main() {
-	_ = make()
-}
-")
-	assert fail_defer_after_return_move.exit_code != 0
-	assert fail_defer_after_return_move.output.contains('use of moved value: `s`'), fail_defer_after_return_move.output
-
 	ok_function_defer_return_branch := run_ownership_check(v3_bin, 'function_defer_return_branch_does_not_leak', "
 fn main() {
 	cond := false
@@ -756,37 +662,6 @@ fn main() {
 }
 ")
 	assert ok_function_defer_loop_return.exit_code == 0, ok_function_defer_loop_return.output
-
-	fail_blank_aggregate_sink := run_ownership_check(v3_bin, 'blank_aggregate_sink_move', '
-struct Holder {
-	value string
-}
-
-fn main() {
-	h := Holder{value: "hello".to_owned()}
-	_ = h
-	t := h.value
-	_ = t
-}
-')
-	assert fail_blank_aggregate_sink.exit_code != 0
-	assert fail_blank_aggregate_sink.output.contains('use of moved value: `h`'), fail_blank_aggregate_sink.output
-
-	fail_channel_aggregate_send := run_ownership_check(v3_bin, 'channel_aggregate_send_move', '
-struct Holder {
-	value string
-}
-
-fn main() {
-	ch := chan Holder{cap: 1}
-	h := Holder{value: "hello".to_owned()}
-	ch <- h
-	t := h.value
-	_ = t
-}
-')
-	assert fail_channel_aggregate_send.exit_code != 0
-	assert fail_channel_aggregate_send.output.contains('use of moved value: `h`'), fail_channel_aggregate_send.output
 }
 
 fn test_ownership_loop_defer_and_assignment_move_rejections() {
@@ -898,26 +773,6 @@ fn main() {
 }
 	")
 	assert ok_shadow_param.exit_code == 0, ok_shadow_param.output
-
-	fail_captured_owned := run_ownership_check(v3_bin, 'fn_literal_capture_moves_owned', "
-fn take(s string) {
-	_ = s
-}
-
-fn run(f fn ()) {
-	f()
-}
-
-fn main() {
-	s := 'hello'.to_owned()
-	run(fn [s] () {
-		take(s)
-	})
-	println(s)
-}
-")
-	assert fail_captured_owned.exit_code != 0
-	assert fail_captured_owned.output.contains('use of moved value: `s`'), fail_captured_owned.output
 
 	fail_owned_fn_literal_param := run_ownership_check(v3_bin, 'fn_literal_owned_param_from_call', "
 fn take(s string) {
@@ -3863,4 +3718,124 @@ fn main() {
 		assert line > 0, statement
 		assert diagnostics.any(it.contains('main.v:${line}:') && it.contains(message)), '${statement}: ${res.output}'
 	}
+}
+
+fn test_ownership_clone_and_sink_move_rejections() {
+	check_ownership_module_rejections('clone_and_sink_move_rejections', [
+		OwnershipModuleRejection{'borrow_literal_temporary', '
+fn borrowed_len(value &string) int {
+	return value.len
+}
+
+fn main() {
+	assert borrowed_len("literal") == 7
+}
+', 'assert borrowed_len("literal") == 7', 'literal argument cannot be passed as reference parameter `&string`'},
+		OwnershipModuleRejection{'clone_move', "
+fn main() {
+	s1 := 'hello'.to_owned()
+	s2 := s1.clone()
+	s3 := s2
+	println(s2)
+	println(s1)
+	_ = s3
+}
+", 'println(s2)', 'use of moved value: `s2`'},
+		OwnershipModuleRejection{'clone_owned_temporary', "
+fn main() {
+	a := 'hello'.to_owned().clone()
+	b := a
+	println(a)
+	_ = b
+}
+", 'println(a)', 'use of moved value: `a`'},
+		OwnershipModuleRejection{'clone_owned_return_temporary', "
+fn main() {
+	a := make_owned().clone()
+	b := a
+	println(a)
+	_ = b
+}
+
+fn make_owned() string {
+	return 'hello'.to_owned()
+}
+", 'println(a)', 'use of moved value: `a`'},
+		OwnershipModuleRejection{'paren_to_owned_move', "
+fn main() {
+	s := ('hello'.to_owned())
+	t := s
+	println(s)
+	_ = t
+}
+", 'println(s)', 'use of moved value: `s`'},
+		OwnershipModuleRejection{'fn_literal_capture_moves_owned', "
+fn take(s string) {
+	_ = s
+}
+
+fn run(f fn ()) {
+	f()
+}
+
+fn main() {
+	s := 'hello'.to_owned()
+	run(fn [s] () {
+		take(s)
+	})
+	println(s)
+}
+", 'println(s)', 'use of moved value: `s`'},
+		OwnershipModuleRejection{'plain_struct_clone_unknown', '
+struct Plain {
+	id int
+}
+
+fn main() {
+	_ := Plain{id: 1}.clone()
+}
+	', '_ := Plain{id: 1}.clone()', 'unknown method or field: `Plain.clone`'},
+		OwnershipModuleRejection{'defer_after_return_move', "
+fn take(s string) {
+	_ = s
+}
+
+fn make() string {
+	s := 'hello'.to_owned()
+	defer {
+		take(s)
+	}
+	return s
+}
+
+fn main() {
+	_ = make()
+}
+", 'take(s)', 'use of moved value: `s`'},
+		OwnershipModuleRejection{'blank_aggregate_sink_move', '
+struct Holder {
+	value string
+}
+
+fn main() {
+	h := Holder{value: "hello".to_owned()}
+	_ = h
+	t := h.value
+	_ = t
+}
+', 't := h.value', 'use of moved value: `h`'},
+		OwnershipModuleRejection{'channel_aggregate_send_move', '
+struct Holder {
+	value string
+}
+
+fn main() {
+	ch := chan Holder{cap: 1}
+	h := Holder{value: "hello".to_owned()}
+	ch <- h
+	t := h.value
+	_ = t
+}
+', 't := h.value', 'use of moved value: `h`'},
+	])
 }
