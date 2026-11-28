@@ -813,10 +813,16 @@ fn test_a_name_stands_for_its_nearest_declaration_implicit_ones_too() {
 }
 
 fn test_signature_help_marks_the_argument_under_the_cursor() {
+	lines := program.split('\n')
+	answers := ask_answers(work_dir, [
+		word_question(lines[56], 'fn^', 57, 'total', 0),
+		word_question(lines[56], 'fn^', 57, '2', 0),
+		word_question(lines[46], 'fn^', 47, '2', 0),
+	])
 	total_sig := '{"signatures":[{"label":"total(base int, nums ...int) int","parameters":[{"label":"base int"},{"label":"nums ...int"}]}],"activeSignature":0,'
-	assert ask(work_dir, 'fn^', 57, 'total', 0) == total_sig + '"activeParameter":0}'
-	assert ask(work_dir, 'fn^', 57, '2', 0) == total_sig + '"activeParameter":1}'
-	assert ask(work_dir, 'fn^', 47, '2', 0) == '{"signatures":[{"label":"divide(a int, b int) !int","parameters":[{"label":"a int"},{"label":"b int"}]}],"activeSignature":0,"activeParameter":1}'
+	assert answers[0] == total_sig + '"activeParameter":0}'
+	assert answers[1] == total_sig + '"activeParameter":1}'
+	assert answers[2] == '{"signatures":[{"label":"divide(a int, b int) !int","parameters":[{"label":"a int"},{"label":"b int"}]}],"activeSignature":0,"activeParameter":1}'
 }
 
 struct Details {
@@ -830,24 +836,24 @@ struct Detail {
 	declaration string
 }
 
-fn completion(line int, col int) []Detail {
-	answer := ask_at(os.join_path(work_dir, 'completion'), '${line}:${col}')
+fn completion_details(answer string) []Detail {
 	return (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details
 }
 
 fn test_completion_lists_members_after_a_dot() {
+	answers := ask_answers(os.join_path(work_dir, 'completion'), ['17:11', '18:17', '19:3'])
 	// `p.zz`, the cursor right after the dot.
-	members := completion(17, 11).map('${it.kind} ${it.label} ${it.detail}')
+	members := completion_details(answers[0]).map('${it.kind} ${it.label} ${it.detail}')
 	assert members == ['2 sum int', '5 x int', '5 y int']
 	// `strings.zz`: the public functions, types and consts of the module.
-	module_items := completion(18, 17)
+	module_items := completion_details(answers[1])
 	builder := module_items.filter(it.label == 'new_builder')
 	assert builder.len == 1
 	assert builder[0].kind == 3
 	assert builder[0].declaration == 'fn new_builder(initial_size int) strings.Builder'
 	assert module_items.any(it.label == 'Builder')
 	// On the name of a called function: that function.
-	called := completion(19, 3)
+	called := completion_details(answers[2])
 	assert called.len == 1 && called[0].label == 'println'
 }
 
@@ -929,6 +935,19 @@ fn ask_many(dir string, questions []string) []string {
 	answer := run_line_info(dir, spec).trim_right('\n')
 	same_answer_in_method_form(dir, spec, answer.trim_space())
 	return answer.split('\n')
+}
+
+// ask_answers checks the response indexes and returns the answers in question order.
+fn ask_answers(dir string, questions []string) []string {
+	indexed := ask_many(dir, questions)
+	assert indexed.len == questions.len, indexed.str()
+	mut answers := []string{cap: questions.len}
+	for i, response in indexed {
+		prefix := '${i}\t'
+		assert response.starts_with(prefix), response
+		answers << response[prefix.len..]
+	}
+	return answers
 }
 
 struct HoverExpectation {
@@ -1300,41 +1319,31 @@ fn test_a_server_child_that_grew_answers_its_last_question_and_leaves() {
 	assert p.code == 0
 }
 
-fn constrained(code string, line int, word string, nth int) string {
-	return ask(os.join_path(work_dir, 'constraints'), code, line, word, nth)
-}
-
-fn constrained_completion(line int, col int) []Detail {
-	answer := ask_at(os.join_path(work_dir, 'constraints'), '${line}:${col}')
-	if answer == '' {
-		return []
-	}
-	return (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details
-}
-
 fn test_a_constrained_value_has_the_members_of_its_constraint() {
+	text := constraints_program.split('\n')[19]
+	answers := ask_answers(os.join_path(work_dir, 'constraints'), [
+		'23:11',
+		word_question(text, 'hv^', 20, 'name', 0),
+		word_question(text, 'gd^', 20, 'name', 0),
+		'28:11',
+	])
 	// `a.zz` in `longest[T Named]`: what `Named` declares.
-	members := constrained_completion(23, 11).map('${it.kind} ${it.label} ${it.detail}')
+	members := completion_details(answers[0]).map('${it.kind} ${it.label} ${it.detail}')
 	assert members == ['2 greet string', '5 name string'], members.str()
-	assert constrained('hv^', 20, 'name', 0) == '{"contents":{"kind":"markdown","value":"```v\\nname string\\n```"}}'
+	assert answers[1] == hover_of('name string')
 	// The field of the interface that declares it.
-	assert constrained('gd^', 20, 'name', 0) == 'main.v:4:1'
+	assert answers[2] == 'main.v:4:1'
 	// `x.zz` in `describe[T Number]`: what `int` and `f64` both have.
-	labels := constrained_completion(28, 11).map(it.label)
+	labels := completion_details(answers[3]).map(it.label)
 	assert 'str' in labels, labels.str()
 	assert 'hex' !in labels, labels.str()
 }
 
-fn closure(code string, line int, word string, nth int) string {
-	return ask(os.join_path(work_dir, 'closures'), code, line, word, nth)
-}
-
-fn closure_completion(line int, col int) []string {
-	answer := ask_at(os.join_path(work_dir, 'closures'), '${line}:${col}')
+fn closure_members(answer string) []string {
 	if answer == '' {
 		return []
 	}
-	return (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details.map('${it.kind} ${it.label} ${it.detail}')
+	return completion_details(answer).map('${it.kind} ${it.label} ${it.detail}')
 }
 
 fn hover_of(text string) string {
@@ -1344,45 +1353,74 @@ fn hover_of(text string) string {
 fn test_the_implicit_variables_and_lambdas_of_a_constrained_body_have_its_members() {
 	// `it`, `a` and `b` of an array method over a `[]T`, and the parameter of a
 	// lambda there, are values of `T`: they have what `Named` declares.
+	dir := os.join_path(work_dir, 'closures')
+	lines := closures_program.split('\n')
+	questions := [
+		'18:19',
+		'19:20',
+		'21:21',
+		word_question(lines[19], 'hv^', 20, 'it', 0),
+		word_question(lines[18], 'hv^', 19, 'a', 0),
+		word_question(lines[20], 'hv^', 21, 'x', 1),
+	]
+	answers := ask_answers(dir, questions)
 	named := ['2 greet string', '5 name string']
-	assert closure_completion(18, 19) == named
-	assert closure_completion(19, 20) == named
-	assert closure_completion(21, 21) == named
-	assert closure('hv^', 20, 'it', 0) == hover_of('it T\\nT: implements main.Named')
-	assert closure('hv^', 19, 'a', 0) == hover_of('a T\\nT: implements main.Named')
-	assert closure('hv^', 21, 'x', 1) == hover_of('x T\\nT: implements main.Named')
+	for i, answer in answers[..3] {
+		assert closure_members(answer) == named, questions[i]
+	}
+	assert answers[3] == hover_of('it T\\nT: implements main.Named')
+	assert answers[4] == hover_of('a T\\nT: implements main.Named')
+	assert answers[5] == hover_of('x T\\nT: implements main.Named')
 	// The parameter of a lambda is where its uses are declared, in any body.
-	assert closure('gd^', 21, 'x', 1) == 'main.v:21:16'
-	assert closure('gd^', 26, 'u', 1) == 'main.v:26:20'
-	assert closure('hv^', 26, 'u', 1) == hover_of('u main.User')
+	assert ask(dir, 'gd^', 21, 'x', 1) == 'main.v:21:16'
+	assert ask(dir, 'gd^', 26, 'u', 1) == 'main.v:26:20'
+	assert ask(dir, 'hv^', 26, 'u', 1) == hover_of('u main.User')
 	// `err` of an `or {}` in a generic body: an `IError`.
-	errs := closure_completion(37, 14).map(it.all_after(' ').all_before(' '))
+	errs := closure_members(ask_at(dir, '37:14')).map(it.all_after(' ').all_before(' '))
 	assert 'msg' in errs && 'code' in errs, errs.str()
 }
 
 fn test_a_field_of_a_constrained_type_has_the_members_of_its_constraint() {
 	// `b.item.name` in `fn (b Box[T]) label()`, `item T` of `Box[T Named]`.
-	assert constrained('hv^', 50, 'name', 0) == '{"contents":{"kind":"markdown","value":"```v\\nname string\\n```"}}'
-	assert constrained('gd^', 50, 'name', 0) == 'main.v:4:1'
-	members := constrained_completion(50, 29).map('${it.kind} ${it.label} ${it.detail}')
+	text := constraints_program.split('\n')[49]
+	answers := ask_answers(os.join_path(work_dir, 'constraints'), [
+		word_question(text, 'hv^', 50, 'name', 0),
+		word_question(text, 'gd^', 50, 'name', 0),
+		'50:29',
+	])
+	assert answers[0] == hover_of('name string')
+	assert answers[1] == 'main.v:4:1'
+	members := completion_details(answers[2]).map('${it.kind} ${it.label} ${it.detail}')
 	assert members == ['2 greet string', '5 name string'], members.str()
 }
 
 fn test_a_constraint_name_has_a_definition_and_a_hover() {
+	lines := constraints_program.split('\n')
+	answers := ask_answers(os.join_path(work_dir, 'constraints'), [
+		word_question(lines[26], 'gd^', 27, 'Number', 0),
+		word_question(lines[26], 'hv^', 27, 'Number', 0),
+		word_question(lines[16], 'gd^', 17, 'Number', 0),
+		word_question(lines[18], 'gd^', 19, 'Named', 0),
+	])
 	// `Number` in `describe[T Number]`: the sum type, `type Number = int | f64`.
-	assert constrained('gd^', 27, 'Number', 0) == 'main.v:17:5'
-	assert constrained('hv^', 27, 'Number', 0) == '{"contents":{"kind":"markdown","value":"```v\\ntype Number = int | f64\\n```"}}'
+	assert answers[0] == 'main.v:17:5'
+	assert answers[1] == hover_of('type Number = int | f64')
 	// On the name it declares: that declaration.
-	assert constrained('gd^', 17, 'Number', 0) == 'main.v:17:5'
+	assert answers[2] == 'main.v:17:5'
 	// `Named` in `longest[T Named]`: the interface, as any type written there.
-	assert constrained('gd^', 19, 'Named', 0) == 'main.v:3:10'
+	assert answers[3] == 'main.v:3:10'
 }
 
 fn test_a_compile_time_branch_in_a_constrained_body_leaves_the_queries_working() {
 	// `$if T is f64 {` in `half[T Number]`: the walk of the body narrows `T` in
 	// each branch, and the program still answers the editor's queries.
-	assert constrained('hv^', 37, 'Number', 0) == '{"contents":{"kind":"markdown","value":"```v\\ntype Number = int | f64\\n```"}}'
-	assert constrained('gd^', 39, 'x', 0) == 'main.v:37:18'
+	lines := constraints_program.split('\n')
+	answers := ask_answers(os.join_path(work_dir, 'constraints'), [
+		word_question(lines[36], 'hv^', 37, 'Number', 0),
+		word_question(lines[38], 'gd^', 39, 'x', 0),
+	])
+	assert answers[0] == hover_of('type Number = int | f64')
+	assert answers[1] == 'main.v:37:18'
 }
 
 fn test_many_compile_time_branches_in_constrained_bodies_leave_the_queries_working() {
@@ -1486,48 +1524,76 @@ fn decl_in_builtin_array(decl string) bool {
 	return decl.replace('\\', '/').contains('builtin/array.v:')
 }
 
+fn assert_same_array_method_declaration(method string, lines []string) {
+	questions := lines.map(word_question(it, 'gd^', functions_line(it), method, 0))
+	answers := ask_answers(os.join_path(work_dir, 'functions'), questions)
+	decl := answers[0]
+	assert decl_in_builtin_array(decl), decl
+	for i, answer in answers[1..] {
+		assert answer == decl, lines[i + 1]
+	}
+}
+
 fn test_a_member_of_a_generic_value_is_the_member_of_its_type() {
 	// `xs.map()` over `xs []T` in a generic body calls the `map` of every array:
 	// the declaration and the signature of `nums.map()` over an `[]int`.
-	map_decl := function('gd^', '\tprintln(nums.map(it * 2))', 'map', 0)
-	assert decl_in_builtin_array(map_decl), map_decl
-	assert function('gd^', '\tprintln(xs.map(count))', 'map', 0) == map_decl
-	assert function('gd^', '\treturn xs.map(|x| x.name.to_upper())', 'map', 0) == map_decl
-	// Over an array literal, whose elements the checker keeps no type for.
-	assert function('gd^', '\tprintln([3, 4].map(it + 1))', 'map', 0) == map_decl
+	assert_same_array_method_declaration('map', [
+		'\tprintln(nums.map(it * 2))',
+		'\tprintln(xs.map(count))',
+		'\treturn xs.map(|x| x.name.to_upper())',
+		// Over an array literal, whose elements the checker keeps no type for.
+		'\tprintln([3, 4].map(it + 1))',
+	])
 	assert function('hv^', '\tprintln([3, 4].map(it + 1))', 'it', 0) == hover_of('it int')
 	map_hover := function('hv^', '\tprintln(nums.map(it * 2))', 'map', 0)
 	assert map_hover.contains('fn map('), map_hover
 	assert function('hv^', '\tprintln(xs.map(count))', 'map', 0) == map_hover
-	filter_decl := function('gd^', '\tprintln(nums.filter(it > 1))', 'filter', 0)
-	assert decl_in_builtin_array(filter_decl), filter_decl
-	assert function('gd^', '\tprintln(xs.filter(it.name.len > 1))', 'filter', 0) == filter_decl
-	sort_decl := function('gd^', '\tsorted.sort(a < b)', 'sort', 0)
-	assert decl_in_builtin_array(sort_decl), sort_decl
-	assert function('gd^', '\txs.sort(a.name < b.name)', 'sort', 0) == sort_decl
+	assert_same_array_method_declaration('filter', [
+		'\tprintln(nums.filter(it > 1))',
+		'\tprintln(xs.filter(it.name.len > 1))',
+	])
+	assert_same_array_method_declaration('sort', [
+		'\tsorted.sort(a < b)',
+		'\txs.sort(a.name < b.name)',
+	])
 	// A method of a generic struct, called on a `Box[T]`.
 	label := functions_line('fn (b Box[T]) label() string {')
 	assert function('gd^', '\treturn b.label()', 'label', 0) == 'main.v:${label}:14'
 	assert function('hv^', '\treturn b.label()', 'label', 0) == hover_of('fn label() string')
 }
 
+fn function_hover_question(text string, word string) string {
+	return word_question(text, 'hv^', functions_line(text), word, 0)
+}
+
 fn test_the_callee_of_a_call_through_a_value_is_that_value() {
 	// A local that holds a function literal, a method value, an instance of a
 	// generic function and a parameter of a function type are described where
 	// they are called as where they are declared.
-	assert function('hv^', '\tprintln(double(4))', 'double', 0) == hover_of('double fn (int) int')
-	assert function('hv^', '\tprintln(g())', 'g', 0) == hover_of('g fn () string')
-	instance := function('hv^', '\tf := longest[User]', 'f', 0)
+	dir := os.join_path(work_dir, 'functions')
+	answers := ask_answers(dir, [
+		function_hover_question('\tprintln(double(4))', 'double'),
+		function_hover_question('\tprintln(g())', 'g'),
+		function_hover_question('\tf := longest[User]', 'f'),
+		function_hover_question("\tprintln(f(u, User{ name: 'bo' }).name)", 'f'),
+		function_hover_question('\treturn f(x)', 'f'),
+	])
+	assert answers[0] == hover_of('double fn (int) int')
+	assert answers[1] == hover_of('g fn () string')
+	instance := answers[2]
 	assert instance.contains('f fn ('), instance
-	assert function('hv^', "\tprintln(f(u, User{ name: 'bo' }).name)", 'f', 0) == instance
-	assert function('hv^', '\treturn f(x)', 'f', 0) == hover_of('f fn (int) int')
+	assert answers[3] == instance
+	assert answers[4] == hover_of('f fn (int) int')
 	// A generic function called with its type arguments is that function.
 	longest := functions_line('fn longest[T Named](a T, b T) T {')
 	assert function('hv^', '\tprintln(longest[User](u, u).name)', 'longest', 0) == hover_of('fn longest[T Named](a T, b T) T')
 	assert function('gd^', '\tprintln(longest[User](u, u).name)', 'longest', 0) == 'main.v:${longest}:3'
 	// A function literal in a generic body takes a `T`, written by its name.
-	assert function('hv^', '\tprintln(xs.map(count))', 'count', 0) == hover_of('count fn (T) int\\nT: implements main.Named')
-	assert function('hv^', '\tcount := fn (x T) int {', 'count', 0) == hover_of('count fn (T) int\\nT: implements main.Named')
+	count := hover_of('count fn (T) int\\nT: implements main.Named')
+	assert ask_answers(dir, [
+		function_hover_question('\tprintln(xs.map(count))', 'count'),
+		function_hover_question('\tcount := fn (x T) int {', 'count'),
+	]) == [count, count]
 }
 
 fn test_a_static_method_is_declared_by_its_name() {
@@ -1643,9 +1709,14 @@ fn test_a_call_of_a_generic_method_on_a_struct_literal_has_the_type_it_returns()
 	// the type that the literal writes.
 	source := 'module main\n\nstruct Host {}\n\nfn (h Host) first_of[T](xs []T) T {\n\treturn xs[0]\n}\n\nfn inside[A](values []A) A {\n\tinferred := Host{}.first_of(values)\n\ttyped := Host{}.first_of[A](values)\n\tprintln(typed)\n\treturn inferred\n}\n\nfn main() {\n\tprintln(inside([1]))\n}\n'
 	dir := program_dir('literal_receiver', source)
-	assert ask(dir, 'hv^', line_of(source, '\tinferred := Host{}.first_of(values)'), 'inferred',
-		0) == hover_of('inferred A')
-	assert ask(dir, 'hv^', line_of(source, '\ttyped := Host{}.first_of[A](values)'), 'typed', 0) == hover_of('typed A')
+	inferred := '\tinferred := Host{}.first_of(values)'
+	typed := '\ttyped := Host{}.first_of[A](values)'
+	answers := ask_answers(dir, [
+		word_question(inferred, 'hv^', line_of(source, inferred), 'inferred', 0),
+		word_question(typed, 'hv^', line_of(source, typed), 'typed', 0),
+	])
+	assert answers[0] == hover_of('inferred A')
+	assert answers[1] == hover_of('typed A')
 }
 
 // line_of is the 1-based number of the line of `source` that reads `text`.
@@ -1702,15 +1773,13 @@ struct Marker {}
 fn main() {}
 
 // Marker')
-	for dir, line in {
-		before_newline: 10
-		at_end:         7
-	} {
-		assert ask_at(dir, '${line}:gd^9') == '', dir
-		assert ask_at(dir, '${line}:hv^9') == '', dir
-	}
-	assert ask_at(before_newline, '6:gd^9') == 'main.v:3:7'
-	assert ask_at(before_newline, '6:hv^9') == hover_of('struct Marker')
+	assert ask_answers(before_newline, ['10:gd^9', '10:hv^9', '6:gd^9', '6:hv^9']) == [
+		'',
+		'',
+		'main.v:3:7',
+		hover_of('struct Marker'),
+	]
+	assert ask_answers(at_end, ['7:gd^9', '7:hv^9']) == ['', '']
 }
 
 // not_array_methods_program calls methods of a struct named like the array
@@ -3005,19 +3074,6 @@ fn main() {
 }
 "
 
-// narrowed asks about the `nth` `word` of the line of narrowing_program that
-// reads `text`.
-fn narrowed(code string, text string, word string, nth int) string {
-	dir := os.join_path(work_dir, 'narrowing')
-	if !os.exists(dir) {
-		os.mkdir_all(dir) or { panic(err) }
-		os.write_file(os.join_path(dir, 'main.v'), narrowing_program) or { panic(err) }
-	}
-	line := narrowing_program.split('\n').index(text) + 1
-	assert line > 0, '`${text}` is not a line of narrowing_program'
-	return ask(dir, code, line, word, nth)
-}
-
 fn test_a_value_of_a_type_parameter_shows_what_the_type_parameter_is_there() {
 	number3 := 'T: int | i64 | f64'
 	named := 'T: implements main.Named'
@@ -3055,37 +3111,56 @@ fn test_a_value_of_a_type_parameter_shows_what_the_type_parameter_is_there() {
 
 fn test_a_type_parameter_of_an_unknown_constraint_says_nothing_more() {
 	// `[T Nope]` is reported: its hover does not tell what `T` can be.
-	dir := os.join_path(work_dir, 'unknown_constraint')
-	os.mkdir_all(dir) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'module main\n\nfn wrong[T Nope](a T) T {\n\treturn a\n}\n\nfn main() {}\n') or {
-		panic(err)
-	}
-	assert ask(dir, 'hv^', 3, 'T', 0) == hover_of('[T Nope]')
-	assert ask(dir, 'hv^', 4, 'a', 0) == hover_of('a T')
+	source := 'module main\n\nfn wrong[T Nope](a T) T {\n\treturn a\n}\n\nfn main() {}\n'
+	assert_hovers('unknown_constraint', source, [
+		HoverExpectation{'fn wrong[T Nope](a T) T {', 'T', '[T Nope]'},
+		HoverExpectation{'\treturn a', 'a', 'a T'},
+	])
 }
 
 fn test_a_type_parameter_shows_its_constraint_and_what_it_is_there() {
 	half := 'fn half[T Number3](x T, y T, xs []T) f64 {'
+	half_line := line_of(narrowing_program, half)
+	condition := '\t\$if T is f64 {'
+	branch := '\t\tzero := T(0)'
+	call := '\tprintln(half(1.0, 2.0, [3.0]))'
+	answers := ask_answers(program_dir('narrowing', narrowing_program), [
+		word_question(half, 'hv^', half_line, 'T', 0),
+		word_question(half, 'hv^', half_line, 'T', 3),
+		word_question(condition, 'hv^', line_of(narrowing_program, condition), 'T', 0),
+		word_question(branch, 'hv^', line_of(narrowing_program, branch), 'T', 0),
+		word_question(call, 'hv^', line_of(narrowing_program, call), 'half', 0),
+	])
 	all := '[T Number3]\\nT: int | i64 | f64'
 	// Where it is declared, in the types of the parameters and in a `$if`.
-	assert narrowed('hv^', half, 'T', 0) == hover_of(all)
-	assert narrowed('hv^', half, 'T', 3) == hover_of(all)
-	assert narrowed('hv^', '\t\$if T is f64 {', 'T', 0) == hover_of(all)
+	assert answers[0] == hover_of(all)
+	assert answers[1] == hover_of(all)
+	assert answers[2] == hover_of(all)
 	// In the branch of that `$if`, `f64`.
-	assert narrowed('hv^', '\t\tzero := T(0)', 'T', 0) == hover_of('[T Number3]\\nT: f64')
+	assert answers[3] == hover_of('[T Number3]\\nT: f64')
 	// A function writes its type parameters, with their constraints.
-	assert narrowed('hv^', '\tprintln(half(1.0, 2.0, [3.0]))', 'half', 0) == hover_of('fn half[T Number3](x T, y T, xs []T) f64')
+	assert answers[4] == hover_of('fn half[T Number3](x T, y T, xs []T) f64')
 }
 
 fn test_a_value_in_the_condition_of_a_compile_time_if_is_a_value_there() {
+	t_check := '\t\t\$if t is f64 {'
+	y_check := '\t\$if y is User {'
+	x_check := '\t\$if x is f64 {'
+	comment := '\t// the value of t'
+	answers := ask_answers(program_dir('narrowing', narrowing_program), [
+		word_question(t_check, 'hv^', line_of(narrowing_program, t_check), 't', 0),
+		word_question(y_check, 'hv^', line_of(narrowing_program, y_check), 'y', 0),
+		word_question(x_check, 'hv^', line_of(narrowing_program, x_check), 'x', 0),
+		word_question(comment, 'hv^', line_of(narrowing_program, comment), 't', 0),
+	])
 	// The condition keeps `t` as text: it is the parameter, with what the `$if`s
 	// around it leave of `T`, not yet what this one decides.
-	assert narrowed('hv^', '\t\t\$if t is f64 {', 't', 0) == hover_of('t T\\nT: i64 | f64')
+	assert answers[0] == hover_of('t T\\nT: i64 | f64')
 	// A local that holds a `T`, and a parameter with no `$if` around it.
-	assert narrowed('hv^', '\t\$if y is User {', 'y', 0) == hover_of('y T\\nT: implements main.Named')
-	assert narrowed('hv^', '\t\$if x is f64 {', 'x', 0) == hover_of('x T\\nT: int | i64 | f64')
+	assert answers[1] == hover_of('y T\\nT: implements main.Named')
+	assert answers[2] == hover_of('x T\\nT: int | i64 | f64')
 	// The same word in a comment is no value.
-	assert narrowed('hv^', '\t// the value of t', 't', 0) == ''
+	assert answers[3] == ''
 }
 
 fn test_a_type_parameter_is_declared_in_the_list_of_its_declaration() {
@@ -3108,15 +3183,17 @@ fn test_a_type_parameter_is_declared_in_the_list_of_its_declaration() {
 }
 
 fn test_a_parameter_is_the_type_that_is_or_match_makes_it() {
-	// As a local is: `if s is Circle {` and a branch of `match s {`.
-	assert narrowed('hv^', '\t\treturn s.r', 's', 0) == hover_of('s main.Circle')
-	assert narrowed('hv^', '\t\tSquare { s.side }', 's', 0) == hover_of('s main.Square')
-	// An interface narrowed to a struct refers to the object the interface holds
-	// (master's #29058): `if n is User {` makes `n` a `&User`.
-	assert narrowed('hv^', '\t\treturn n.age', 'n', 0) == hover_of('n &main.User')
-	// Where it is declared, and outside those branches, its declared type.
-	assert narrowed('hv^', 'fn area(s Shape) f64 {', 's', 0) == hover_of('s main.Shape')
-	assert narrowed('hv^', '\treturn match s {', 's', 0) == hover_of('s main.Shape')
+	assert_hovers('narrowing', narrowing_program, [
+		// As a local is: `if s is Circle {` and a branch of `match s {`.
+		HoverExpectation{'\t\treturn s.r', 's', 's main.Circle'},
+		HoverExpectation{'\t\tSquare { s.side }', 's', 's main.Square'},
+		// An interface narrowed to a struct refers to the object the interface holds
+		// (master's #29058): `if n is User {` makes `n` a `&User`.
+		HoverExpectation{'\t\treturn n.age', 'n', 'n &main.User'},
+		// Where it is declared, and outside those branches, its declared type.
+		HoverExpectation{'fn area(s Shape) f64 {', 's', 's main.Shape'},
+		HoverExpectation{'\treturn match s {', 's', 's main.Shape'},
+	])
 }
 
 const skipped_branches_program = "module main
@@ -3697,26 +3774,21 @@ fn numbers[A Numeric, B Numeric](x A, y B) {
 fn main() {}
 '
 
-// joined_members lists the labels that completion offers after the `.` of the
-// line of joined_members_program that reads `text`.
-fn joined_members(text string) []string {
-	dir := program_dir('joined_members', joined_members_program)
-	dot := text.index('.') or { panic('`${text}` has no `.`') }
-	answer := ask_at(dir, '${line_of(joined_members_program, text)}:${dot + 1}')
-	assert answer != '', text
-	return (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details.map(it.label)
-}
-
 fn test_values_tested_together_offer_what_their_tests_leave_them() {
+	dir := program_dir('joined_members', joined_members_program)
+	questions := ['\t\tprintln(a.zz)', '\t\tprintln(b.zz)', '\t\tprintln(b.yy)', '\t\tprintln(x.zz)',
+		'\t\tprintln(y.zz)'].map('${line_of(joined_members_program, it)}:${it.index_u8(`.`) + 1}')
+	answers := ask_answers(dir, questions)
+	members := answers.map(completion_details(it).map(it.label))
 	// `$if a is User && b is Admin {`: `a` offers the members of a `User`, `b`
 	// those of an `Admin`. In `$else $if a is User {`, `b` is no `Admin`.
-	assert joined_members('\t\tprintln(a.zz)') == ['age', 'name']
-	assert joined_members('\t\tprintln(b.zz)') == ['level', 'name']
-	assert joined_members('\t\tprintln(b.yy)') == ['name']
+	assert members[0] == ['age', 'name']
+	assert members[1] == ['level', 'name']
+	assert members[2] == ['name']
 	// `in` and `!in`: `x` offers what `f32` and `f64` both have, `y` what `int`
 	// and `i8` both have.
-	assert joined_members('\t\tprintln(x.zz)') == ['eq_epsilon', 'str', 'strg', 'strlong', 'strsci']
-	assert joined_members('\t\tprintln(y.zz)') == ['hex', 'hex_full', 'str']
+	assert members[3] == ['eq_epsilon', 'str', 'strg', 'strlong', 'strsci']
+	assert members[4] == ['hex', 'hex_full', 'str']
 }
 
 const generic_forms_program = "module main
@@ -3957,9 +4029,12 @@ fn test_a_type_parameter_without_a_constraint_is_what_a_compile_time_test_makes_
 	plain := '\treturn i.hex()'
 	branch_col := branch.index('u.hex') or { panic(branch) } + 2
 	plain_col := plain.index('i.hex') or { panic(plain) } + 2
-	offered := ask_at(dir, '${line_of(generic_forms_program, branch)}:${branch_col}')
-	assert offered != ''
-	assert offered == ask_at(dir, '${line_of(generic_forms_program, plain)}:${plain_col}')
+	answers := ask_answers(dir, [
+		'${line_of(generic_forms_program, branch)}:${branch_col}',
+		'${line_of(generic_forms_program, plain)}:${plain_col}',
+	])
+	assert answers[0] != ''
+	assert answers[0] == answers[1]
 }
 
 const method_values_program = "module main
@@ -4016,26 +4091,43 @@ fn main() {
 }
 "
 
-// method_value asks `code` about the `nth` `word` of the line of
-// method_values_program that reads `text`.
+// method_value asks a single question about method_values_program.
 fn method_value(code string, text string, word string, nth int) string {
-	return ask(program_dir('method_values', method_values_program), code, line_of(method_values_program,
-		text), word, nth)
+	return ask_at(program_dir('method_values', method_values_program),
+		method_value_question(code, text, word, nth))
+}
+
+fn method_value_question(code string, text string, word string, nth int) string {
+	return word_question(text, code, line_of(method_values_program, text), word, nth)
 }
 
 fn test_a_method_named_without_a_call_is_the_method() {
 	// `p.label` without a call is the method `label`, of a struct or of a
 	// generic struct, as `p.label()` is: its hover and its declaration.
-	for code in ['hv^', 'gd^'] {
-		plain := method_value(code, '\tprintln(p.label() + p.describe() + b.label())', 'label', 0)
-		boxed := method_value(code, '\tprintln(p.label() + p.describe() + b.label())', 'label', 1)
+	codes := ['hv^', 'gd^']
+	calls := '\tprintln(p.label() + p.describe() + b.label())'
+	mut questions := []string{cap: 10}
+	for code in codes {
+		questions << [
+			method_value_question(code, calls, 'label', 0),
+			method_value_question(code, calls, 'label', 1),
+			method_value_question(code, '\tplain_label := p.label', 'label', 0),
+			method_value_question(code, '\tbox_label := b.label', 'label', 0),
+			method_value_question(code, '\tagain := b.label', 'label', 0),
+		]
+	}
+	batched := ask_answers(program_dir('method_values', method_values_program), questions)
+	for i, code in codes {
+		answers := batched[i * 5..(i + 1) * 5]
+		plain := answers[0]
+		boxed := answers[1]
 		assert plain != '' && boxed != ''
 		if code == 'gd^' {
 			assert plain != boxed
 		}
-		assert method_value(code, '\tplain_label := p.label', 'label', 0) == plain
-		assert method_value(code, '\tbox_label := b.label', 'label', 0) == boxed
-		assert method_value(code, '\tagain := b.label', 'label', 0) == boxed
+		assert answers[2] == plain
+		assert answers[3] == boxed
+		assert answers[4] == boxed
 	}
 }
 
@@ -4125,30 +4217,40 @@ fn main() {
 }
 "
 
-// interface_method asks `code` about the `nth` `word` of the line of
-// interface_methods_program that reads `text`.
-fn interface_method(code string, text string, word string, nth int) string {
-	return ask(program_dir('interface_methods', interface_methods_program), code, line_of(interface_methods_program,
-		text), word, nth)
+fn interface_method_question(code string, text string, word string) string {
+	return word_question(text, code, line_of(interface_methods_program, text), word, 0)
 }
 
 fn test_a_method_of_an_interface_is_its_member_generic_or_not() {
 	// `a.less(b)` with `[T Comparable[T]]` calls the `less` of that interface,
 	// `s.get()` the `get` of `Shelf[T]` or of `Shelf[User]`, with the type
-	// arguments of the value; and so does a method named without a call.
+	// arguments of the value.
+	dir := program_dir('interface_methods', interface_methods_program)
 	less := '\treturn if a.less(b) { a } else { b }'
-	assert interface_method('hv^', less, 'less', 0) == hover_of('fn less(other T) bool')
-	assert interface_method('gd^', less, 'less', 0) == 'main.v:${line_of(interface_methods_program, '\tless(other T) bool')}:1'
+	get := '\treturn s.get()'
+	get_name := '\treturn s.get().name'
+	answers := ask_answers(dir, [
+		interface_method_question('hv^', less, 'less'),
+		interface_method_question('gd^', less, 'less'),
+		interface_method_question('hv^', get, 'get'),
+		interface_method_question('gd^', get, 'get'),
+		interface_method_question('hv^', get_name, 'get'),
+		interface_method_question('gd^', get_name, 'get'),
+	])
+	assert answers[0] == hover_of('fn less(other T) bool')
+	assert answers[1] == 'main.v:${line_of(interface_methods_program, '\tless(other T) bool')}:1'
 	get_at := 'main.v:${line_of(interface_methods_program, '\tget() T')}:1'
-	assert interface_method('hv^', '\treturn s.get()', 'get', 0) == hover_of('fn get() T')
-	assert interface_method('gd^', '\treturn s.get()', 'get', 0) == get_at
-	assert interface_method('hv^', '\treturn s.get().name', 'get', 0) == hover_of('fn get() main.User')
-	assert interface_method('gd^', '\treturn s.get().name', 'get', 0) == get_at
+	assert answers[2] == hover_of('fn get() T')
+	assert answers[3] == get_at
+	assert answers[4] == hover_of('fn get() main.User')
+	assert answers[5] == get_at
+	// A method named without a call also refers to the interface member.
+	greeter := '\tgreeter := n.greet'
 	greet_at := 'main.v:${line_of(interface_methods_program, '\tgreet() string')}:1'
-	assert interface_method('hv^', '\tgreeter := n.greet', 'greet', 0) == hover_of('fn greet() string')
-	assert interface_method('gd^', '\tgreeter := n.greet', 'greet', 0) == greet_at
+	assert ask_at(dir, interface_method_question('hv^', greeter, 'greet')) == hover_of('fn greet() string')
+	assert ask_at(dir, interface_method_question('gd^', greeter, 'greet')) == greet_at
 	// As before: a method of an interface, called on a value of it or of a type
 	// parameter that it constrains.
-	assert interface_method('hv^', '\treturn n.greet() + greeter()', 'greet', 0) == hover_of('fn greet() string')
-	assert interface_method('gd^', '\treturn x.greet()', 'greet', 0) == greet_at
+	assert ask_at(dir, interface_method_question('hv^', '\treturn n.greet() + greeter()', 'greet')) == hover_of('fn greet() string')
+	assert ask_at(dir, interface_method_question('gd^', '\treturn x.greet()', 'greet')) == greet_at
 }

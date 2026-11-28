@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import queue
 import shutil
+import stat
 import subprocess
 import tempfile
 import threading
@@ -32,9 +33,9 @@ def git(cwd, *args):
     return subprocess.check_output(["git", "-C", str(cwd), *args]).strip()
 
 
-def lock_for_read(path):
-    # Permit ordinary reads but prohibit writes and renaming/deleting.
-    handle = CREATE(str(path), 0x80000000, 1, None, 3, 0x80, None)
+def lock_for_read(path, share=1):
+    # Deny deletion, optionally permitting writes as well as reads.
+    handle = CREATE(str(path), 0x80000000, share, None, 3, 0x80, None)
     if handle == INVALID_HANDLE:
         raise ctypes.WinError(ctypes.get_last_error())
     return handle
@@ -60,8 +61,10 @@ def replay(script, mode):
                         destination)
         original = destination.read_bytes()
         handle = None
-        if mode in ("baseline-lock", "release-lock", "persistent-lock"):
-            handle = lock_for_read(destination)
+        if mode in ("baseline-lock", "upstream-lock", "release-lock", "release-delete-only", "persistent-lock"):
+            handle = lock_for_read(destination, 3 if mode == "release-delete-only" else 1)
+        if mode == "read-only":
+            destination.chmod(stat.S_IREAD)
         output = []
         events = queue.Queue()
         process = None
@@ -95,17 +98,17 @@ def replay(script, mode):
                 print(line, end="", flush=True)
                 if MARKER in line:
                     saw_retry = True
-                    if mode == "release-lock" and handle is not None:
+                    if mode in ("release-lock", "release-delete-only") and handle is not None:
                         assert destination.read_bytes() == original
                         assert CLOSE(handle)
                         handle = None
             status = process.wait(timeout=10)
             print(f"mode={mode} status={status} retry={saw_retry}", flush=True)
-            if mode in ("release-lock", "unlocked"):
+            if mode in ("release-lock", "release-delete-only", "unlocked"):
                 assert status == 0, "".join(output)
                 assert hashlib.sha256(destination.read_bytes()).hexdigest() == expected
                 assert not (work / "vprod.exe").exists()
-                assert saw_retry == (mode == "release-lock")
+                assert saw_retry == (mode in ("release-lock", "release-delete-only"))
                 subprocess.run([str(destination), "version"], cwd=work, check=True)
             else:
                 assert status != 0, "unexpected publication success"
@@ -113,6 +116,8 @@ def replay(script, mode):
                 assert saw_retry == (mode == "persistent-lock")
                 if mode == "baseline-lock":
                     assert "Move-Item" in "".join(output), "".join(output)
+                if mode == "upstream-lock":
+                    assert "Access to the path is denied" in "".join(output), "".join(output)
                 if mode == "bad-checksum":
                     assert "Compiler checksum does not match" in "".join(output)
         finally:
@@ -121,6 +126,8 @@ def replay(script, mode):
                 process.wait(timeout=10)
             if handle is not None:
                 assert CLOSE(handle)
+            if mode == "read-only":
+                destination.chmod(stat.S_IREAD | stat.S_IWRITE)
 
 
 if __name__ == "__main__":
@@ -128,5 +135,9 @@ if __name__ == "__main__":
         baseline = Path(tmp) / "prepare_v.ps1"
         baseline.write_bytes(git(ROOT, "show", BASELINE + ":" + SCRIPT) + b"\n")
         replay(baseline, "baseline-lock")
-    for mode in ("unlocked", "release-lock", "persistent-lock", "bad-checksum"):
+    with tempfile.TemporaryDirectory(prefix="prepare-v-upstream-") as tmp:
+        upstream = Path(tmp) / "prepare_v.ps1"
+        upstream.write_bytes(git(ROOT, "show", "d1d9c1aab01a87be8ed4025355e1ddedd6edabfa:" + SCRIPT) + b"\n")
+        replay(upstream, "upstream-lock")
+    for mode in ("unlocked", "release-lock", "release-delete-only", "persistent-lock", "read-only", "bad-checksum"):
         replay(ROOT / SCRIPT, mode)

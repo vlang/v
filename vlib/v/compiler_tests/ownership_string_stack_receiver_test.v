@@ -4,35 +4,50 @@ fn test_ownership_stack_string_receiver_views_keep_local_storage_diagnostics() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_stack_string_receivers_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	for fixture in [
-		'fn escaped_vstring() string {
+	fixtures := {
+		'direct.v': 'fn escaped_vstring() string {
  local := [u8(97), 98, 99, 0]!
  return unsafe { (&local[0]).vstring() }
 }
-fn main() {}
-',
-		'fn escaped() string {
+'
+		'view.v':   'fn escaped_view() string {
  local := [u8(97), 98, 99, 0]!
  view := unsafe { (&local[0]).vstring() }
  return view
 }
-fn main() {}
-',
-		'struct Holder { text string }
-fn escaped() Holder {
+'
+		'holder.v': 'struct Holder { text string }
+fn escaped_holder() Holder {
  local := [u8(97), 98, 99, 0]!
  holder := Holder{text: unsafe { (&local[0]).vstring() }}
  return holder
 }
-fn main() {}
-',
-	] {
-		os.write_file(source, fixture)!
-		for mode in ['-no-parallel', ''] {
-			result := run_owned_string_storage(source, mode, '-check')
-			assert result.exit_code != 0, '${mode}: ${result.output}'
-			assert result.output.contains('cannot return a reference to local storage `local`'), '${mode}: ${result.output}'
+'
+	}
+	expected := 'cannot return a reference to local storage `local`'
+	// Custom flags can limit diagnostics or change their format.
+	if os.getenv('VFLAGS').trim_space() !in ['', '-gc none'] {
+		source := os.join_path(root, 'main.v')
+		for _, fixture in fixtures {
+			os.write_file(source, fixture + 'fn main() {}\n')!
+			for mode in ['-no-parallel', ''] {
+				result := run_owned_string_storage(source, mode, '-check')
+				assert result.exit_code != 0, result.output
+				assert result.output.contains(expected), result.output
+			}
+		}
+		return
+	}
+	os.write_file(os.join_path(root, 'main.v'), 'fn main() {}\n')!
+	for file, fixture in fixtures {
+		os.write_file(os.join_path(root, file), fixture)!
+	}
+	for mode in ['-no-parallel', ''] {
+		result := run_owned_string_storage(root, mode, '-check', '-nocolor')
+		assert result.exit_code != 0, result.output
+		diagnostics := result.output.split_into_lines()
+		for file, _ in fixtures {
+			assert diagnostics.any(it.contains('${file}:') && it.ends_with(': error: ' + expected)), result.output
 		}
 	}
 }
@@ -77,9 +92,9 @@ fn main() {
 	}
 }
 
-fn run_owned_string_storage(source string, mode string, command string) os.Result {
+fn run_owned_string_storage(source string, mode string, command string, flags ...string) os.Result {
 	mut args := [@VEXE, '-no-retry-compilation', '-nocache', '-ownership', '-d', 'ownership']
 	if mode != '' { args << mode }
-	args << [command, source]
+	args << [...flags, command, source]
 	return os.exec(args)
 }

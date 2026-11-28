@@ -30,6 +30,12 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $blob -cne '8e65a457996f47821a308c12ac4d31f212914260') {
             throw 'Baseline script differs from the historical failure'
           }
+          git fetch --depth=1 origin d1d9c1aab01a87be8ed4025355e1ddedd6edabfa
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch upstream control' }
+          $blob = git rev-parse 'd1d9c1aab01a87be8ed4025355e1ddedd6edabfa:.github/workflows/prepare_v.ps1'
+          if ($LASTEXITCODE -ne 0 -or $blob -cne 'e6df4b9cdbca1247e2bdb0ff219c7271f2381884') {
+            throw 'Upstream control script differs'
+          }
       - name: Build optimized V
         uses: ./.github/actions/setup-v
         with:
