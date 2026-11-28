@@ -3322,13 +3322,6 @@ fn main() {
 }
 "
 
-// skipped asks about the `nth` `word` of the line of skipped_branches_program
-// that reads `text`.
-fn skipped(code string, text string, word string, nth int) string {
-	dir := program_dir('skipped_branches', skipped_branches_program)
-	return ask_at(dir, skipped_question(code, text, word, nth))
-}
-
 fn skipped_question(code string, text string, word string, nth int) string {
 	return word_question(text, code, line_of(skipped_branches_program, text), word, nth)
 }
@@ -3355,17 +3348,28 @@ fn test_a_branch_that_the_parse_left_out_answers_as_the_others_do() {
 	assert answers[4] == 'main.v:9:10'
 	// A local of the code that is checked, a field of its type, and a parameter.
 	joined_line := '\t\treturn parts.join(separator.integer)'
-	assert skipped('hv^', joined_line, 'separator', 0) == hover_of('separator main.Separator')
-	assert skipped('hv^', joined_line, 'integer', 0) == hover_of('integer string')
-	assert skipped('hv^', joined_line, 'parts', 0) == hover_of('parts []string')
-	assert skipped('gd^', joined_line, 'separator', 0) == 'main.v:24:1'
+	joined_hovers := ask_answers(dir, [
+		skipped_question('hv^', joined_line, 'separator', 0),
+		skipped_question('hv^', joined_line, 'integer', 0),
+		skipped_question('hv^', joined_line, 'parts', 0),
+	])
+	assert joined_hovers == [
+		hover_of('separator main.Separator'),
+		hover_of('integer string'),
+		hover_of('parts []string'),
+	]
+	assert ask_at(dir, skipped_question('gd^', joined_line, 'separator', 0)) == 'main.v:24:1'
 	// The branch of a flag that is not defined: a parameter, a local declared
 	// before it, and one declared in it.
 	flag_line := '\t\treturn doubled + count'
-	assert skipped('hv^', flag_line, 'count', 0) == hover_of('count int')
-	assert skipped('hv^', '\t\tdoubled := total * 2', 'total', 0) == hover_of('total int')
-	assert skipped('gd^', '\t\tdoubled := total * 2', 'total', 0) == 'main.v:34:1'
-	assert skipped('gd^', flag_line, 'doubled', 0) == 'main.v:36:2'
+	doubled_line := '\t\tdoubled := total * 2'
+	flag_answers := ask_answers(dir, [
+		skipped_question('hv^', flag_line, 'count', 0),
+		skipped_question('hv^', doubled_line, 'total', 0),
+		skipped_question('gd^', doubled_line, 'total', 0),
+		skipped_question('gd^', flag_line, 'doubled', 0),
+	])
+	assert flag_answers == [hover_of('count int'), hover_of('total int'), 'main.v:34:1', 'main.v:36:2']
 	// The code that is checked answers as before, also in a process that added
 	// the nodes of the left-out branches for an earlier question: its own nodes
 	// come first.
