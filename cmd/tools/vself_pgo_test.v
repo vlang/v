@@ -43,10 +43,27 @@ printf "TRAIN jobs=%s args=%s\n" "$VJOBS" "$*" >> "$VSELF_PGO_TEST_LOG"
 if [ -n "${VFLAGS-}" ] || [ -n "${VEXE-}" ]; then exit 3; fi
 if [ -n "${LLVM_PROFILE_FILE-}" ]; then exit 6; fi
 if [ "$VSELF_PGO_TEST_FAIL" = "1" ]; then exit 5; fi
+pair=c
 case "$*" in
-    *"-b fastc "*) if [ "${VSELF_PGO_TEST_FAIL_FASTC-}" = "1" ]; then exit 7; fi ;;
+    *"-b fastc "*) pair=fastc; if [ "${VSELF_PGO_TEST_FAIL_FASTC-}" = "1" ]; then exit 7; fi ;;
 esac
-printf "profile\n" > "$(dirname "$0")/profile/training-$VJOBS.profraw"
+# The VJOBS=1 run of a pair must run beside the parallel one.
+if [ "$VJOBS" = "1" ]; then
+    : > "$(dirname "$0")/serial-$pair-started"
+else
+    case "$*" in
+        *-no-parallel*) ;;
+        *)
+            tries=0
+            while [ ! -e "$(dirname "$0")/serial-$pair-started" ]; do
+                tries=$((tries + 1))
+                if [ $tries -gt 600 ]; then exit 8; fi
+                sleep 0.05
+            done
+            ;;
+    esac
+fi
+printf "profile\n" > "$(dirname "$0")/profile/training-$pair-$VJOBS.profraw"
 '
 		'bin/clang':              '#!/bin/sh\nprintf "clang version mock\\n"\n'
 		'bin/gcc':                '#!/bin/sh\nprintf "gcc (GCC) mock\\n"\n'
@@ -83,13 +100,19 @@ done
 	build_calls := lines.filter(it.starts_with('BUILD '))
 	assert build_calls[0].contains('-fprofile-update=atomic'), calls
 	assert !build_calls[1].contains('-fprofile-update=atomic'), calls
+	assert build_calls[0].contains('-cflags -fno-lto '), calls
+	assert !build_calls[1].contains('-fno-lto'), calls
 	assert lines.filter(it.starts_with('TRAIN ')).len == 4, calls
 	assert lines.filter(it.starts_with('TRAIN ') && it.contains('-b fastc ')).len == 2, calls
 	for jobs in ['1', '2'] {
 		job_training := lines.filter(it.starts_with('TRAIN jobs=${jobs} '))
+		// Runs that execute at the same time write different outputs.
+		serial := if jobs == '1' { 'serial_' } else { '' }
 		assert job_training.len == 2, calls
-		assert job_training.filter(it.contains('-b fastc ') && it.contains('/cmd_v_fastc_training.c ')).len == 1, calls
-		assert job_training.filter(!it.contains('-b fastc ') && it.contains('/cmd_v_training.c ')).len == 1, calls
+		assert job_training.filter(it.contains('-b fastc ')
+			&& it.contains('/cmd_v_fastc_${serial}training.c ')).len == 1, calls
+		assert job_training.filter(!it.contains('-b fastc ')
+			&& it.contains('/cmd_v_${serial}training.c ')).len == 1, calls
 	}
 	for training in lines.filter(it.starts_with('TRAIN ')) {
 		assert !training.contains('-prod '), training
