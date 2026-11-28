@@ -1562,217 +1562,6 @@ fn main() {
 ")
 	assert ok_nested_fn_literal_return.exit_code == 0, ok_nested_fn_literal_return.output
 
-	fail_method_param := run_ownership_check(v3_bin, 'return_method_param', "
-struct Helper {}
-
-fn (h Helper) pass(s string) string {
-	_ = h
-	return s
-}
-
-fn main() {
-	h := Helper{}
-	s1 := 'hello'.to_owned()
-	s2 := h.pass(s1)
-	s3 := s2
-	println(s2)
-	_ = s3
-}
-")
-	assert fail_method_param.exit_code != 0
-	assert fail_method_param.output.contains('use of moved value: `s2`'), fail_method_param.output
-
-	fail_choose_param := run_ownership_check(v3_bin, 'return_any_param', "
-fn choose(cond bool, a string, b string) string {
-	if cond {
-		return a
-	}
-	return b
-}
-
-fn main() {
-	cond := true
-	owned := 'hello'.to_owned()
-	s1 := choose(cond, owned, '')
-	s2 := s1
-	println(s1)
-	_ = s2
-}
-")
-	assert fail_choose_param.exit_code != 0
-	assert fail_choose_param.output.contains('use of moved value: `s1`'), fail_choose_param.output
-
-	fail_wrapper_param := run_ownership_check(v3_bin, 'return_param_wrapper', "
-fn wrap(s string) string {
-	return pass(s)
-}
-
-fn main() {
-	owned := 'hello'.to_owned()
-	x := wrap(owned)
-	y := x
-	println(x)
-	_ = y
-}
-
-fn pass(s string) string {
-	return s
-}
-")
-	assert fail_wrapper_param.exit_code != 0
-	assert fail_wrapper_param.output.contains('use of moved value: `x`'), fail_wrapper_param.output
-
-	fail_return_field_literal_arg := run_ownership_check(v3_bin, 'return_field_literal_arg', "
-struct Holder {
-	value string
-}
-
-fn get(h Holder) string {
-	return h.value
-}
-
-fn main() {
-	s := 'field'.to_owned()
-	x := get(Holder{value: s})
-	y := x
-	println(x)
-	_ = y
-}
-")
-	assert fail_return_field_literal_arg.exit_code != 0
-	assert fail_return_field_literal_arg.output.contains('use of moved value: `x`'), fail_return_field_literal_arg.output
-
-	fail_return_field_call_arg := run_ownership_check(v3_bin, 'return_field_call_arg', "
-struct Holder {
-	value string
-}
-
-fn make(s string) Holder {
-	return Holder{value: s}
-}
-
-fn get(h Holder) string {
-	return h.value
-}
-
-fn main() {
-	s := 'field'.to_owned()
-	x := get(make(s))
-	y := x
-	println(x)
-	_ = y
-}
-")
-	assert fail_return_field_call_arg.exit_code != 0
-	assert fail_return_field_call_arg.output.contains('use of moved value: `x`'), fail_return_field_call_arg.output
-
-	fail_return_field_value_receiver := run_ownership_check(v3_bin, 'return_field_value_receiver', "
-struct Holder {
-	value string
-}
-
-fn (h Holder) get() string {
-	return h.value
-}
-
-fn main() {
-	s := 'field'.to_owned()
-	x := Holder{value: s}.get()
-	y := x
-	println(x)
-	_ = y
-}
-")
-	assert fail_return_field_value_receiver.exit_code != 0
-	assert fail_return_field_value_receiver.output.contains('use of moved value: `x`'), fail_return_field_value_receiver.output
-
-	fail_variadic_return_elem := run_ownership_check(v3_bin, 'return_variadic_elem_arg', "
-fn main() {
-	owned := 'field'.to_owned()
-	x := pick('', owned)
-	y := x
-	println(x)
-	_ = y
-}
-
-fn pick(xs ...string) string {
-	return xs[1]
-}
-")
-	assert fail_variadic_return_elem.exit_code != 0
-	assert fail_variadic_return_elem.output.contains('use of moved value: `x`'), fail_variadic_return_elem.output
-
-	fail_params_field_return := run_ownership_check(v3_bin, 'return_params_field_arg', "
-@[params]
-struct Cfg {
-	s string
-}
-
-fn main() {
-	owned := 'field'.to_owned()
-	x := get(s: owned)
-	y := x
-	println(x)
-	_ = y
-}
-
-fn get(cfg Cfg) string {
-	return cfg.s
-}
-")
-	assert fail_params_field_return.exit_code != 0
-	assert fail_params_field_return.output.contains('use of moved value: `x`'), fail_params_field_return.output
-
-	fail_multi_return := run_ownership_check(v3_bin, 'multi_return_owned_slot', "
-fn make() (string, int) {
-	return 'hello'.to_owned(), 0
-}
-
-fn main() {
-	s, _ := make()
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert fail_multi_return.exit_code != 0
-	assert fail_multi_return.output.contains('use of moved value: `s`'), fail_multi_return.output
-
-	fail_multi_return_param := run_ownership_check(v3_bin, 'multi_return_param_slot', "
-fn main() {
-	owned := 'hello'.to_owned()
-	s1, _ := pass(owned)
-	s2 := s1
-	println(s1)
-	_ = s2
-}
-
-fn pass(s string) (string, int) {
-	return s, 0
-}
-")
-	assert fail_multi_return_param.exit_code != 0
-	assert fail_multi_return_param.output.contains('use of moved value: `s1`'), fail_multi_return_param.output
-
-	fail_multi_return_wrapper := run_ownership_check(v3_bin, 'multi_return_wrapper_slot', "
-fn main() {
-	_, s := wrap()
-	t := s
-	println(s)
-	_ = t
-}
-
-fn wrap() (int, string) {
-	return make()
-}
-
-fn make() (int, string) {
-	return 0, 'hello'.to_owned()
-}
-")
-	assert fail_multi_return_wrapper.exit_code != 0
-	assert fail_multi_return_wrapper.output.contains('use of moved value: `s`'), fail_multi_return_wrapper.output
-
 	fail_multi_return_reassign := run_ownership_check(v3_bin, 'multi_return_reassign_owned_slot', "
 fn make() (string, int) {
 	return 'hello'.to_owned(), 0
@@ -2165,6 +1954,224 @@ fn main() {
 ")
 	assert fail_fn_literal_return.exit_code != 0
 	assert fail_fn_literal_return.output.contains('use of moved value: `s`'), fail_fn_literal_return.output
+}
+
+struct OwnershipReturnRejection {
+	name        string
+	source      string
+	moved_value string
+}
+
+fn test_ownership_return_move_rejections() {
+	cases := [
+		OwnershipReturnRejection{'return_method_param', "
+struct Helper {}
+
+fn (h Helper) pass(s string) string {
+	_ = h
+	return s
+}
+
+fn main() {
+	h := Helper{}
+	s1 := 'hello'.to_owned()
+	s2 := h.pass(s1)
+	s3 := s2
+	println(s2)
+	_ = s3
+}
+", 's2'},
+		OwnershipReturnRejection{'return_any_param', "
+fn choose(cond bool, a string, b string) string {
+	if cond {
+		return a
+	}
+	return b
+}
+
+fn main() {
+	cond := true
+	owned := 'hello'.to_owned()
+	s1 := choose(cond, owned, '')
+	s2 := s1
+	println(s1)
+	_ = s2
+}
+", 's1'},
+		OwnershipReturnRejection{'return_param_wrapper', "
+fn wrap(s string) string {
+	return pass(s)
+}
+
+fn main() {
+	owned := 'hello'.to_owned()
+	x := wrap(owned)
+	y := x
+	println(x)
+	_ = y
+}
+
+fn pass(s string) string {
+	return s
+}
+", 'x'},
+		OwnershipReturnRejection{'return_field_literal_arg', "
+struct Holder {
+	value string
+}
+
+fn get(h Holder) string {
+	return h.value
+}
+
+fn main() {
+	s := 'field'.to_owned()
+	x := get(Holder{value: s})
+	y := x
+	println(x)
+	_ = y
+}
+", 'x'},
+		OwnershipReturnRejection{'return_field_call_arg', "
+struct Holder {
+	value string
+}
+
+fn make(s string) Holder {
+	return Holder{value: s}
+}
+
+fn get(h Holder) string {
+	return h.value
+}
+
+fn main() {
+	s := 'field'.to_owned()
+	x := get(make(s))
+	y := x
+	println(x)
+	_ = y
+}
+", 'x'},
+		OwnershipReturnRejection{'return_field_value_receiver', "
+struct Holder {
+	value string
+}
+
+fn (h Holder) get() string {
+	return h.value
+}
+
+fn main() {
+	s := 'field'.to_owned()
+	x := Holder{value: s}.get()
+	y := x
+	println(x)
+	_ = y
+}
+", 'x'},
+		OwnershipReturnRejection{'return_variadic_elem_arg', "
+fn main() {
+	owned := 'field'.to_owned()
+	x := pick('', owned)
+	y := x
+	println(x)
+	_ = y
+}
+
+fn pick(xs ...string) string {
+	return xs[1]
+}
+", 'x'},
+		OwnershipReturnRejection{'return_params_field_arg', "
+@[params]
+struct Cfg {
+	s string
+}
+
+fn main() {
+	owned := 'field'.to_owned()
+	x := get(s: owned)
+	y := x
+	println(x)
+	_ = y
+}
+
+fn get(cfg Cfg) string {
+	return cfg.s
+}
+", 'x'},
+		OwnershipReturnRejection{'multi_return_owned_slot', "
+fn make() (string, int) {
+	return 'hello'.to_owned(), 0
+}
+
+fn main() {
+	s, _ := make()
+	t := s
+	println(s)
+	_ = t
+}
+", 's'},
+		OwnershipReturnRejection{'multi_return_param_slot', "
+fn main() {
+	owned := 'hello'.to_owned()
+	s1, _ := pass(owned)
+	s2 := s1
+	println(s1)
+	_ = s2
+}
+
+fn pass(s string) (string, int) {
+	return s, 0
+}
+", 's1'},
+		OwnershipReturnRejection{'multi_return_wrapper_slot', "
+fn main() {
+	_, s := wrap()
+	t := s
+	println(s)
+	_ = t
+}
+
+fn wrap() (int, string) {
+	return make()
+}
+
+fn make() (int, string) {
+	return 0, 'hello'.to_owned()
+}
+", 's'},
+	]
+	root := os.join_path(ownership_work_dir, 'return_move_rejections')
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	mut rejected_lines := []int{cap: cases.len}
+	for case in cases {
+		dir := os.join_path(root, case.name)
+		os.mkdir_all(dir) or { panic(err) }
+		source := 'module ${case.name}\n' + case.source.replace_once('\nfn main() {',
+			'\npub fn exercise() {')
+		os.write_file(os.join_path(dir, '${case.name}.v'), source) or { panic(err) }
+		read_line := source.split_into_lines().index('\tprintln(${case.moved_value})')
+		assert read_line >= 0, '${case.name}: missing read of `${case.moved_value}`'
+		rejected_lines << read_line + 1
+		imports << 'import ${case.name}'
+		calls << '\t${case.name}.exercise()'
+	}
+	main_path := os.join_path(root, 'main.v')
+	os.write_file(main_path, '${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n') or {
+		panic(err)
+	}
+	result := os.exec([ownership_compiler, '-ownership', '-b', 'c', '-o', os.join_path(root, 'out'),
+		main_path])
+	assert result.exit_code != 0, result.output
+	diagnostics := result.output.split_into_lines().filter(it.contains(': error: use of moved value: '))
+	for i, case in cases {
+		location := '${case.name}.v:${rejected_lines[i]}:'
+		expected := 'use of moved value: `${case.moved_value}`'
+		assert diagnostics.any(it.contains(location) && it.contains(expected)), '${case.name}: expected `${expected}` at ${location}\n${result.output}'
+	}
 }
 
 fn test_ownership_static_call_return_metadata_reaches_wrapper() {
