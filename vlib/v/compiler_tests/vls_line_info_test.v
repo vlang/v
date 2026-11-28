@@ -789,22 +789,40 @@ fn shadowing(code string, line int, word string) string {
 }
 
 fn test_a_name_stands_for_its_nearest_declaration_implicit_ones_too() {
+	dir := os.join_path(work_dir, 'shadowing')
+	lines := shadowing_program.split('\n')
 	// The parameter `err`, and the `err` an `else` and an `or {}` declare in
 	// its function: a rename of the parameter changes the occurrences whose
 	// definition is the parameter only.
-	assert shadowing('gd^', 8, 'err') == 'main.v:7:8'
-	assert shadowing('gd^', 12, 'err') == 'main.v:11:8'
-	assert shadowing('gd^', 15, 'err') == 'main.v:14:17'
-	assert shadowing('hv^', 8, 'err').contains('err string')
-	assert shadowing('hv^', 12, 'err').contains('err IError')
-	assert shadowing('hv^', 15, 'err').contains('err IError')
+	err_answers := ask_answers(dir, [
+		word_question(lines[7], 'gd^', 8, 'err', 0),
+		word_question(lines[11], 'gd^', 12, 'err', 0),
+		word_question(lines[14], 'gd^', 15, 'err', 0),
+		word_question(lines[7], 'hv^', 8, 'err', 0),
+		word_question(lines[11], 'hv^', 12, 'err', 0),
+		word_question(lines[14], 'hv^', 15, 'err', 0),
+	])
+	assert err_answers[0] == 'main.v:7:8'
+	assert err_answers[1] == 'main.v:11:8'
+	assert err_answers[2] == 'main.v:14:17'
+	assert err_answers[3].contains('err string')
+	assert err_answers[4].contains('err IError')
+	assert err_answers[5].contains('err IError')
 	// Locals `it` and `a`, and those `.map()` and `.sort()` declare.
-	assert shadowing('gd^', 23, 'it') == 'main.v:23:16'
-	assert shadowing('hv^', 23, 'it').contains('it int')
-	assert shadowing('gd^', 24, 'it') == 'main.v:22:1'
-	assert shadowing('hv^', 24, 'it').contains('it string')
-	assert shadowing('gd^', 27, 'a') == 'main.v:27:4'
-	assert shadowing('gd^', 28, 'a') == 'main.v:25:1'
+	locals_answers := ask_answers(dir, [
+		word_question(lines[22], 'gd^', 23, 'it', 0),
+		word_question(lines[22], 'hv^', 23, 'it', 0),
+		word_question(lines[23], 'gd^', 24, 'it', 0),
+		word_question(lines[23], 'hv^', 24, 'it', 0),
+		word_question(lines[26], 'gd^', 27, 'a', 0),
+		word_question(lines[27], 'gd^', 28, 'a', 0),
+	])
+	assert locals_answers[0] == 'main.v:23:16'
+	assert locals_answers[1].contains('it int')
+	assert locals_answers[2] == 'main.v:22:1'
+	assert locals_answers[3].contains('it string')
+	assert locals_answers[4] == 'main.v:27:4'
+	assert locals_answers[5] == 'main.v:25:1'
 	// A closure's capture list names the `err` of the `or {}` around it.
 	assert shadowing('gd^', 33, 'err') == 'main.v:32:17'
 	assert shadowing('gd^', 34, 'err') == 'main.v:32:17'
