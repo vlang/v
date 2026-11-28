@@ -47,5 +47,5 @@ jobs:
       - name: Verify installed compiler can build a V program
         shell: pwsh
         run: |
-          .\v.exe -silent vlib/v/tests/builtin_maps/call_result_map_lookup_order_test.v
+          .\v.exe -silent -enable-globals vlib/v/tests/builtin_maps/call_result_map_lookup_order_test.v
           if ($LASTEXITCODE -ne 0) { throw 'Focused compiler test failed' }
