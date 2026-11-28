@@ -15720,6 +15720,15 @@ pub fn run(args []string) {
 			''
 		}
 		mut shared_link_ld_flags := link_ld_flags.clone()
+		if effective_c_compiler == 'msvc' && is_debug && !c_only && !is_o && !is_shared {
+			// The executable is linked as out.exe in a private build directory, which
+			// is removed after publishing it. Keep its PDB at the final executable path.
+			name := os.file_name(bin_file)
+			pdb_name := name.trim_string_right(os.file_ext(name)) + '.pdb'
+			pdb_path := os.join_path_single(v3_output_dir(bin_file), pdb_name)
+			// Put the default before explicit linker flags, so -ldflags can override it.
+			shared_link_ld_flags.prepend(['-Xlinker', '/PDB:${pdb_path}'])
+		}
 		if is_shared && !is_liveshared && prefs.normalized_target_os() == 'linux'
 			&& !effective_tcc && (!c_only || generate_c_project.len > 0)
 			&& !v3_has_linker_version_script(resolved_c_flags)

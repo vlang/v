@@ -1,0 +1,254 @@
+name: MSVC parallel debug binaries
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/driver/driver.v'
+      - 'vlib/v/driver/msvc.v'
+      - 'vlib/v/driver/msvc_test.v'
+      - 'cmd/tools/testing/common.v'
+      - 'cmd/tools/vbuild-vbinaries.v'
+      - '.github/workflows/msvc_debug_pdb_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      VFLAGS: -cc msvc
+      VJOBS: '4'
+      VTEST_FAIL_FAST: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x64
+      - name: Build with MSVC
+        shell: pwsh
+        run: |
+          .\makev.bat -msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: 'false'
+          symlink: 'false'
+      - name: Verify debug argument translation
+        shell: pwsh
+        run: |
+          .\v.exe fmt -verify vlib/v/driver/driver.v vlib/v/driver/msvc.v vlib/v/driver/msvc_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe -cc msvc -silent vlib/v/driver/msvc_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check debug artifact in an output directory with spaces
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'debug output'
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          $src = Join-Path $dir 'hello.v'
+          Set-Content -LiteralPath $src -Value "fn main() { println('debug artifact') }"
+          $exe = Join-Path $dir 'hello.exe'
+          $pdb = Join-Path $dir 'hello.pdb'
+          .\v.exe -cc msvc -g -showcc -o $exe $src
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((Get-Item -LiteralPath $pdb -ErrorAction Stop).Length -eq 0) { throw 'Empty PDB' }
+          $headers = dumpbin.exe /headers $exe | Out-String
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host $headers
+          if ($headers -notmatch 'RSDS' -or $headers -notmatch [regex]::Escape('hello.pdb')) { throw 'Wrong CodeView reference' }
+          $output = & $exe
+          if ($LASTEXITCODE -ne 0 -or $output -ne 'debug artifact') { throw 'Debug executable failed' }
+      - name: Build all five original compiler binaries in parallel
+        shell: pwsh
+        run: |
+          .\v.exe build-vbinaries
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check linked debug symbols and executable
+        shell: pwsh
+        run: |
+          foreach ($name in @('v_g', 'v_prod_g')) {
+            $exe = Get-Item -LiteralPath "$name.exe" -ErrorAction Stop
+            $pdb = Get-Item -LiteralPath "$name.pdb" -ErrorAction Stop
+            if ($pdb.Length -eq 0) { throw "Empty PDB for $name" }
+            $headers = dumpbin.exe /headers $exe.FullName | Out-String
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Write-Host $headers
+            if ($headers -notmatch 'RSDS' -or $headers -notmatch [regex]::Escape("$name.pdb")) {
+              throw "No matching CodeView PDB reference in $name.exe"
+            }
+            & $exe.FullName version
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Rebuild and verify driver
+        run: |
+          ./v -cc clang self
+          ./v fmt -verify vlib/v/driver/driver.v vlib/v/driver/msvc.v vlib/v/driver/msvc_test.v
+          ./v -silent test vlib/v/driver/
+      - name: Install compiler suite native dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y gobjc libobjc-14-dev libx11-dev libxi-dev libxcursor-dev libxrandr-dev libgl-dev libegl-dev libgl1-mesa-dri
+      - name: Compiler errors and compiler suite
+        run: |
+          ./v -silent vlib/v/compiler_errors_test.v
+          ./v -silent test vlib/v/
+
+      - name: Explicit C backend suite
+        run: ./v -silent test vlib/v/gen/c/
+
+  matched_instructions:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 8dc102f8856d7f8c320e96364b02184b5ac188a9
+          path: baseline
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: 21ab80d430380cbfefba98a58832d4f3bb409d14
+          path: candidate
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: 2d1367e589ed30c03325e586a8ddfd3bc96c8c3d
+          path: fixture
+          persist-credentials: false
+      - name: Build matched production compilers
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          out="$RUNNER_TEMP/pdb-benchmark"
+          mkdir -p "$out"
+          {
+            uname -a
+            sw_vers
+            sysctl -n hw.model hw.ncpu hw.memsize
+            clang --version
+            xcodebuild -version
+          } > "$out/environment.txt"
+          for role in baseline candidate; do
+            (
+              cd "$role"
+              git rev-parse HEAD > "$out/$role.commit"
+              env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS make -j4
+              env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS SOURCE_DATE_EPOCH=0 ./v -prod -cc clang self
+              cp ./v "$out/$role.v"
+              shasum -a 256 "$out/$role.v" > "$out/$role.binary.sha256"
+              ./v version
+            ) 2>&1 | tee "$out/$role.build.log"
+          done
+          cd fixture
+          git rev-parse HEAD > "$out/fixture.commit"
+          git ls-tree -r HEAD > "$out/fixture.git-tree.txt"
+          # The fixed checkout is input, not a third compiler to bootstrap.
+          # Its historical source need not build with today's external VC.
+          # The fixture Makefile enables legacy support only on Darwin <= 16.
+          # macos-15 ARM64 uses the system SDK, so no legacy checkout is created.
+          darwin_major="$(uname -r | cut -d. -f1)"
+          test "$darwin_major" -gt 16
+          env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE -u VJOBS make -j4 latest_tcc 2>&1 | tee "$out/fixture.setup.log"
+          git -C thirdparty/tcc rev-parse HEAD > "$out/fixture.tcc.commit"
+          printf "not applicable: Darwin %s uses the system SDK\n" "$darwin_major" > "$out/fixture.legacy.status"
+          git diff --exit-code
+      - name: Fixed fixture inventory, warmups and ten alternating pairs
+        shell: bash
+        working-directory: fixture
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/pdb-benchmark"
+          args=(-nocache -gc none -prealloc -compile-backend fastc -building-v)
+          run_role() {
+            role="$1"
+            sample="$2"
+            cp "$out/$role.v" ./v
+            shasum -a 256 ./v > "$out/$sample.binary.sha256"
+            rm -f "$out/self.c"
+            if env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE VJOBS=1 SOURCE_DATE_EPOCH=0 \
+              /usr/bin/time -l -o "$out/$sample.time.txt" \
+              ./v "${args[@]}" -o "$out/self.c" cmd/v \
+              > "$out/$sample.stdout" 2> "$out/$sample.stderr"; then
+              echo 0 > "$out/$sample.exit-status.txt"
+            else
+              status=$?
+              echo "$status" > "$out/$sample.exit-status.txt"
+              cat "$out/$sample.stderr"
+              return "$status"
+            fi
+            cat "$out/$sample.time.txt"
+            awk '/instructions retired/ { n++; if ($1+0>0) positive++ } END { exit !(n==1 && positive==1) }' "$out/$sample.time.txt"
+            test -s "$out/self.c"
+            shasum -a 256 "$out/self.c" > "$out/$sample.c.sha256"
+            cmp "$out/$role.inventory.c" "$out/self.c"
+          }
+          for role in baseline candidate; do
+            cp "$out/$role.v" ./v
+            env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE VJOBS=1 SOURCE_DATE_EPOCH=0 \
+              ./v "${args[@]}" -v -o "$out/self.c" cmd/v \
+              > "$out/$role.inventory.stdout" 2> "$out/$role.inventory.stderr"
+            cat "$out/$role.inventory.stdout" "$out/$role.inventory.stderr"
+            awk '$1=="parsed" && ($2==".v" || $2==".vh") && $3=="lines" { n++; total+=$4 } END { exit !(n==2 && total==559990) }' \
+              "$out/$role.inventory.stdout" "$out/$role.inventory.stderr"
+            cp "$out/self.c" "$out/$role.inventory.c"
+            clang -std=gnu11 -fsyntax-only -I thirdparty -I thirdparty/stdatomic/nix \
+              "$out/self.c" > "$out/$role.syntax.log" 2>&1
+            run_role "$role" "$role-warmup"
+          done
+          cmp "$out/baseline.inventory.c" "$out/candidate.inventory.c"
+          for i in $(seq 1 10); do
+            if [ "$((i % 2))" = 1 ]; then
+              run_role baseline "baseline-$i"
+              run_role candidate "candidate-$i"
+            else
+              run_role candidate "candidate-$i"
+              run_role baseline "baseline-$i"
+            fi
+          done
+          git diff --exit-code
+          python3 - "$out" <<'PY'
+          import pathlib, re, statistics, sys
+          root = pathlib.Path(sys.argv[1])
+          def counters(role):
+              values = []
+              for i in range(1, 11):
+                  text = (root / f'{role}-{i}.time.txt').read_text()
+                  found = re.findall(r'^\s*(\d+)\s+instructions retired\s*$', text, re.M)
+                  assert len(found) == 1 and int(found[0]) > 0, (role, i)
+                  values.append(int(found[0]))
+              return values
+          a, b = counters('baseline'), counters('candidate')
+          diffs = [y-x for x,y in zip(a,b)]
+          ma, mb = statistics.median(a), statistics.median(b)
+          report = (f'559990 parsed lines; median instructions {ma} -> {mb}\n'
+                    f'instructions/line {ma/559990:.2f} -> {mb/559990:.2f}\n'
+                    f'change {(mb/ma-1)*100:.4f}%; median paired delta {statistics.median(diffs)}; '
+                    f'regressing pairs {sum(d>0 for d in diffs)}/10\n')
+          print(report)
+          (root / 'summary.txt').write_text(report)
+          PY
+      - name: Preserve benchmark evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: pdb-matched-instruction-evidence
+          path: ${{ runner.temp }}/pdb-benchmark/
+          if-no-files-found: error
