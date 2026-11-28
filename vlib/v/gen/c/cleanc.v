@@ -6096,7 +6096,9 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 				}
 				g.global_types[qname] = ft
 				g.declare_global_raw_type(qname, f.typ)
-				g.global_modules[f.value] = cur_module
+				if g.tc.keeps_bare_global_of(cur_module, f.value) {
+					g.global_modules[f.value] = cur_module
+				}
 				g.global_modules[qname] = cur_module
 				g.global_files[qname] = cur_file
 				g.global_init_order << qname
@@ -6106,7 +6108,9 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 						g.global_inits[qname] = val_id
 					}
 				}
-				g.tc.file_scope.insert(f.value, ft)
+				if g.tc.keeps_bare_global_of(cur_module, f.value) {
+					g.tc.file_scope.insert(f.value, ft)
+				}
 				if qname != f.value {
 					g.tc.file_scope.insert(qname, ft)
 				}
