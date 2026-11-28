@@ -1,0 +1,36 @@
+name: TTF bitmap initialization regression
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/x/ttf/**'
+      - '.github/workflows/ttf_bitmap_initialization_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bitmap:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-v
+        with:
+          symlink: 'false'
+      - name: Verify formatting
+        run: ./v fmt -verify vlib/x/ttf/ttf.v vlib/x/ttf/ttf_bitmap_render_test.v
+      - name: Test initialized bitmap with nonzero malloc fill
+        env:
+          MALLOC_PERTURB_: '65'
+        run: ./v -cc clang -gc none -silent vlib/x/ttf/ttf_bitmap_render_test.v
+      - name: Test original renderer and font suite
+        run: ./v -cc gcc -silent test vlib/x/ttf/
+      - name: Test original renderer with AddressSanitizer and no GC
+        env:
+          ASAN_OPTIONS: halt_on_error=1:detect_leaks=1
+        run: |
+          ./v -cc clang -gc none -cflags -fno-omit-frame-pointer \
+            -cflags -fsanitize=address -silent vlib/x/ttf/ttf_bitmap_render_test.v

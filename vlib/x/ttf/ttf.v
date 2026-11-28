@@ -622,6 +622,8 @@ fn (mut tf TTF_File) get_unicode_string(length int) string {
 	}
 	tf.pos += u32(real_len)
 	res_txt := tmp_txt.str()
+	// str() returns an independent copy; the temporary builder is no longer needed.
+	unsafe { tmp_txt.free() }
 	// dprintln("get_unicode_string: ${res_txt}")
 	return res_txt
 }
