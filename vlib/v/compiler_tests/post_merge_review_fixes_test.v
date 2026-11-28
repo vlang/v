@@ -2693,9 +2693,10 @@ fn main() {
 	assert out.contains('Wide'), out
 }
 
-fn test_interface_equality_preludes_stay_inside_tag_guards() {
+fn test_interface_equality_and_implementation_identity() {
 	v3_bin := build_v3()
-	source := 'interface IValue {}
+	good_bin := run_good_module_batch_with_main_files(v3_bin, 'interface_equality_and_implementation_identity', [
+		ReviewRuntimeCase{'interface_equality_guarded_preludes_run', 'interface IValue {}
 
 struct WithArray {
 	values []int
@@ -2719,14 +2720,20 @@ fn main() {
 	})
 	println(same(other, other).str())
 }
-'
-	out, c_source := run_good_with_c(v3_bin, 'interface_equality_guarded_preludes_run', source)
-	same_body := c_fn_body(c_source, 'bool same(IValue left, IValue right) {')
+', 'true\ntrue'},
+		ReviewRuntimeCase{'interface_is_local_exact_impl_id', 'import b\n\nfn main() {\n\tprintln(b.is_local_actor(b.make_local()).str())\n\tprintln(b.is_local_actor(b.make_a()).str())\n}\n', 'true\nfalse'},
+	], {
+		'v.mod':           "Module { name: 'interface_is_local_exact_impl_id' }\n"
+		'common/common.v': 'module common\n\npub interface Actor {\n\ttag() int\n}\n'
+		'a/a.v':           'module a\n\npub struct Foo {}\n\npub fn (f Foo) tag() int {\n\treturn 1\n}\n'
+		'b/b.v':           'module b\n\nimport a\nimport common\n\npub struct Foo {}\n\npub fn (f Foo) tag() int {\n\treturn 2\n}\n\npub fn make_local() common.Actor {\n\treturn Foo{}\n}\n\npub fn make_a() common.Actor {\n\treturn a.Foo{}\n}\n\npub fn is_local_actor(actor common.Actor) bool {\n\treturn actor is Foo\n}\n'
+	})
+	c_source := os.read_file(good_bin + '.c') or { panic(err) }
+	same_body := c_fn_body(c_source, 'bool fixture_0__same(fixture_0__IValue left, fixture_0__IValue right) {')
 	guard_pos := same_body.index('if (') or { -1 }
 	array_cast_pos := same_body.index('WithArray*') or { -1 }
 	assert guard_pos >= 0, same_body
 	assert array_cast_pos > guard_pos, same_body
-	assert out == 'true\ntrue'
 }
 
 fn test_interface_equality_includes_veb_handler_call_boxes() {
@@ -4180,33 +4187,6 @@ fn test_runtime_inits_run_before_module_init() {
 	assert out == '5\n7'
 }
 
-fn test_aligned_alias_heap_cast_uses_aligned_memdup() {
-	v3_bin := build_v3()
-	source := '@[aligned: 64]
-struct Aligned {
-	x int
-}
-
-type A = Aligned
-
-fn main() {
-	p := &A(Aligned{
-		x: 7
-	})
-	println(int_str(p.x))
-	unsafe {
-		free(p)
-	}
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'aligned_alias_heap_cast_run', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
-	assert main_body.contains('(main__Aligned*)v3_aligned_memdup('), main_body
-	assert !main_body.contains('(main__Aligned*)memdup('), main_body
-	assert main_body.contains('v3_aligned_free(p)'), main_body
-	assert out == '7'
-}
-
 fn test_unimported_main_types_are_not_visible_in_modules() {
 	v3_bin := build_v3()
 	run_bad_project(v3_bin, 'unimported_plain_main_type', {
@@ -4862,9 +4842,10 @@ fn make_alias() &Bare {
 	assert out == '29'
 }
 
-fn test_map_pointer_alias_cast_preserves_existing_pointer() {
+fn test_pointer_alias_and_interface_storage() {
 	v3_bin := build_v3()
-	source := 'type M = map[string]int
+	good_bin := run_good_module_batch(v3_bin, 'pointer_alias_and_interface_storage', [
+		ReviewRuntimeCase{'map_pointer_alias_cast_preserves_existing_pointer', 'type M = map[string]int
 
 fn keep(p &M) &M {
 	return &M(p)
@@ -4885,15 +4866,171 @@ fn main() {
 	}
 	println(int_str(m["b"]))
 }
-'
-	out, c_source := run_good_with_c(v3_bin, 'map_pointer_alias_cast_preserves_existing_pointer', source)
-	body := c_fn_body(c_source, 'map* keep(map* p) {')
-	assert body.contains('return (map*)(p);'), body
-	assert !body.contains('map _t') && !body.contains('&_t') && !body.contains('&p'), body
-	void_body := c_fn_body(c_source, 'map* from_void(void* p) {')
-	assert void_body.contains('return (map*)(p);'), void_body
-	assert !void_body.contains('&p'), void_body
-	assert out == '2'
+', '2'},
+		ReviewRuntimeCase{'amp_interface_cast_heap_copy_run', 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b Box) value() int {\n\treturn b.n\n}\n\nfn make() &Reader {\n\tb := Box{\n\t\tn: 5\n\t}\n\treturn &Reader(b)\n}\n\nfn main() {\n\tr := make()\n\tprintln(int_str(r.value()))\n}\n', '5'},
+		ReviewRuntimeCase{'interface_local_address_identity_run', 'interface Reader {\n\tget() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) get() int {\n\treturn b.n\n}\n\nfn main() {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\tprintln(int_str(r.get()))\n}\n', '2'},
+		ReviewRuntimeCase{'interface_local_address_identity_mut_run', 'interface Writer {\nmut:\n\tset(n int)\n\tget() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (mut b Box) set(n int) {\n\tb.n = n\n}\n\nfn (b Box) get() int {\n\treturn b.n\n}\n\nfn main() {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tmut w := Writer(&b)\n\tw.set(3)\n\tprintln(int_str(b.n))\n\tprintln(int_str(w.get()))\n}\n', '3\n3'},
+		ReviewRuntimeCase{'interface_local_address_escape_box_run', 'interface Reader {\n\tget() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) get() int {\n\treturn b.n\n}\n\nfn make_reader() Reader {\n\tmut b := Box{\n\t\tn: 5\n\t}\n\tr := Reader(&b)\n\tb.n = 6\n\treturn r\n}\n\nfn main() {\n\tr := make_reader()\n\tprintln(int_str(r.get()))\n}\n', '6'},
+		ReviewRuntimeCase{'mut_interface_storage', 'interface Visitor {
+	value() int
+mut:
+	visit()
+}
+
+struct Counter {
+mut:
+	n int
+}
+
+fn (c Counter) value() int {
+	return c.n
+}
+
+fn (mut c Counter) visit() {
+	c.n++
+}
+
+fn call(mut visitor Visitor) {
+	visitor.visit()
+}
+
+interface Base {
+	get() int
+}
+
+struct Item {
+	n int
+}
+
+fn (i Item) get() int {
+	return i.n
+}
+
+fn update(mut x Base) {
+	x = Base(Item{
+		n: 7
+	})
+}
+
+fn main() {
+	mut visitor := Visitor(Counter{})
+	call(mut visitor)
+	println(int_str(visitor.value()))
+
+	mut b := Base(Item{
+		n: 1
+	})
+	update(mut b)
+	println(int_str(b.get()))
+}
+', '1\n7'},
+		ReviewRuntimeCase{'pointer_interface_rvalue_sources_run', 'interface Value {\n\tget() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) get() int {\n\treturn i.n\n}\n\nstruct Holder {\n\titem Value\n}\n\nfn make_holder() Holder {\n\treturn Holder{\n\t\titem: Value(Item{\n\t\t\tn: 7\n\t\t})\n\t}\n}\n\nfn make_items() []Value {\n\treturn [Value(Item{\n\t\tn: 9\n\t})]\n}\n\nfn use(value &Value) int {\n\treturn value.get()\n}\n\nfn main() {\n\tprintln(int_str(use(make_holder().item)))\n\tprintln(int_str(use(make_items()[0])))\n}\n', '7\n9'},
+		ReviewRuntimeCase{'pointer_interface_converted_source_run', 'interface Base {\n\tget() int\n}\n\ninterface Narrow {\n\tBase\n\textra() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) get() int {\n\treturn i.n\n}\n\nfn (i Item) extra() int {\n\treturn i.n + 1\n}\n\nfn make_narrow() Narrow {\n\treturn Item{\n\t\tn: 11\n\t}\n}\n\nfn use(value &Base) int {\n\treturn value.get()\n}\n\nfn make_base() &Base {\n\tnarrow := make_narrow()\n\treturn &Base(narrow)\n}\n\nfn main() {\n\tprintln(int_str(use(make_base())))\n}\n', '11'},
+		ReviewRuntimeCase{'interface_upcast_promoted_struct_field_run', 'interface Base {
+	name string
+}
+
+interface Child {
+	Base
+	value() int
+}
+
+struct Inner {
+	name string
+}
+
+struct User {
+	Inner
+	id int
+}
+
+fn (u User) value() int {
+	return u.id
+}
+
+fn make_child(name string, id int) Child {
+	return Child(User{
+		Inner: Inner{
+			name: name
+		}
+		id: id
+	})
+}
+
+fn take_base(b Base) string {
+	return b.name
+}
+
+fn main() {
+	child := make_child("Ada", 5)
+	println(take_base(child))
+	println(take_base(if true { make_child("Grace", 7) } else { child }))
+}
+', 'Ada\nGrace'},
+		ReviewRuntimeCase{'aligned_alias_heap_cast_run', '@[aligned: 64]
+struct Aligned {
+	x int
+}
+
+type A = Aligned
+
+fn main() {
+	p := &A(Aligned{
+		x: 7
+	})
+	println(int_str(p.x))
+	unsafe {
+		free(p)
+	}
+}
+', '7'},
+	])
+	c_source := os.read_file(good_bin + '.c') or { panic(err) }
+	keep_body := c_fn_body(c_source, 'map* fixture_0__keep(map* p) {')
+	assert keep_body.contains('return (map*)(p);'), keep_body
+	assert !keep_body.contains('map _t') && !keep_body.contains('&_t') && !keep_body.contains('&p'), keep_body
+	from_void_body := c_fn_body(c_source, 'map* fixture_0__from_void(void* p) {')
+	assert from_void_body.contains('return (map*)(p);'), from_void_body
+	assert !from_void_body.contains('&p'), from_void_body
+
+	make_body := c_fn_body(c_source, 'fixture_1__Reader* fixture_1__make(void) {')
+	assert make_body.contains('._object = (fixture_1__Box*)(memdup(&b, sizeof(fixture_1__Box)))'), make_body
+	assert make_body.contains('memdup(&(fixture_1__Reader){'), make_body
+	assert !make_body.contains('__iface_box_'), make_body
+
+	local_body := c_fn_body(c_source, 'void fixture_2__exercise(void) {')
+	assert local_body.contains('._object = __iface_src_'), local_body
+	assert !local_body.contains('memdup(&b, sizeof(fixture_2__Box))'), local_body
+
+	make_reader_body := c_fn_body(c_source, 'fixture_4__Reader fixture_4__make_reader(void) {')
+	assert make_reader_body.contains('fixture_4__Box* b ='), make_reader_body
+	assert make_reader_body.contains('memdup'), make_reader_body
+	assert !make_reader_body.contains('fixture_4__Box b ='), make_reader_body
+
+	mut_body := c_fn_body(c_source, 'void fixture_5__exercise(void) {')
+	assert mut_body != '', c_source
+	// Interface calls can retain the mutable view, so its existing box is heap-promoted.
+	assert mut_body.contains('fixture_5__Visitor* visitor ='), mut_body
+	assert mut_body.contains('fixture_5__call(&visitor);') || mut_body.contains('fixture_5__call(visitor);'), mut_body
+	assert !mut_body.contains('fixture_5__call((fixture_5__Visitor*)(memdup(&__iface_box_'), mut_body
+	assert mut_body.contains('fixture_5__update(&b);'), mut_body
+	assert !mut_body.contains('fixture_5__update(&((fixture_5__Base[]){b})[0]);'), mut_body
+
+	rvalue_body := c_fn_body(c_source, 'void fixture_6__exercise(void) {')
+	assert rvalue_body.contains('memdup(&__iface_box_'), rvalue_body
+
+	make_base_body := c_fn_body(c_source, 'fixture_7__Base* fixture_7__make_base(void) {')
+	assert make_base_body.contains('fixture_7__Base __iface_cast_'), make_base_body
+	assert make_base_body.contains('return (fixture_7__Base*)(memdup(&__iface_box_'), make_base_body
+
+	upcast_body := c_fn_body(c_source, 'void fixture_8__exercise(void) {')
+	assert upcast_body.contains('.name = child.name'), upcast_body
+	assert !upcast_body.contains('->name'), upcast_body
+
+	aligned_body := c_fn_body(c_source, 'void fixture_9__exercise(void) {')
+	assert aligned_body.contains('(fixture_9__Aligned*)v3_aligned_memdup('), aligned_body
+	assert !aligned_body.contains('(fixture_9__Aligned*)memdup('), aligned_body
+	assert aligned_body.contains('v3_aligned_free(p)'), aligned_body
 }
 
 fn test_interface_arguments_and_collection_receivers() {
@@ -4981,18 +5118,6 @@ fn main() {
 	])
 }
 
-fn test_interface_is_unqualified_local_uses_exact_impl_id() {
-	v3_bin := build_v3()
-	out := run_good_project(v3_bin, 'interface_is_local_exact_impl_id', {
-		'v.mod':           "Module { name: 'interface_is_local_exact_impl_id' }\n"
-		'common/common.v': 'module common\n\npub interface Actor {\n\ttag() int\n}\n'
-		'a/a.v':           'module a\n\npub struct Foo {}\n\npub fn (f Foo) tag() int {\n\treturn 1\n}\n'
-		'b/b.v':           'module b\n\nimport a\nimport common\n\npub struct Foo {}\n\npub fn (f Foo) tag() int {\n\treturn 2\n}\n\npub fn make_local() common.Actor {\n\treturn Foo{}\n}\n\npub fn make_a() common.Actor {\n\treturn a.Foo{}\n}\n\npub fn is_local_actor(actor common.Actor) bool {\n\treturn actor is Foo\n}\n'
-		'main.v':          'module main\n\nimport b\n\nfn main() {\n\tprintln(b.is_local_actor(b.make_local()).str())\n\tprintln(b.is_local_actor(b.make_a()).str())\n}\n'
-	}, 'main.v')
-	assert out == 'true\nfalse'
-}
-
 fn test_user_new_map_call_with_args_uses_renamed_symbol() {
 	v3_bin := build_v3()
 	source := 'fn new_map(x int) int {\n\treturn x + 1\n}\n\nfn main() {\n\tprintln(int_str(new_map(41)))\n}\n'
@@ -5002,35 +5127,8 @@ fn test_user_new_map_call_with_args_uses_renamed_symbol() {
 	assert out == '42'
 }
 
-fn test_amp_interface_cast_heap_copies_concrete_source() {
+fn test_interface_local_address_escape_variants() {
 	v3_bin := build_v3()
-	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b Box) value() int {\n\treturn b.n\n}\n\nfn make() &Reader {\n\tb := Box{\n\t\tn: 5\n\t}\n\treturn &Reader(b)\n}\n\nfn main() {\n\tr := make()\n\tprintln(int_str(r.value()))\n}\n'
-	out, c_source := run_good_with_c(v3_bin, 'amp_interface_cast_heap_copy_run', source)
-	make_body := c_fn_body(c_source, '\nReader* make(void) {')
-	assert make_body.contains('._object = (main__Box*)(memdup(&b, sizeof(main__Box)))')
-	assert make_body.contains('memdup(&(Reader){')
-	assert !make_body.contains('__iface_box_')
-	assert out == '5'
-}
-
-fn test_interface_cast_from_local_address_preserves_pointer_identity() {
-	v3_bin := build_v3()
-	source := 'interface Reader {\n\tget() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) get() int {\n\treturn b.n\n}\n\nfn main() {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\tprintln(int_str(r.get()))\n}\n'
-	out, c_source := run_good_with_c(v3_bin, 'interface_local_address_identity_run', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
-	assert main_body.contains('._object = __iface_src_'), main_body
-	assert !main_body.contains('memdup(&b, sizeof(Box))'), main_body
-	assert out == '2'
-	mut_source := 'interface Writer {\nmut:\n\tset(n int)\n\tget() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (mut b Box) set(n int) {\n\tb.n = n\n}\n\nfn (b Box) get() int {\n\treturn b.n\n}\n\nfn main() {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tmut w := Writer(&b)\n\tw.set(3)\n\tprintln(int_str(b.n))\n\tprintln(int_str(w.get()))\n}\n'
-	mut_out := run_good(v3_bin, 'interface_local_address_identity_mut_run', mut_source)
-	assert mut_out == '3\n3'
-	escape_source := 'interface Reader {\n\tget() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) get() int {\n\treturn b.n\n}\n\nfn make_reader() Reader {\n\tmut b := Box{\n\t\tn: 5\n\t}\n\tr := Reader(&b)\n\tb.n = 6\n\treturn r\n}\n\nfn main() {\n\tr := make_reader()\n\tprintln(int_str(r.get()))\n}\n'
-	escape_out, escape_c := run_good_with_c(v3_bin, 'interface_local_address_escape_box_run', escape_source)
-	make_reader_body := c_fn_body(escape_c, '\nReader make_reader(void) {')
-	assert make_reader_body.contains('Box* b ='), make_reader_body
-	assert make_reader_body.contains('memdup'), make_reader_body
-	assert !make_reader_body.contains('Box b ='), make_reader_body
-	assert escape_out == '6'
 	escape_variants := run_good_with_flags(v3_bin, 'interface_local_address_escape_variants', '-enable-globals', 'interface Reader {
 	get() int
 }
@@ -5153,91 +5251,6 @@ fn main() {
 }
 ')
 	assert escape_variants == '6\n8\n10\n12\n19\n14\n15\n17'
-}
-
-fn test_mut_interface_argument_borrows_existing_interface_box() {
-	v3_bin := build_v3()
-	source := 'interface Visitor {
-	value() int
-mut:
-	visit()
-}
-
-struct Counter {
-mut:
-	n int
-}
-
-fn (c Counter) value() int {
-	return c.n
-}
-
-fn (mut c Counter) visit() {
-	c.n++
-}
-
-fn call(mut visitor Visitor) {
-	visitor.visit()
-}
-
-interface Base {
-	get() int
-}
-
-struct Item {
-	n int
-}
-
-fn (i Item) get() int {
-	return i.n
-}
-
-fn update(mut x Base) {
-	x = Base(Item{
-		n: 7
-	})
-}
-
-fn main() {
-	mut visitor := Visitor(Counter{})
-	call(mut visitor)
-	println(int_str(visitor.value()))
-
-	mut b := Base(Item{
-		n: 1
-	})
-	update(mut b)
-	println(int_str(b.get()))
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'mut_interface_storage', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	assert main_body != '', c_source
-	// Interface calls can retain the mutable view, so its existing box is heap-promoted.
-	assert main_body.contains('Visitor* visitor =')
-	// Heap-promoted caller storage is already a pointer to the existing interface box.
-	assert main_body.contains('call(&visitor);') || main_body.contains('call(visitor);'), main_body
-	assert !c_source.contains('call((Visitor*)(memdup(&__iface_box_')
-	assert main_body.contains('update(&b);'), main_body
-	assert !c_source.contains('update(&((Base[]){b})[0]);')
-	assert out == '1\n7'
-}
-
-fn test_pointer_interface_arg_heap_copies_rvalue_interface_sources() {
-	v3_bin := build_v3()
-	source := 'interface Value {\n\tget() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) get() int {\n\treturn i.n\n}\n\nstruct Holder {\n\titem Value\n}\n\nfn make_holder() Holder {\n\treturn Holder{\n\t\titem: Value(Item{\n\t\t\tn: 7\n\t\t})\n\t}\n}\n\nfn make_items() []Value {\n\treturn [Value(Item{\n\t\tn: 9\n\t})]\n}\n\nfn use(value &Value) int {\n\treturn value.get()\n}\n\nfn main() {\n\tprintln(int_str(use(make_holder().item)))\n\tprintln(int_str(use(make_items()[0])))\n}\n'
-	out, c_source := run_good_with_c(v3_bin, 'pointer_interface_rvalue_sources_run', source)
-	assert c_source.contains('memdup(&__iface_box_')
-	assert out == '7\n9'
-}
-
-fn test_pointer_interface_cast_heap_copies_converted_interface_source() {
-	v3_bin := build_v3()
-	source := 'interface Base {\n\tget() int\n}\n\ninterface Narrow {\n\tBase\n\textra() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) get() int {\n\treturn i.n\n}\n\nfn (i Item) extra() int {\n\treturn i.n + 1\n}\n\nfn make_narrow() Narrow {\n\treturn Item{\n\t\tn: 11\n\t}\n}\n\nfn use(value &Base) int {\n\treturn value.get()\n}\n\nfn make_base() &Base {\n\tnarrow := make_narrow()\n\treturn &Base(narrow)\n}\n\nfn main() {\n\tprintln(int_str(use(make_base())))\n}\n'
-	out, c_source := run_good_with_c(v3_bin, 'pointer_interface_converted_source_run', source)
-	assert c_source.contains('Base __iface_cast_')
-	assert c_source.contains('return (Base*)(memdup(&__iface_box_')
-	assert out == '11'
 }
 
 fn test_native_arm64_atomic_pointer_fetch_add_sub() {
@@ -6123,56 +6136,6 @@ fn main() {
 	assert c_source.contains('i64* p ='), c_source
 	assert !c_source.contains('i64 p = (*(i64*)array_get(*&'), c_source
 	assert out == '2'
-}
-
-fn test_interface_upcast_copies_promoted_struct_fields() {
-	v3_bin := build_v3()
-	source := 'interface Base {
-	name string
-}
-
-interface Child {
-	Base
-	value() int
-}
-
-struct Inner {
-	name string
-}
-
-struct User {
-	Inner
-	id int
-}
-
-fn (u User) value() int {
-	return u.id
-}
-
-fn make_child(name string, id int) Child {
-	return Child(User{
-		Inner: Inner{
-			name: name
-		}
-		id: id
-	})
-}
-
-fn take_base(b Base) string {
-	return b.name
-}
-
-fn main() {
-	child := make_child("Ada", 5)
-	println(take_base(child))
-	println(take_base(if true { make_child("Grace", 7) } else { child }))
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'interface_upcast_promoted_struct_field_run', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
-	assert main_body.contains('.name = child.name'), main_body
-	assert !main_body.contains('->name'), main_body
-	assert out == 'Ada\nGrace'
 }
 
 fn test_selector_interface_upcast_caches_side_effectful_base() {
