@@ -14,10 +14,6 @@ fn scope_review_question(path string, position string, method string) string {
 	return '${path}:${position.all_before(':')}:${method}^${position.all_after(':')}'
 }
 
-fn scope_review_query(path string, position string, method string) string {
-	return scope_review_output(path, scope_review_question(path, position, method))
-}
-
 fn scope_review_answers(path string, questions []string) []string {
 	lines := scope_review_output(path, questions.join('\t')).split_into_lines()
 	assert lines.len == questions.len, lines.str()
@@ -28,14 +24,6 @@ fn scope_review_answers(path string, questions []string) []string {
 		answers << line[prefix.len..]
 	}
 	return answers
-}
-
-fn scope_review_hover_and_definition(path string, position string) (string, string) {
-	answers := scope_review_answers(path, [
-		scope_review_question(path, position, 'hv'),
-		scope_review_question(path, position, 'gd'),
-	])
-	return answers[0], answers[1]
 }
 
 fn test_type_parameter_hover_and_definition_stay_in_their_declaration_scope() {
@@ -122,21 +110,29 @@ fn test_a_type_parameter_in_a_method_receiver_belongs_to_the_method() {
 		receiver := word_position(source, 'fn (b Box[T]) get', 'T', 0)
 		positions := [receiver, word_position(source, 'fn (b Box[T]) get', 'T', 1),
 			word_position(source, '\t_ := []T{}', 'T', 0)]
-		hover_questions := positions.map(scope_review_question(path, it, 'hv'))
-		for j, hover in scope_review_answers(path, hover_questions) {
-			assert hover.contains('[T]'), 'layout ${i} at ${positions[j]}'
-		}
-		mut questions := positions.map(scope_review_question(path, it, 'gd'))
+		mut questions := positions.map(scope_review_question(path, it, 'hv'))
+		questions << positions.map(scope_review_question(path, it, 'gd'))
 		mut expected := []string{len: positions.len, init: '${path}:${receiver}'}
 		if layout.starts_with('fn (b Box[T]) first') {
 			first := word_position(source, 'fn (b Box[T]) first', 'T', 0)
 			questions << scope_review_question(path, first, 'gd')
 			expected << '${path}:${first}'
 		}
-		for j, definition in scope_review_answers(path, questions) {
-			assert definition == expected[j], 'layout ${i}: ${questions[j]}'
+		answers := scope_review_answers(path, questions)
+		for j, position in positions {
+			assert answers[j].contains('[T]'), 'layout ${i} at ${position}'
+		}
+		for j, definition in answers[positions.len..] {
+			assert definition == expected[j], 'layout ${i}: ${questions[positions.len + j]}'
 		}
 	}
+}
+
+struct ReceiverScopeParameter {
+	prefix   string
+	name     string
+	declared string
+	used     string
 }
 
 fn test_type_parameters_in_receivers_of_every_form_belong_to_their_method() {
@@ -146,6 +142,8 @@ fn test_type_parameters_in_receivers_of_every_form_belong_to_their_method() {
 	path := os.join_path(root, 'forms.v')
 	source := receiver_forms_program
 	os.write_file(path, source)!
+	mut parameters := []ReceiverScopeParameter{}
+	mut questions := []string{}
 	for prefix, names in {
 		'fn (p Pair[K, V]) entry': ['K', 'V']
 		'fn (mut b Box[T]) set':   ['T']
@@ -156,25 +154,37 @@ fn test_type_parameters_in_receivers_of_every_form_belong_to_their_method() {
 			declared := word_position(source, prefix, name, 0)
 			// Its next use in the signature leads to the receiver too.
 			used := word_position(source, prefix, name, 1)
-			answers := scope_review_answers(path, [
+			parameters << ReceiverScopeParameter{prefix, name, declared, used}
+			questions << [
 				scope_review_question(path, declared, 'hv'),
 				scope_review_question(path, declared, 'gd'),
 				scope_review_question(path, used, 'gd'),
-			])
-			hover := answers[0]
-			assert hover.contains('[${name}]'), '${prefix}: ${hover}'
-			assert !hover.contains('struct'), '${prefix}: ${hover}'
-			assert answers[1] == '${path}:${declared}', prefix
-			assert answers[2] == '${path}:${declared}', '${prefix} ${used}'
+			]
 		}
 	}
 	// The own type parameter of the method is declared after its name.
 	own := word_position(source, 'fn (b Box[T]) convert', 'U', 0)
 	result := word_position(source, 'fn (b Box[T]) convert', 'U', 2)
-	assert scope_review_query(path, result, 'gd') == '${path}:${own}'
 	// A declaration after the methods still finds the module type `T`.
 	after := word_position(source, '__global after_methods', 'T', 0)
-	hover, definition := scope_review_hover_and_definition(path, after)
+	signature_count := questions.len
+	questions << [
+		scope_review_question(path, result, 'gd'),
+		scope_review_question(path, after, 'hv'),
+		scope_review_question(path, after, 'gd'),
+	]
+	answers := scope_review_answers(path, questions)
+	for i, parameter in parameters {
+		offset := 3 * i
+		hover := answers[offset]
+		assert hover.contains('[${parameter.name}]'), '${parameter.prefix}: ${hover}'
+		assert !hover.contains('struct'), '${parameter.prefix}: ${hover}'
+		assert answers[offset + 1] == '${path}:${parameter.declared}', parameter.prefix
+		assert answers[offset + 2] == '${path}:${parameter.declared}', '${parameter.prefix} ${parameter.used}'
+	}
+	other_answers := answers[signature_count..]
+	assert other_answers[0] == '${path}:${own}'
+	hover := other_answers[1]
 	assert hover.contains('struct T') && !hover.contains('[T]'), hover
-	assert definition == '${path}:3:7'
+	assert other_answers[2] == '${path}:3:7'
 }
