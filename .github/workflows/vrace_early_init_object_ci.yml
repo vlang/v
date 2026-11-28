@@ -1,0 +1,226 @@
+name: VRACE early-init object native regression
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/vrace_early_init_object_ci.yml'
+      - 'vlib/builtin/race_options.c'
+      - 'vlib/v/driver/driver.v'
+      - 'vlib/v/driver/race.v'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  legacy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    container:
+      image: thevlang/vlang:ubuntu-build
+      env:
+        V_CI_UBUNTU_MUSL: 1
+        V_CI_MUSL: 1
+        VFLAGS: -cc musl-gcc -gc none -d use_bundled_libgc
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: 03d66ee93b7fa97192038e8e741adf6a877846f0
+          path: baseline
+          persist-credentials: false
+      - name: Build baseline and candidate V
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$(pwd -P)"
+          git config --global --add safe.directory "$(pwd -P)/baseline"
+          (cd baseline && make -j4 && ./v -prod -cg -o v cmd/v)
+          make -j4
+          ./v -prod -cg -o v cmd/v
+          # Report the exact formatter patch on failure, without accepting a dirty tree.
+          if ! ./v fmt -verify vlib/v/driver/driver.v vlib/v/driver/race.v; then
+            ./v fmt -w vlib/v/driver/driver.v vlib/v/driver/race.v
+            git diff -- vlib/v/driver/driver.v vlib/v/driver/race.v
+            exit 1
+          fi
+          clang --version
+      - name: Reproduce and verify native race reports and option precedence
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/vrace-early-init"
+          mkdir -p "$out/simple" "$out/map" "$out/original"
+          cat > "$out/simple/racy.v" <<'V'
+          struct Counter {
+          mut:
+              n int
+          }
+          fn inc(mut c Counter) {
+              for _ in 0 .. 1000 {
+                  c.n++
+              }
+          }
+          fn main() {
+              mut c := &Counter{}
+              t1 := spawn inc(mut c)
+              t2 := spawn inc(mut c)
+              t1.wait()
+              t2.wait()
+              println('joined ${c.n > 0}')
+          }
+          V
+          for role in baseline candidate; do
+            v=./v
+            if [ "$role" = baseline ]; then v=./baseline/v; fi
+            env -u VFLAGS V3_CACHE_TRACE=1 "$v" -race -cc clang -showcc -keepc -no-retry-compilation -o "$out/$role" "$out/simple/racy.v" > "$out/$role-build.log" 2>&1 || { cat "$out/$role-build.log"; exit 1; }
+            cat "$out/$role-build.log"
+            nm "$out/$role" > "$out/$role.symbols"
+            grep -Fq '__tsan_default_options' "$out/$role.symbols"
+            grep -Eq '__tsan_(read|write)' "$out/$role.symbols"
+            for mode in default vrace tsan both; do
+              rc=0
+              case "$mode" in
+                default) expected=66; env -u VRACE -u TSAN_OPTIONS "$out/$role" > "$out/$role-$mode.log" 2>&1 || rc=$? ;;
+                vrace) expected=7; if [ "$role" = baseline ]; then expected=66; fi
+                       env -u TSAN_OPTIONS VRACE='exitcode=7 atexit_sleep_ms=0' "$out/$role" > "$out/$role-$mode.log" 2>&1 || rc=$? ;;
+                tsan) expected=8; env -u VRACE TSAN_OPTIONS='exitcode=8 atexit_sleep_ms=0' "$out/$role" > "$out/$role-$mode.log" 2>&1 || rc=$? ;;
+                both) expected=8; env VRACE='exitcode=7 atexit_sleep_ms=0' TSAN_OPTIONS='exitcode=8 atexit_sleep_ms=0' "$out/$role" > "$out/$role-$mode.log" 2>&1 || rc=$? ;;
+              esac
+              echo "$role $mode actual=$rc expected=$expected"
+              cat "$out/$role-$mode.log"
+              test "$rc" -eq "$expected"
+              grep -Fq 'WARNING: ThreadSanitizer: data race' "$out/$role-$mode.log"
+              grep -Fq 'joined true' "$out/$role-$mode.log"
+            done
+          done
+          # The early initialization object itself must have no sanitizer calls.
+          # The final instrumented program is independently checked above.
+          key="$(sed -n 's/.*key=\(race_options_c_o_[0-9a-f]*\.o\) .*/\1/p' "$out/candidate-build.log" | sort -u)"
+          test -n "$key"
+          test "$(printf '%s\n' "$key" | wc -l)" -eq 1
+          object="$(find /tmp "$RUNNER_TEMP" -type f -name "$key" -print -quit)"
+          test -f "$object"
+          nm "$object" | tee "$out/early-init.symbols"
+          nm -u "$object" | tee "$out/early-init.undefined"
+          grep -Fq '__tsan_default_options' "$out/early-init.symbols"
+          if grep -q '__tsan_' "$out/early-init.undefined"; then
+            echo 'early-init object unexpectedly calls TSan' >&2
+            exit 1
+          fi
+          grep -F "$key" "$out/candidate-build.log" | grep -F -- '-fsanitize=thread'
+          cp "$object" "$out/early-init.o"
+          git fetch --no-tags --depth=1 origin ee48d9cb04fcaedd0a9d5c8925bdd633af9eb94b
+          git show FETCH_HEAD:vlib/v/slow_tests/race_detector_test.v > "$out/original/original_race_detector_test.v"
+          test "$(git hash-object "$out/original/original_race_detector_test.v")" = 9c125e9126438bb7345ec4a0a7cabc8100af38d2
+          # Compare the exact original map race source on both compiler roles.
+          cat > "$out/map/map_value_update.v" <<'V'
+          struct P {
+          mut:
+          	x int
+          }
+          
+          struct Cell {
+          mut:
+          	m map[int]P
+          }
+          
+          fn main() {
+          	mut c := &Cell{}
+          	c.m[1] = P{}
+          	t := spawn fn (mut c Cell) {
+          		for _ in 0 .. 100 {
+          			c.m[1].x += 1
+          		}
+          	}(mut c)
+          	mut n := 0
+          	for _ in 0 .. 100 {
+          		n += c.m.len
+          	}
+          	t.wait()
+          	println("len ${n}")
+          }
+          V
+          map_failed=0
+          for role in baseline candidate; do
+            v=./v
+            if [ "$role" = baseline ]; then v=./baseline/v; fi
+            env -u VFLAGS V3_CACHE_TRACE=1 "$v" -race -showcc -keepc -no-retry-compilation -o "$out/map-$role" "$out/map/map_value_update.v" > "$out/map-$role-build.log" 2>&1 || { cat "$out/map-$role-build.log"; exit 1; }
+            cat "$out/map-$role-build.log"
+            nm "$out/map-$role" > "$out/map-$role.symbols"
+            for mode in tsan vrace; do
+              if [ "$role" = baseline ] && [ "$mode" = vrace ]; then expected=66; else expected=7; fi
+              for attempt in 1 2 3 4 5; do
+                rc=0
+                log="$out/map-$role-$mode-$attempt.log"
+                if [ "$mode" = tsan ]; then
+                  env -u VRACE TSAN_OPTIONS="exitcode=7 atexit_sleep_ms=0" "$out/map-$role" > "$log" 2>&1 || rc=$?
+                else
+                  env -u TSAN_OPTIONS VRACE="exitcode=7 atexit_sleep_ms=0" "$out/map-$role" > "$log" 2>&1 || rc=$?
+                fi
+                echo "map $role $mode attempt=$attempt actual=$rc expected=$expected"
+                cat "$log"
+                if [ "$role" = candidate ]; then
+                  if [ "$rc" -ne "$expected" ] || ! grep -Fq "WARNING: ThreadSanitizer: data race" "$log"; then map_failed=1; fi
+                fi
+              done
+            done
+          done
+          original_rc=0
+          env -u VFLAGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent "$out/original/original_race_detector_test.v" > "$out/original.log" 2>&1 || original_rc=$?
+          cat "$out/original.log"
+          current_rc=0
+          env -u VFLAGS ./v -cc musl-gcc -gc none -d use_bundled_libgc -silent vlib/v/slow_tests/race_detector_test.v > "$out/current.log" 2>&1 || current_rc=$?
+          cat "$out/current.log"
+          echo "map_failed=$map_failed original_rc=$original_rc current_rc=$current_rc"
+          test "$map_failed" -eq 0
+          test "$original_rc" -eq 0
+          test "$current_rc" -eq 0
+          if grep -Fq 'skipping:' "$out/original.log" "$out/current.log"; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vrace-early-init-legacy
+          path: ${{ runner.temp }}/vrace-early-init
+  modern:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            cc: clang
+          - os: ubuntu-24.04
+            cc: gcc
+          - os: macos-26
+            cc: clang
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/cache-apt-packages-action
+        if: runner.os == 'Linux'
+        with:
+          profile: full
+      - name: Install Objective-C compiler regression dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y gobjc libobjc-14-dev
+      - name: Build, format and native regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -j4
+          ./v -prod -cg -o v cmd/v
+          # Report the exact formatter patch on failure, without accepting a dirty tree.
+          if ! ./v fmt -verify vlib/v/driver/driver.v vlib/v/driver/race.v; then
+            ./v fmt -w vlib/v/driver/driver.v vlib/v/driver/race.v
+            git diff -- vlib/v/driver/driver.v vlib/v/driver/race.v
+            exit 1
+          fi
+          VFLAGS="-cc ${{ matrix.cc }}" ./v -silent vlib/v/slow_tests/race_detector_test.v 2>&1 | tee race.log
+          if grep -Fq 'skipping:' race.log; then exit 1; fi
+          ./v -silent vlib/v/compiler_errors_test.v
+          ./v -silent test vlib/v/
+          ./v -silent test vlib/v/gen/c/

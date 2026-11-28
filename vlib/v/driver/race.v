@@ -14,6 +14,12 @@ import v.pref
 // frame pointers keep its stack unwinding reliable.
 const v3_race_c_flags = ['-fsanitize=thread', '-g', '-fno-omit-frame-pointer']
 
+// v3_is_race_options_source matches only the selected builtin early-init hook.
+fn v3_is_race_options_source(path string, source string) bool {
+	return source != '' && os.base(path) == 'race_options.c'
+		&& os.real_path(path) == os.real_path(source)
+}
+
 // v3_race_supported_targets lists the targets for which clang/gcc ship a ThreadSanitizer
 // runtime. It follows Go's list of `-race` platforms, minus windows/amd64: Go uses its
 // own build of the TSan runtime there, while clang and gcc do not provide one.

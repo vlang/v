@@ -11,6 +11,10 @@
 #define _GNU_SOURCE
 #endif
 
+#if defined(V_RACE_EARLY_INIT_OBJECT)
+#define V_RACE_TSAN 1
+#endif
+
 #if defined(__has_feature)
 #if __has_feature(thread_sanitizer)
 #define V_RACE_TSAN 1
@@ -40,7 +44,10 @@
 // function. GCC's attribute removes all TSan instrumentation of a function; clang needs
 // `disable_sanitizer_instrumentation` (clang 14+) to also drop the function entry/exit
 // hooks that `no_sanitize("thread")` keeps for functions that make calls.
-#if defined(__clang__)
+#if defined(V_RACE_EARLY_INIT_OBJECT)
+// The driver built only this translation unit without TSan or LTO.
+#define V_RACE_NO_INSTRUMENTATION
+#elif defined(__clang__)
 #if defined(__has_attribute)
 #if __has_attribute(disable_sanitizer_instrumentation)
 #define V_RACE_NO_INSTRUMENTATION __attribute__((disable_sanitizer_instrumentation))
