@@ -52,7 +52,7 @@ fn activity_request(mut app ActivityApp, req http.Request, ssl bool) ?&Context {
 	routes := generate_routes[ActivityApp, ActivityContext](app) or { panic(err) }
 	controllers := check_duplicate_routes_in_controllers[ActivityApp](app, routes) or { panic(err) }
 	if ssl {
-		return handle_ssl_request[ActivityApp, ActivityContext](req, &SslRequestParams{ global_app: app, routes: &routes, controllers_sorted: controllers })
+		return handle_ssl_request[ActivityApp, ActivityContext](req, &SslRequestParams{ global_app: app, routes: &routes, controllers_sorted: controllers }, none)
 	}
 	return handle_request_and_route[ActivityApp, ActivityContext](mut app, req, 0, RequestParams{ routes: &routes, controllers_sorted: controllers })
 }

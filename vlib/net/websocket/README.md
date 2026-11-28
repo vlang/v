@@ -71,3 +71,14 @@ A custom dialer must provide any proxy tunnel itself; `proxy_url` is rejected on
 After joining all readers and writers, call `client.dispose()` to release the connection and
 TLS resources. It is safe before connecting, after a failed connection, or more than once.
 Disposal is terminal: create a new client for a later connection.
+
+## Upgrading an existing server transport
+
+After parsing and validating an HTTP upgrade request, pass its stream and
+`Sec-WebSocket-Key` to `server.handle_transport_handshake(transport, is_ssl, key)`.
+The `ServerTransport` provides `read`, `write`, and `close`. Its reads must include
+any unread bytes already buffered by the HTTP parser. A TLS adapter must
+serialize access to its TLS session while allowing pending writes to proceed.
+
+The method sends the opening response, dispatches callbacks until the connection
+ends, and closes the transport on both success and failure.

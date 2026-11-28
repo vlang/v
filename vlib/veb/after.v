@@ -23,9 +23,8 @@ pub type AfterCallback = fn (mut ctx Context, arg u64)
 //     `Connection: close`, so do not pipeline another request behind a
 //     deferred one. After-middleware is skipped for deferred responses: at
 //     middleware time there is no response yet to frame.
-//   - Without a live client transport (unit tests, `render_request`, the SSL
-//     path, which has no takeover support) `after` answers inline instead:
-//     the response and its timing stay correct, on the caller's thread.
+//   - For HTTPS, unit tests and `render_request`, `after` waits and invokes
+//     the callback inline on the caller's thread.
 pub fn (mut ctx Context) after(ms int, cb AfterCallback, arg u64) Result {
 	if !ctx.has_live_transport() {
 		// No client transport outlives the handler here: answer inline, so

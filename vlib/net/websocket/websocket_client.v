@@ -15,6 +15,8 @@ import rand
 const empty_bytearr = []u8{}
 
 pub struct ClientState {
+mut:
+	transport_closed bool
 pub mut:
 	state State = .closed // current state of connection
 }
@@ -23,10 +25,19 @@ struct WriteLock {
 	reserved bool
 }
 
+// ServerTransport owns the stream for a server-side WebSocket upgrade.
+pub interface ServerTransport {
+mut:
+	read(mut buf []u8) !int
+	write(buf []u8) !int
+	close() !
+}
+
 // Client represents websocket client
 pub struct Client {
 	is_server bool
 mut:
+	transport         ?ServerTransport
 	read_buffer       [8192]u8
 	read_start        int
 	read_end          int
@@ -161,7 +172,7 @@ pub fn (mut ws Client) connect_with_dialer(dialer fn (string) !&net.TcpConn) ! {
 // TLS context, or the initial context when dialing never produced Client.conn.
 // It is idempotent; this client must not be reconnected after disposal.
 pub fn (mut ws Client) dispose() {
-	if ws.get_state() != .closed && !isnil(ws.conn) {
+	if ws.get_state() != .closed && ws.has_socket() {
 		ws.close(1000, 'connection owner ended') or {}
 	}
 	if !isnil(ws.ssl_conn) {
@@ -298,7 +309,7 @@ pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
 		return error('control frame payload exceeds 125 bytes')
 	}
 	// ws.debug_log('write_ptr code: ${code}')
-	if ws.get_state() != .open || ws.conn.sock.handle < 1 {
+	if ws.get_state() != .open || !ws.has_socket() {
 		// todo: send error here later
 		return error('trying to write on a closed socket!')
 	}
@@ -387,7 +398,7 @@ pub fn (mut ws Client) write_string(str string) !int {
 pub fn (mut ws Client) close(code int, message string) ! {
 	ws.debug_log('sending close, ${code}, ${message}')
 	ws_state := ws.get_state()
-	if ws_state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
+	if ws_state in [.closed, .closing] || !ws.has_socket() {
 		ws.debug_log('close: Websocket already closed (${ws_state}), ${message}, ${code}')
 		err_msg := 'Socket already closed: ${code}'
 		return error(err_msg)
@@ -427,7 +438,7 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []u
 	if payload.len > 125 {
 		return error('control frame payload exceeds 125 bytes')
 	}
-	if ws.get_state() !in [.open, .closing] && ws.conn.sock.handle > 1 {
+	if ws.get_state() !in [.open, .closing] && ws.has_socket() {
 		return error('socket is not connected')
 	}
 	header_len := if ws.is_server { 2 } else { 6 }
@@ -540,7 +551,7 @@ fn (ws &Client) assert_not_connected() ! {
 pub fn (mut ws Client) reset_state() ! {
 	lock ws.client_state {
 		ws.client_state.state = .closed
-		if ws.is_ssl {
+		if ws.is_ssl && ws.transport == none {
 			ws.ssl_conn = ssl.new_ssl_conn()!
 		}
 		ws.flags = []
