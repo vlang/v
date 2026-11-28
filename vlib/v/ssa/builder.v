@@ -131,6 +131,7 @@ mut:
 	interface_types          map[string]TypeID
 	interface_type_names     map[TypeID]string
 	sum_types_registering    map[TypeID]bool
+	structs_registering      map[TypeID]bool
 	struct_field_types       flat.TypeTextBindings
 	struct_field_defaults    map[string]NativeFieldDefault
 	struct_embeds            map[TypeID][]int
@@ -1013,9 +1014,8 @@ fn (mut b Builder) register_checker_sum_type_inner(name_id u32) TypeID {
 			kind: .struct_t
 		})
 	}
-	b.struct_types[name_id] = typ_id
-	b.ssa_type_names[typ_id] = name
 	b.sum_types_registering[typ_id] = true
+	b.register_sum_type_name(name_id, b.cur_module, typ_id)
 	mut variants := b.sum_type_variants.type_ids(flat.source_type_id(name)) or { []u32{} }
 	if variants.len == 0 {
 		variants = b.sum_type_variants.type_ids(flat.source_type_id(name.all_after('.'))) or { []u32{} }
@@ -1026,8 +1026,11 @@ fn (mut b Builder) register_checker_sum_type_inner(name_id u32) TypeID {
 	}
 	mut field_types := []TypeID{cap: variants.len}
 	mut field_names := []string{cap: variants.len}
+	mut has_pointer_variant := false
 	for variant in variants {
-		field_types << b.resolve_type(variant)
+		field_type := b.resolve_struct_storage_type(variant, b.cur_module)
+		has_pointer_variant = has_pointer_variant || b.is_pointer_type(field_type)
+		field_types << field_type
 		field_names << sum_variant_field_name(flat.source_type_name(variant),
 			name.all_before_last('.'))
 	}
@@ -1037,16 +1040,28 @@ fn (mut b Builder) register_checker_sum_type_inner(name_id u32) TypeID {
 		field_names: field_names
 		is_union:    true
 	})
+	mut sum_fields := [b.i32_type]
+	mut sum_names := ['typ']
+	if has_pointer_variant {
+		sum_fields << b.i32_type
+		sum_names << '_pointer_variant_is_owned'
+	}
+	sum_fields << payload
+	sum_names << '_payload'
 	b.m.type_store.types[typ_id] = Type{
 		kind:        .struct_t
-		fields:      [b.i32_type, payload]
-		field_names: ['typ', '_payload']
+		fields:      sum_fields
+		field_names: sum_names
 	}
 	b.sum_types_registering.delete(typ_id)
 	return typ_id
 }
 
 fn (b &Builder) source_is_sum_type(name string) bool {
+	base := types.generic_base_name(name)
+	if base != name {
+		return b.source_is_sum_type(base)
+	}
 	if (b.sum_type_variants.type_ids(flat.source_type_id(name)) or { []u32{} }).len > 0 {
 		return true
 	}
@@ -1337,6 +1352,18 @@ fn (mut b Builder) register_sum_type_name(name u32, module_name string, typ_id T
 	if b.tc != unsafe { nil } {
 		if tc_variants := b.tc.sum_types.type_ids(qualified_id) {
 			variants = tc_variants.clone()
+		}
+		if variants.len == 0 {
+			syntax := flat.source_type_syntax(qualified_id)
+			if syntax.application_valid() {
+				base := syntax.application_base()
+				params := b.tc.sum_generic_params[base] or { []u32{} }
+				if params.len > 0 && params.len == syntax.application_args().len {
+					for variant in b.tc.sum_types.type_ids(base) or { []u32{} } {
+						variants << types.subst_generic_text(variant, syntax.application_args(), params)
+					}
+				}
+			}
 		}
 	}
 	if variants.len == 0 {
@@ -2239,7 +2266,7 @@ fn (mut b Builder) register_functions() {
 
 	// A `fn C.x() Rect` in module `macos` names `macos.Rect`: resolve its types
 	// in the module that declares it.
-	saved_c_decl_module := b.cur_module
+	saved_module := b.cur_module
 	mut c_decl_module := ''
 	for node in b.a.nodes {
 		if node.kind == .file {
@@ -2292,7 +2319,6 @@ fn (mut b Builder) register_functions() {
 			}
 		}
 	}
-	b.cur_module = saved_c_decl_module
 
 	c_variant_names := b.c_variant_function_names()
 	mut cur_module := ''
@@ -2336,6 +2362,8 @@ fn (mut b Builder) register_functions() {
 				&& !b.source_fn_is_used(node.value_text(), cur_module) && !is_export_shadow {
 				continue
 			}
+			// Materialize concrete signature types before workers inherit their layouts.
+			b.cur_module = cur_module
 			ret_type := b.checker_return_type(node.value_text(), cur_module) or {
 				b.resolve_type_in_module(node.typ, cur_module)
 			}
@@ -2371,6 +2399,7 @@ fn (mut b Builder) register_functions() {
 			}
 		}
 	}
+	b.cur_module = saved_module
 	// Source functions exist now; complete any shadow binding the runtime
 	// stubs below need while resolving their libc names.
 	b.bind_export_fn_shadows()
@@ -18542,6 +18571,12 @@ fn (mut b Builder) coerce_store_value(source ValueID, target_type TypeID) ValueI
 }
 
 fn (b &Builder) source_name_for_ssa_type_id(typ_id TypeID) ?string {
+	// A transformed Result's err expression may already be typed as IError.
+	// Recover the concrete pointer type from SSA before boxing it into the interface.
+	if b.is_pointer_type(typ_id) {
+		name := b.source_name_for_ssa_type_id(b.m.type_store.types[typ_id].elem_type) or { return none }
+		return '&' + name
+	}
 	if name := b.ssa_type_names[typ_id] {
 		if name.len > 0 {
 			return name
@@ -18784,6 +18819,9 @@ fn (mut b Builder) register_checker_generic_struct_inner(name string) ?TypeID {
 		return none
 	}
 	existing_id := b.struct_types[canonical_id] or { b.struct_types[name_id] or { TypeID(0) } }
+	if existing_id > 0 && b.structs_registering[existing_id] {
+		return existing_id
+	}
 	if existing_id > 0 && existing_id < b.m.type_store.types.len
 		&& b.m.type_store.types[existing_id].fields.len > 0 {
 		b.struct_types[name_id] = existing_id
@@ -18799,6 +18837,8 @@ fn (mut b Builder) register_checker_generic_struct_inner(name string) ?TypeID {
 	}
 	b.struct_types[name_id] = typ_id
 	b.struct_types[canonical_id] = typ_id
+	b.structs_registering[typ_id] = true
+	defer { b.structs_registering.delete(typ_id) }
 	mut field_types := []TypeID{cap: fields.len}
 	mut field_names := []string{cap: fields.len}
 	mut embeds := []int{}
@@ -19108,6 +19148,9 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 	}
 	name := flat.source_type_name(name_id)
 	if name.contains('[') {
+		if b.source_is_sum_type(name) {
+			return b.register_checker_sum_type(name_id)
+		}
 		if typ := b.register_checker_generic_struct(name) {
 			return typ
 		}

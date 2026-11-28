@@ -34,7 +34,7 @@ fn build_literal_output(a &flat.FlatAst, files map[string]bool, target TargetDat
 	entry := m.add_block(main, 'entry')
 	if calls.len == 1 && calls[0].fd == 1 && calls[0].line && !calls[0].text.contains('\x00') {
 		b.register_extern('puts', i32_type, [ptr])
-		callee := m.add_value(.func_ref, b.fn_types['puts'], 'puts', b.fn_ids['puts'])
+		callee := m.add_value(.func_ref, i32_type, 'puts', b.fn_ids['puts'])
 		text := m.add_value(.string_literal, ptr, calls[0].text, 0)
 		m.add_instr(.call, entry, i32_type, [callee, text])
 	} else if calls.len > 0 {
@@ -96,7 +96,7 @@ fn (mut b Builder) literal_write_all(ptr TypeID) ValueID {
 	more := b.block_instr2(.ne, header, b.i1_type, remaining, zero)
 	b.block_instr3(.br, header, b.void_type, more, ValueID(body), ValueID(exit))
 	current := b.block_instr1(.load, body, ptr, p)
-	write := b.m.add_value(.func_ref, b.fn_types['write'], 'write', b.fn_ids['write'])
+	write := b.m.add_value(.func_ref, b.i64_type, 'write', b.fn_ids['write'])
 	written := b.block_instr4(.call, body, b.i64_type, write, fd, current, remaining)
 	progress := b.block_instr2(.gt, body, b.i1_type, written, zero)
 	b.block_instr3(.br, body, b.void_type, progress, ValueID(advance), ValueID(exit))
@@ -106,5 +106,5 @@ fn (mut b Builder) literal_write_all(ptr TypeID) ValueID {
 	b.block_instr2(.store, advance, b.void_type, left, n)
 	b.block_instr1(.jmp, advance, b.void_type, ValueID(header))
 	b.block_instr0(.ret, exit, b.void_type)
-	return b.m.add_value(.func_ref, b.fn_types['__literal_write_all'], '__literal_write_all', func)
+	return b.m.add_value(.func_ref, b.void_type, '__literal_write_all', func)
 }

@@ -129,32 +129,34 @@ fn test_minimal_literal_output_gc_keeps_existing_eligibility_gates() {
 	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
 }
 
-fn test_minimal_literal_output_arm64_eligibility() {
+fn test_minimal_literal_output_native_eligibility() {
 	root := literal_output_gc_test_root()!
 	defer { remove_literal_output_gc_test_root(root) }
 	source := os.join_path(root, 'hello.v')
 	os.write_file(source, "fn main() { println('hello') }\n")!
 	mut prefs := pref.new_preferences()
-	prefs.backend = 'arm64'
-	for target in ['macos', 'linux'] {
-		prefs.target = pref.target_from(target, 'arm64')!
-		assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+	for backend in ['arm64', 'amd64'] {
+		prefs.backend = backend
+		for target in ['macos', 'linux'] {
+			prefs.target = pref.target_from(target, backend)!
+			assert input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+		}
+		prefs.target = pref.target_from('macos', backend)!
+		for define in ['gcboehm', 'vgc', 'freestanding', 'noprintln', 'noeprintln',
+			'builtin_print_use_fprintf', 'race', 'trace_calls', 'track_heap'] {
+			prefs.user_defines = [define]
+			assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false), define
+		}
+		prefs.user_defines = []
+		prefs.is_shared = true
+		assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+		prefs.is_shared = false
+		prefs.hot_fn = 'main'
+		assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
+		prefs.hot_fn = ''
+		prefs.target = pref.target_from('ios', 'arm64')!
+		assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
 	}
-	prefs.target = pref.target_from('macos', 'arm64')!
-	for define in ['gcboehm', 'vgc', 'freestanding', 'noprintln', 'noeprintln',
-		'builtin_print_use_fprintf', 'race', 'trace_calls', 'track_heap'] {
-		prefs.user_defines = [define]
-		assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false), define
-	}
-	prefs.user_defines = []
-	prefs.is_shared = true
-	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
-	prefs.is_shared = false
-	prefs.hot_fn = 'main'
-	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
-	prefs.hot_fn = ''
-	prefs.target = pref.target_from('ios', 'arm64')!
-	assert !input_uses_minimal_literal_output_builtin(source, prefs, false, false)
 }
 
 fn test_literal_output_keeps_linux_backtrace_array_iteration_runtime() {

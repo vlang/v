@@ -8684,8 +8684,12 @@ fn record_v3_cached_source_digests(mut cache_state V3ModuleCacheState, source_di
 	}
 }
 
+fn is_native_ssa_backend(backend string) bool {
+	return backend in ['arm64', 'amd64']
+}
+
 fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Preferences, is_test_command bool, is_checker_fixture bool) bool {
-	if prefs.backend !in ['c', 'arm64'] {
+	if prefs.backend != 'c' && !is_native_ssa_backend(prefs.backend) {
 		return false
 	}
 	if prefs.output_cross_c || prefs.target.os !in ['macos', 'linux', 'freebsd', 'openbsd', 'netbsd',
@@ -8695,7 +8699,7 @@ fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Pref
 		|| is_v3_test_file(input_file, prefs.backend, prefs.target) {
 		return false
 	}
-	if prefs.backend == 'arm64' && (prefs.target.os !in ['macos', 'linux']
+	if is_native_ssa_backend(prefs.backend) && (prefs.target.os !in ['macos', 'linux']
 		|| prefs.is_shared || prefs.is_livemain || prefs.is_liveshared || prefs.hot_fn.len > 0
 		|| prefs.user_defines.any(it in ['gcboehm', 'noprintln', 'noeprintln',
 			'builtin_print_use_fprintf', 'race', 'trace_calls', 'track_heap'])) {
@@ -11751,9 +11755,10 @@ pub fn run(args []string) {
 	// A program that only prints literals needs a fraction of builtin, which is
 	// parsed for it each time. The cached builtin is ready without that. A debug or
 	// coverage build also needs the backtrace printer and what it calls.
+	native_ssa_backend := is_native_ssa_backend(backend)
 	minimal_literal_output := file_list.len == 0 && !is_prof && !is_trace_calls && !no_skip_unused
 		&& !is_debug && coverage_dir.len == 0
-		&& (backend != 'arm64' || (!is_o && !is_shared && !race))
+		&& (!native_ssa_backend || (!is_o && !is_shared && !race))
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	mut noalloc_modes := []string{}
 	if ownership_mode || 'ownership' in prefs.user_defines {
@@ -12027,7 +12032,7 @@ pub fn run(args []string) {
 	if no_builtin {
 		builtin_files = []
 	}
-	if minimal_literal_output && (target.os == 'macos' || backend == 'arm64') {
+	if minimal_literal_output && (target.os == 'macos' || native_ssa_backend) {
 		builtin_files = builtin_files.filter(is_minimal_literal_output_builtin_file(it))
 	}
 	bundle_sources := builtin_bundle_source_files(mut p.a, prefs, builtin_files)
@@ -12208,7 +12213,7 @@ pub fn run(args []string) {
 	if !prepared_imports.ready {
 		a.user_code_start = a.nodes.len
 	}
-	if minimal_literal_output && (target.os == 'macos' || backend == 'arm64') {
+	if minimal_literal_output && (target.os == 'macos' || native_ssa_backend) {
 		suppress_minimal_literal_output_builtin_imports(mut a)
 	}
 
@@ -13142,7 +13147,7 @@ pub fn run(args []string) {
 			pre_tc.diagnostic_files = map[string]bool{}
 		}
 		set_diagnostic_files_judged(mut pre_tc, user_files, mut pre_tc_file_ownership)
-		// C and eligible ARM64 builds have a dedicated literal-output path.
+		// C and eligible native SSA builds have a dedicated literal-output path.
 		// Other native builds need the ordinary builtin dependency set.
 		// MSVC's regular runtime demangles backtraces with string slices, which only
 		// become `string.substr` calls after markused. Proven Windows ASCII output
@@ -13154,7 +13159,7 @@ pub fn run(args []string) {
 		// serve every other program.
 		trivial_literal_output = !prefs.output_cross_c && !is_trace_calls && !no_skip_unused
 			&& !is_debug && coverage_dir.len == 0
-			&& backend != 'amd64' && (backend != 'arm64' || minimal_literal_output)
+			&& (!native_ssa_backend || minimal_literal_output)
 			&& test_files.len == 0 && !is_checker_fixture
 			&& (effective_c_compiler != 'msvc' || (target.os == 'windows' && minimal_literal_output))
 			&& !cache_state.manager.enabled
@@ -13669,9 +13674,11 @@ pub fn run(args []string) {
 			mu_stage_sw.restart()
 		}
 		// markused gives a program that only prints literals the minimal runtime. A
-		// debug or coverage build emits the backtrace printers anyway, and the slices
-		// and appends in them become runtime calls only after markused.
-		debug_literal_full_runtime := (is_debug || coverage_dir.len > 0)
+		// debug or coverage C build emits the backtrace printers anyway, and the slices
+		// and appends in them become runtime calls only after markused. Native SSA
+		// supplies its own backtrace helpers without those source-runtime dependencies.
+		debug_literal_full_runtime := !native_ssa_backend
+			&& (is_debug || coverage_dir.len > 0)
 			&& markused.is_trivial_literal_output_program(a, pre_tc.diagnostic_files)
 		if no_skip_unused {
 			// Every concrete function is used here, `recover` among them, so that cannot
@@ -14698,6 +14705,7 @@ pub fn run(args []string) {
 		}
 		$if !skip_amd64 ?&& !skip_x64 ? {
 			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
+				literal_output:       trivial_literal_output
 				// The optimizer rebuilds use lists once before consuming them.
 				// Incremental tracking is quadratic for large generic functions.
 				track_uses:           false
