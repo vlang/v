@@ -1,5 +1,8 @@
 # math.stats
 
+`median(sorted_data)` takes ascending sorted samples. For an even number of samples it
+averages the two middle values. Integer results round toward zero. Empty input returns zero.
+
 `correlation` computes the Pearson coefficient for paired numeric samples and returns `f64`.
 Lengths must match; empty or constant input returns NaN. `linear_regression` returns a
 `LinearRegression[T]` with `f64` coefficients and predictions, including for integer samples.

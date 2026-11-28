@@ -107,6 +107,22 @@ fn test_median() {
 	assert math.alike(o, 4)
 }
 
+fn test_median_large_integers() {
+	assert stats.median([max_int - 1, max_int]) == max_int - 1
+	assert stats.median([min_i64, min_i64 + 1]) == min_i64 + 1
+	assert stats.median([max_u64 - 1, max_u64]) == max_u64 - 1
+	assert stats.median([min_i64, max_i64]) == 0
+	assert stats.median([i8(-3), i8(0)]) == -1
+}
+
+fn test_median_large_floats() {
+	assert stats.median([math.max_f64, math.max_f64]) == math.max_f64
+	assert stats.median([-math.max_f64, -math.max_f64]) == -math.max_f64
+	assert stats.median([f32(math.max_f32), f32(math.max_f32)]) == f32(math.max_f32)
+	assert stats.median([math.smallest_non_zero_f64, math.smallest_non_zero_f64]) == math.smallest_non_zero_f64
+	assert math.is_nan(stats.median([math.inf(-1), math.inf(1)]))
+}
+
 fn test_mode() {
 	// Tests were also verified on Wolfram Alpha
 	mut data := [2.7, 2.7, 4.45, 5.9, 10.0]
