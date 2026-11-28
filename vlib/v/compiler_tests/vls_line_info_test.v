@@ -768,28 +768,47 @@ fn declaration(line int, word string, nth int) string {
 	return ask(os.join_path(work_dir, 'declarations'), 'gd^', line, word, nth)
 }
 
+struct DeclarationExpectation {
+	line     int
+	word     string
+	position string
+}
+
+fn assert_declaration_positions(checks []DeclarationExpectation) {
+	lines := declarations_program.split('\n')
+	questions := checks.map(word_question(lines[it.line - 1], 'gd^', it.line, it.word, 0))
+	answers := ask_answers(os.join_path(work_dir, 'declarations'), questions)
+	for i, check in checks {
+		assert answers[i] == check.position, questions[i]
+	}
+}
+
 fn test_definition_of_a_declaration_is_the_declaration() {
-	// A field, and one named like an imported module.
-	assert declaration(6, 'id', 0) == 'main.v:6:1'
-	assert declaration(15, 'time', 0) == 'main.v:15:1'
-	assert declaration(16, 'lead', 0) == 'main.v:16:1'
-	// A method's name and its receiver.
-	assert declaration(9, 'ident', 0) == 'main.v:9:12'
-	assert declaration(9, 'b', 0) == 'main.v:9:4'
-	// A method of an interface, and a const.
-	assert declaration(20, 'name', 0) == 'main.v:20:1'
-	assert declaration(23, 'answer', 0) == 'main.v:23:6'
+	assert_declaration_positions([
+		// A field, and one named like an imported module.
+		DeclarationExpectation{6, 'id', 'main.v:6:1'},
+		DeclarationExpectation{15, 'time', 'main.v:15:1'},
+		DeclarationExpectation{16, 'lead', 'main.v:16:1'},
+		// A method's name and its receiver.
+		DeclarationExpectation{9, 'ident', 'main.v:9:12'},
+		DeclarationExpectation{9, 'b', 'main.v:9:4'},
+		// A method of an interface, and a const.
+		DeclarationExpectation{20, 'name', 'main.v:20:1'},
+		DeclarationExpectation{23, 'answer', 'main.v:23:6'},
+	])
 	// Locals, also one named like a function of an imported module, and one
 	// named like the module itself.
 	assert declaration(35, 'offset', 0) == 'main.v:35:1'
 	assert declaration(36, 'out', 0) == 'main.v:36:5'
 	assert declaration(30, 'time', 0) == 'main.v:30:1'
 	// The variables of loops and of an `if x :=` guard.
-	assert declaration(37, 'item', 0) == 'main.v:37:5'
-	assert declaration(40, 'i', 0) == 'main.v:40:5'
-	assert declaration(40, 'value', 0) == 'main.v:40:8'
-	assert declaration(43, 'k', 0) == 'main.v:43:5'
-	assert declaration(46, 'found', 0) == 'main.v:46:4'
+	assert_declaration_positions([
+		DeclarationExpectation{37, 'item', 'main.v:37:5'},
+		DeclarationExpectation{40, 'i', 'main.v:40:5'},
+		DeclarationExpectation{40, 'value', 'main.v:40:8'},
+		DeclarationExpectation{43, 'k', 'main.v:43:5'},
+		DeclarationExpectation{46, 'found', 'main.v:46:4'},
+	])
 	// What already led to a declaration still does: the uses, the type written
 	// in a field, and an embedded struct, which is its type.
 	assert declaration(38, 'item', 0) == 'main.v:37:5'
