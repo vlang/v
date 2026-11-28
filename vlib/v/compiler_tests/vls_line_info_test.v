@@ -3678,8 +3678,13 @@ fn main() {
 
 const all_numbers = 'i8 | i16 | int | u8 | f32 | f64'
 
-fn test_values_tested_together_with_and_are_each_the_type_they_are_tested_for() {
+fn test_combined_compile_time_conditions_show_the_narrowed_types() {
 	sum := '\t\tsum := A(a) + B(b) + C(c)'
+	last := '\t\treturn f64(a) * f64(b) * 7.0'
+	named := 'implements main.Named'
+	first := '\t\treturn a.name.len + b.name.len + 1'
+	second := '\t\treturn a.name.len + b.name.len + 2'
+	third := '\t\treturn a.name.len + b.name.len + 3'
 	assert_hovers('joined', joined_program, [
 		// `$if a is f64 && b is f64 && c is f64 {`: in its branch each of them is an
 		// `f64`, and so is a local that adds them; after it, any type of `Number`.
@@ -3696,11 +3701,7 @@ fn test_values_tested_together_with_and_are_each_the_type_they_are_tested_for() 
 		HoverExpectation{sum, 'sum', 'sum f64'},
 		// Its `$else` is where one of them is not: each can be any type.
 		HoverExpectation{'\t\treturn f64(a) * f64(b) * f64(c)', 'b', 'b B\\nB: ${all_numbers}'},
-	])
-}
 
-fn test_values_tested_together_against_lists_keep_what_their_lists_leave() {
-	assert_hovers('joined', joined_program, [
 		// `in` keeps the types of its list, `!in` the others, for each value.
 		HoverExpectation{'\t\treturn f64(a) + f64(b)', 'a', 'a A\\nA: f32 | f64'},
 		HoverExpectation{'\t\treturn f64(a) + f64(b)', 'b', 'b B\\nB: i8 | u8'},
@@ -3711,11 +3712,7 @@ fn test_values_tested_together_against_lists_keep_what_their_lists_leave() {
 		HoverExpectation{'\t\treturn f64(a) - f64(b)', 'b', 'b B\\nB: ${all_numbers}'},
 		HoverExpectation{'\t\treturn f64(a) - f64(b) - 1.0', 'a', 'a A\\nA: ${all_numbers}'},
 		HoverExpectation{'\t\treturn f64(a) - f64(b) - 1.0', 'b', 'b B\\nB: ${all_numbers}'},
-	])
-}
 
-fn test_values_tested_together_with_or_are_decided_in_the_else() {
-	assert_hovers('joined', joined_program, [
 		// `$if a is f64 || b is f64 {`: either may be an `f64`, so in its branch each
 		// can be any type; in its `$else` neither is one.
 		HoverExpectation{'\t\treturn f64(a) + f64(b) + 2.0', 'a', 'a A\\nA: ${all_numbers}'},
@@ -3731,12 +3728,8 @@ fn test_values_tested_together_with_or_are_decided_in_the_else() {
 		HoverExpectation{'\t\treturn f64(a) + f64(b) + 6.0', 'b', 'b B\\nB: ${all_numbers}'},
 		HoverExpectation{'\t\treturn a + b', 'a', 'a f64'},
 		HoverExpectation{'\t\treturn a + b', 'b', 'b f64'},
-	])
-}
 
-fn test_each_branch_of_a_chain_of_tests_on_several_values_leaves_what_the_others_did_not_take() {
-	last := '\t\treturn f64(a) * f64(b) * 7.0'
-	assert_hovers('joined', joined_program, [
+		// Successive branches leave the types excluded by their predecessors.
 		HoverExpectation{'\t\treturn a * b', 'a', 'a f64'},
 		HoverExpectation{'\t\treturn a * b', 'b', 'b f64'},
 		HoverExpectation{'\t\treturn f64(a * b)', 'a', 'a f32'},
@@ -3750,11 +3743,8 @@ fn test_each_branch_of_a_chain_of_tests_on_several_values_leaves_what_the_others
 		HoverExpectation{last, 'b', 'b B\\nB: ${all_numbers}'},
 		// A value in the condition of a later test is what the tests before leave.
 		HoverExpectation{'\t} \$else \$if a is f32 && b is f32 {', 'a', 'a A\\nA: ${all_numbers}'},
-	])
-}
 
-fn test_a_value_tested_three_times_in_parentheses_or_after_not_is_what_the_tests_leave() {
-	assert_hovers('joined', joined_program, [
+		// Repeated tests of one value, with parentheses and negation.
 		HoverExpectation{'\t\treturn f64(x) + 8.0', 'x', 'x T\\nT: i8 | i16 | u8'},
 		HoverExpectation{'\t\treturn y', 'y', 'y f64'},
 		HoverExpectation{'\t\treturn f64(z) + 9.0', 'z', 'z T\\nT: i8 | i16 | int | u8 | f32'},
@@ -3763,15 +3753,7 @@ fn test_a_value_tested_three_times_in_parentheses_or_after_not_is_what_the_tests
 		HoverExpectation{'\t\treturn f64(v) + 10.0', 'v', 'v T\\nT: i8 | f32 | f64'},
 		HoverExpectation{'\t\treturn f64(v) + 11.0', 'v', 'v T\\nT: i16 | u8'},
 		HoverExpectation{'\t\treturn f64(v) + 12.0', 'v', 'v int'},
-	])
-}
 
-fn test_values_of_interfaces_tested_together_are_the_types_they_are_tested_for() {
-	named := 'implements main.Named'
-	first := '\t\treturn a.name.len + b.name.len + 1'
-	second := '\t\treturn a.name.len + b.name.len + 2'
-	third := '\t\treturn a.name.len + b.name.len + 3'
-	assert_hovers('joined', joined_program, [
 		// A local that holds a value of a type parameter, tested with a parameter.
 		HoverExpectation{'\t\treturn x.age + b.level', 'x', 'x main.User'},
 		HoverExpectation{'\t\treturn x.age + b.level', 'b', 'b main.Admin'},
