@@ -290,19 +290,38 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	}
 }
 
-fn test_i386_inline_asm_reaches_c_lowering() {
-	generate, c_source := generate_inline_asm_c_for_arch('i386_program', 'fn main() {
+fn test_i386_inline_asm_and_arch_aliases_reach_c_lowering() {
+	arches := ['i386', 'i486', 'i586', 'i686', 'x86', 'x86_32', 'ia-32', 'ia32']
+	mut source := 'fn check_i386_att() {
 	asm i386 {
 		mov eax, ebx
 		.byte 0x27, 0x35
 	}
 }
-', 'i386')
+'
+	mut calls := ['\tcheck_i386_att()']
+	for i, arch in arches {
+		source += '
+fn check_x86_alias_${i}() {
+	asm ${arch} intel {
+		mov eax, ebx
+	}
+}
+'
+		calls << '\tcheck_x86_alias_${i}()'
+	}
+	source += '\nfn main() {\n${calls.join('\n')}\n}\n'
+	generate, c_source := generate_inline_asm_c_for_arch('i386_alias_program', source, 'i386')
 	assert generate.exit_code == 0, generate.output
 	assert !generate.output.contains('inline assembly is not supported'), generate.output
-	assert c_source.contains('"mov %ebx, %eax\\n\\t"'), c_source
-	assert c_source.contains('".byte 0x27, 0x35\\n\\t"'), c_source
-	assert !c_source.contains('.byte \\\$0x27'), c_source
+	att := inline_asm_function_body(c_source, 'check_i386_att')
+	assert att.contains('"mov %ebx, %eax\\n\\t"'), att
+	assert att.contains('".byte 0x27, 0x35\\n\\t"'), att
+	assert !att.contains('.byte \\\$0x27'), att
+	for i, arch in arches {
+		body := inline_asm_function_body(c_source, 'check_x86_alias_${i}')
+		assert body.contains('"mov eax, ebx\\n\\t"'), '${arch}: ${body}'
+	}
 }
 
 fn test_x86_inline_asm_segment_address_reaches_c_lowering() {
@@ -393,8 +412,11 @@ fn test_asm_goto_lowers_uppercase_branch_mnemonics() {
 }
 
 fn test_riscv_asm_goto_lowers_direct_branch_targets() {
-	for arch in ['rv64', 'riscv64'] {
-		generate, c_source := generate_inline_asm_c_for_arch('goto_${arch}_program', 'fn main() {
+	arches := ['rv64', 'riscv64']
+	mut source := ''
+	mut calls := []string{}
+	for arch in arches {
+		source += 'fn check_${arch}_branches() {
 	asm goto ${arch} {
 		beq zero, zero, done
 		bne a0, a1, done
@@ -413,9 +435,28 @@ fn test_riscv_asm_goto_lowers_direct_branch_targets() {
 	}
 	done:
 }
-', 'riscv64')
-		assert generate.exit_code == 0, generate.output
-		assert c_source.contains('__asm__ goto ('), c_source
+'
+		calls << '\tcheck_${arch}_branches()'
+	}
+	source += '
+fn check_non_branch_operands() {
+	asm goto rv64 {
+		bext a0, a0, a0
+		jalr a0
+		jr a0
+		c.jr a0
+		; ; ; ; a0
+	}
+	a0:
+}
+
+'
+	source += 'fn main() {\n${calls.join('\n')}\n\tcheck_non_branch_operands()\n}\n'
+	generate, c_source := generate_inline_asm_c_for_arch('goto_riscv_program', source, 'riscv64')
+	assert generate.exit_code == 0, generate.output
+	for arch in arches {
+		body := inline_asm_function_body(c_source, 'check_${arch}_branches')
+		assert body.contains('__asm__ goto ('), body
 		for instruction in [
 			'beq zero, zero, %l[__v_user_goto_0]',
 			'bne a0, a1, %l[__v_user_goto_0]',
@@ -431,30 +472,16 @@ fn test_riscv_asm_goto_lowers_direct_branch_targets() {
 			'c.bnez a0, %l[__v_user_goto_0]',
 			'retry: BEQ zero, zero, %l[__v_user_goto_0]',
 		] {
-			assert c_source.contains('"${instruction}\\n\\t"'), c_source
+			assert body.contains('"${instruction}\\n\\t"'), body
 		}
-		assert c_source.contains(': __v_user_goto_0'), c_source
+		assert body.contains(': __v_user_goto_0'), body
 	}
-}
-
-fn test_riscv_asm_goto_preserves_registers_and_non_branch_operands() {
-	generate, c_source := generate_inline_asm_c_for_arch('goto_riscv_operands_program', 'fn main() {
-	asm goto rv64 {
-		bext a0, a0, a0
-		jalr a0
-		jr a0
-		c.jr a0
-		; ; ; ; a0
-	}
-	a0:
-}
-', 'riscv64')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"bext a0, a0, a0\\n\\t"'), c_source
-	assert c_source.contains('"jalr a0\\n\\t"'), c_source
-	assert c_source.contains('"jr a0\\n\\t"'), c_source
-	assert c_source.contains('"c.jr a0\\n\\t"'), c_source
-	assert !c_source.contains('%l['), c_source
+	operands := inline_asm_function_body(c_source, 'check_non_branch_operands')
+	assert operands.contains('"bext a0, a0, a0\\n\\t"'), operands
+	assert operands.contains('"jalr a0\\n\\t"'), operands
+	assert operands.contains('"jr a0\\n\\t"'), operands
+	assert operands.contains('"c.jr a0\\n\\t"'), operands
+	assert !operands.contains('%l['), operands
 }
 
 fn test_raw_asm_goto_keeps_symbolic_label_references_valid() {
@@ -610,6 +637,12 @@ fn generate_inline_asm_c_for_arch(name string, source string, arch string) (os.R
 		source_path])
 	c_source := os.read_file(c_path) or { '' }
 	return result, c_source
+}
+
+fn inline_asm_function_body(c_source string, name string) string {
+	signature := 'void ${name}(void) {\n'
+	assert c_source.contains(signature), name
+	return c_source.all_after(signature).all_before('\n}')
 }
 
 fn test_raw_asm_templates_reach_c_lowering_unchanged() {
@@ -813,7 +846,7 @@ fn test_intel_asm_accepts_amx_tile_registers() {
 	assert c_source.contains('"tilezero tmm0\\n\\t"'), c_source
 }
 
-fn test_intel_asm_accepts_x86_arch_aliases() {
+fn test_intel_asm_accepts_x86_64_arch_alias() {
 	generate, c_source := generate_inline_asm_c('intel_x86_register_program', 'fn main() {
 	asm x86_64 intel {
 		mov rAx, rBx
@@ -826,17 +859,6 @@ fn test_intel_asm_accepts_x86_arch_aliases() {
 	assert c_source.contains('"mov rAx, rBx\\n\\t"'), c_source
 	assert c_source.contains('"lea rax, [rax + riz]\\n\\t"'), c_source
 	assert c_source.contains('"lea eax, [eax + eiz]\\n\\t"'), c_source
-
-	for arch in ['i386', 'i486', 'i586', 'i686', 'x86', 'x86_32', 'ia-32', 'ia32'] {
-		x86_generate, x86_c_source := generate_inline_asm_c_for_arch('intel_${arch}_program', 'fn main() {
-	asm ${arch} intel {
-		mov eax, ebx
-	}
-}
-', 'i386')
-		assert x86_generate.exit_code == 0, '${arch}: ${x86_generate.output}'
-		assert x86_c_source.contains('"mov eax, ebx\\n\\t"'), '${arch}: ${x86_c_source}'
-	}
 }
 
 fn test_inline_asm_accepts_dotted_local_labels() {
