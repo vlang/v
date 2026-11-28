@@ -4217,30 +4217,40 @@ fn main() {
 }
 "
 
-// interface_method asks `code` about the `nth` `word` of the line of
-// interface_methods_program that reads `text`.
-fn interface_method(code string, text string, word string, nth int) string {
-	return ask(program_dir('interface_methods', interface_methods_program), code, line_of(interface_methods_program,
-		text), word, nth)
+fn interface_method_question(code string, text string, word string) string {
+	return word_question(text, code, line_of(interface_methods_program, text), word, 0)
 }
 
 fn test_a_method_of_an_interface_is_its_member_generic_or_not() {
 	// `a.less(b)` with `[T Comparable[T]]` calls the `less` of that interface,
 	// `s.get()` the `get` of `Shelf[T]` or of `Shelf[User]`, with the type
-	// arguments of the value; and so does a method named without a call.
+	// arguments of the value.
+	dir := program_dir('interface_methods', interface_methods_program)
 	less := '\treturn if a.less(b) { a } else { b }'
-	assert interface_method('hv^', less, 'less', 0) == hover_of('fn less(other T) bool')
-	assert interface_method('gd^', less, 'less', 0) == 'main.v:${line_of(interface_methods_program, '\tless(other T) bool')}:1'
+	get := '\treturn s.get()'
+	get_name := '\treturn s.get().name'
+	answers := ask_answers(dir, [
+		interface_method_question('hv^', less, 'less'),
+		interface_method_question('gd^', less, 'less'),
+		interface_method_question('hv^', get, 'get'),
+		interface_method_question('gd^', get, 'get'),
+		interface_method_question('hv^', get_name, 'get'),
+		interface_method_question('gd^', get_name, 'get'),
+	])
+	assert answers[0] == hover_of('fn less(other T) bool')
+	assert answers[1] == 'main.v:${line_of(interface_methods_program, '\tless(other T) bool')}:1'
 	get_at := 'main.v:${line_of(interface_methods_program, '\tget() T')}:1'
-	assert interface_method('hv^', '\treturn s.get()', 'get', 0) == hover_of('fn get() T')
-	assert interface_method('gd^', '\treturn s.get()', 'get', 0) == get_at
-	assert interface_method('hv^', '\treturn s.get().name', 'get', 0) == hover_of('fn get() main.User')
-	assert interface_method('gd^', '\treturn s.get().name', 'get', 0) == get_at
+	assert answers[2] == hover_of('fn get() T')
+	assert answers[3] == get_at
+	assert answers[4] == hover_of('fn get() main.User')
+	assert answers[5] == get_at
+	// A method named without a call also refers to the interface member.
+	greeter := '\tgreeter := n.greet'
 	greet_at := 'main.v:${line_of(interface_methods_program, '\tgreet() string')}:1'
-	assert interface_method('hv^', '\tgreeter := n.greet', 'greet', 0) == hover_of('fn greet() string')
-	assert interface_method('gd^', '\tgreeter := n.greet', 'greet', 0) == greet_at
+	assert ask_at(dir, interface_method_question('hv^', greeter, 'greet')) == hover_of('fn greet() string')
+	assert ask_at(dir, interface_method_question('gd^', greeter, 'greet')) == greet_at
 	// As before: a method of an interface, called on a value of it or of a type
 	// parameter that it constrains.
-	assert interface_method('hv^', '\treturn n.greet() + greeter()', 'greet', 0) == hover_of('fn greet() string')
-	assert interface_method('gd^', '\treturn x.greet()', 'greet', 0) == greet_at
+	assert ask_at(dir, interface_method_question('hv^', '\treturn n.greet() + greeter()', 'greet')) == hover_of('fn greet() string')
+	assert ask_at(dir, interface_method_question('gd^', '\treturn x.greet()', 'greet')) == greet_at
 }
