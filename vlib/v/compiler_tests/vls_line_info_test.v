@@ -1562,23 +1562,38 @@ fn test_a_member_of_a_generic_value_is_the_member_of_its_type() {
 	assert function('hv^', '\treturn b.label()', 'label', 0) == hover_of('fn label() string')
 }
 
+fn function_hover_question(text string, word string) string {
+	return word_question(text, 'hv^', functions_line(text), word, 0)
+}
+
 fn test_the_callee_of_a_call_through_a_value_is_that_value() {
 	// A local that holds a function literal, a method value, an instance of a
 	// generic function and a parameter of a function type are described where
 	// they are called as where they are declared.
-	assert function('hv^', '\tprintln(double(4))', 'double', 0) == hover_of('double fn (int) int')
-	assert function('hv^', '\tprintln(g())', 'g', 0) == hover_of('g fn () string')
-	instance := function('hv^', '\tf := longest[User]', 'f', 0)
+	dir := os.join_path(work_dir, 'functions')
+	answers := ask_answers(dir, [
+		function_hover_question('\tprintln(double(4))', 'double'),
+		function_hover_question('\tprintln(g())', 'g'),
+		function_hover_question('\tf := longest[User]', 'f'),
+		function_hover_question("\tprintln(f(u, User{ name: 'bo' }).name)", 'f'),
+		function_hover_question('\treturn f(x)', 'f'),
+	])
+	assert answers[0] == hover_of('double fn (int) int')
+	assert answers[1] == hover_of('g fn () string')
+	instance := answers[2]
 	assert instance.contains('f fn ('), instance
-	assert function('hv^', "\tprintln(f(u, User{ name: 'bo' }).name)", 'f', 0) == instance
-	assert function('hv^', '\treturn f(x)', 'f', 0) == hover_of('f fn (int) int')
+	assert answers[3] == instance
+	assert answers[4] == hover_of('f fn (int) int')
 	// A generic function called with its type arguments is that function.
 	longest := functions_line('fn longest[T Named](a T, b T) T {')
 	assert function('hv^', '\tprintln(longest[User](u, u).name)', 'longest', 0) == hover_of('fn longest[T Named](a T, b T) T')
 	assert function('gd^', '\tprintln(longest[User](u, u).name)', 'longest', 0) == 'main.v:${longest}:3'
 	// A function literal in a generic body takes a `T`, written by its name.
-	assert function('hv^', '\tprintln(xs.map(count))', 'count', 0) == hover_of('count fn (T) int\\nT: implements main.Named')
-	assert function('hv^', '\tcount := fn (x T) int {', 'count', 0) == hover_of('count fn (T) int\\nT: implements main.Named')
+	count := hover_of('count fn (T) int\\nT: implements main.Named')
+	assert ask_answers(dir, [
+		function_hover_question('\tprintln(xs.map(count))', 'count'),
+		function_hover_question('\tcount := fn (x T) int {', 'count'),
+	]) == [count, count]
 }
 
 fn test_a_static_method_is_declared_by_its_name() {
