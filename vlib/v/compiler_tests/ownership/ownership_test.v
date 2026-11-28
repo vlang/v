@@ -311,26 +311,6 @@ fn main() {
 	assert fail_or_fallback_owned.output.contains('use of moved value: `s`'), fail_or_fallback_owned.output
 	assert fail_or_fallback_owned.output.contains('use of moved value: `x`'), fail_or_fallback_owned.output
 
-	fail_or_fallback_side_effect := run_ownership_check(v3_bin, 'or_fallback_side_effect_branch', "
-fn maybe() ?int {
-	return 1
-}
-
-fn main() {
-	mut s := 'hello'.to_owned()
-	x := maybe() or {
-		s = 'literal'
-		0
-	}
-	t := s
-	println(s)
-	_ = x
-	_ = t
-}
-")
-	assert fail_or_fallback_side_effect.exit_code != 0
-	assert fail_or_fallback_side_effect.output.contains('use of moved value: `s`'), fail_or_fallback_side_effect.output
-
 	ok_plain_to_owned_method := run_ownership_check(v3_bin, 'plain_to_owned_method', '
 struct Foo {}
 
@@ -777,33 +757,6 @@ fn main() {
 ")
 	assert ok_function_defer_loop_return.exit_code == 0, ok_function_defer_loop_return.output
 
-	fail_conditional_blank_sink := run_ownership_check(v3_bin, 'conditional_blank_sink_move', "
-fn main() {
-	cond := true
-	s := 'hello'.to_owned()
-	_ = if cond { s } else { '' }
-	println(s)
-}
-")
-	assert fail_conditional_blank_sink.exit_code != 0
-	assert fail_conditional_blank_sink.output.contains('use of moved value: `s`'), fail_conditional_blank_sink.output
-
-	fail_conditional_blank_aggregate_sink := run_ownership_check(v3_bin, 'conditional_blank_aggregate_sink_move', '
-struct Holder {
-	value string
-}
-
-fn main() {
-	cond := true
-	h := Holder{value: "hello".to_owned()}
-	_ = if cond { h } else { Holder{value: "fallback".to_owned()} }
-	t := h.value
-	_ = t
-}
-')
-	assert fail_conditional_blank_aggregate_sink.exit_code != 0
-	assert fail_conditional_blank_aggregate_sink.output.contains('use of moved value: `h`'), fail_conditional_blank_aggregate_sink.output
-
 	fail_blank_aggregate_sink := run_ownership_check(v3_bin, 'blank_aggregate_sink_move', '
 struct Holder {
 	value string
@@ -818,35 +771,6 @@ fn main() {
 ')
 	assert fail_blank_aggregate_sink.exit_code != 0
 	assert fail_blank_aggregate_sink.output.contains('use of moved value: `h`'), fail_blank_aggregate_sink.output
-
-	fail_conditional_assign_aggregate := run_ownership_check(v3_bin, 'conditional_assign_aggregate_descendant', '
-struct Holder {
-	value string
-}
-
-fn main() {
-	cond := true
-	h := Holder{value: "hello".to_owned()}
-	out := if cond { h } else { Holder{value: "fallback".to_owned()} }
-	t := out.value
-	println(out.value)
-	_ = t
-}
-')
-	assert fail_conditional_assign_aggregate.exit_code != 0
-	assert fail_conditional_assign_aggregate.output.contains('use of moved value: `out.value`'), fail_conditional_assign_aggregate.output
-
-	fail_conditional_channel_send := run_ownership_check(v3_bin, 'conditional_channel_send_move', "
-fn main() {
-	cond := true
-	ch := chan string{cap: 1}
-	s := 'hello'.to_owned()
-	ch <- if cond { s } else { '' }
-	println(s)
-}
-")
-	assert fail_conditional_channel_send.exit_code != 0
-	assert fail_conditional_channel_send.output.contains('use of moved value: `s`'), fail_conditional_channel_send.output
 
 	fail_channel_aggregate_send := run_ownership_check(v3_bin, 'channel_aggregate_send_move', '
 struct Holder {
@@ -1104,46 +1028,6 @@ fn main() {
 }
 	")
 	assert ok_guard.exit_code == 0, ok_guard.output
-
-	fail_guard_outer_owned := run_ownership_check(v3_bin, 'if_guard_preserves_outer_owned', "
-fn maybe_string() ?string {
-	return 'inner'
-}
-
-fn main() {
-	s := 'outer'.to_owned()
-	if inner := maybe_string() {
-		println(inner)
-	}
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert fail_guard_outer_owned.exit_code != 0
-	assert fail_guard_outer_owned.output.contains('use of moved value: `s`'), fail_guard_outer_owned.output
-
-	fail_guard_owned_option_source := run_ownership_check(v3_bin, 'if_guard_moves_owned_option_source', '
-struct Resource implements Owned {
-	id int
-}
-
-fn maybe_resource() ?Resource {
-	return Resource{id: 1}
-}
-
-fn main() {
-	opt := maybe_resource()
-	if r := opt {
-		t := r
-		_ = t
-	}
-	u := opt
-	_ = u
-}
-')
-	assert fail_guard_owned_option_source.exit_code != 0
-	assert fail_guard_owned_option_source.output.contains('use of moved value: `opt`'), fail_guard_owned_option_source.output
 }
 
 fn test_ownership_rejects_local_shadowing() {
@@ -3377,38 +3261,6 @@ fn main() {
 ")
 	assert ok_branch_local_borrow.exit_code == 0, ok_branch_local_borrow.output
 
-	fail_after := run_ownership_check(v3_bin, 'branch_merge_after_if', "
-fn main() {
-	cond := true
-	s := 'hello'.to_owned()
-	if cond {
-		t := s
-		println(t)
-	}
-	println(s)
-}
-	")
-	assert fail_after.exit_code != 0
-	assert fail_after.output.contains('use of moved value: `s`'), fail_after.output
-
-	fail_select_branch_merge := run_ownership_check(v3_bin, 'select_branch_merge', "
-fn main() {
-	ch := chan bool{cap: 1}
-	mut s := 'hello'.to_owned()
-	select {
-		ch <- true {
-			s = 'literal'
-		}
-		else {}
-	}
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert fail_select_branch_merge.exit_code != 0
-	assert fail_select_branch_merge.output.contains('use of moved value: `s`'), fail_select_branch_merge.output
-
 	ok_match_return := run_ownership_check(v3_bin, 'match_return_branch_isolation', "
 fn main() {
 	x := 0
@@ -3492,23 +3344,6 @@ fn main() {
 	assert fail_branch_borrow.exit_code != 0
 	assert fail_branch_borrow.output.contains('cannot move `s` because it is borrowed by `r`'), fail_branch_borrow.output
 
-	fail_branch_owned_assign := run_ownership_check(v3_bin, 'branch_merge_owned_assignment', "
-fn main() {
-	cond := true
-	mut s := ''
-	if cond {
-		s = 'a'.to_owned()
-	} else {
-		s = 'b'.to_owned()
-	}
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert fail_branch_owned_assign.exit_code != 0
-	assert fail_branch_owned_assign.output.contains('use of moved value: `s`'), fail_branch_owned_assign.output
-
 	ok_branch_plain_assign := run_ownership_check(v3_bin, 'branch_plain_assignment_clears_owned', "
 fn main() {
 	cond := true
@@ -3571,8 +3406,146 @@ fn main() {
 }
 ")
 	assert ok_exhaustive_sum_match_plain_assign.exit_code == 0, ok_exhaustive_sum_match_plain_assign.output
+}
 
-	fail_branch_plain_assign_without_else := run_ownership_check(v3_bin, 'branch_plain_assignment_without_else_keeps_owned', "
+fn test_ownership_conditional_move_rejections() {
+	check_ownership_module_rejections('conditional_move_rejections', [
+		OwnershipModuleRejection{'or_fallback_side_effect_branch', "
+fn maybe() ?int {
+	return 1
+}
+
+fn main() {
+	mut s := 'hello'.to_owned()
+	x := maybe() or {
+		s = 'literal'
+		0
+	}
+	t := s
+	println(s)
+	_ = x
+	_ = t
+}
+", 'println(s)', 'use of moved value: `s`'},
+		OwnershipModuleRejection{'conditional_blank_sink_move', "
+fn main() {
+	cond := true
+	s := 'hello'.to_owned()
+	_ = if cond { s } else { '' }
+	println(s)
+}
+", 'println(s)', 'use of moved value: `s`'},
+		OwnershipModuleRejection{'conditional_blank_aggregate_sink_move', '
+struct Holder {
+	value string
+}
+
+fn main() {
+	cond := true
+	h := Holder{value: "hello".to_owned()}
+	_ = if cond { h } else { Holder{value: "fallback".to_owned()} }
+	t := h.value
+	_ = t
+}
+', 't := h.value', 'use of moved value: `h`'},
+		OwnershipModuleRejection{'conditional_assign_aggregate_descendant', '
+struct Holder {
+	value string
+}
+
+fn main() {
+	cond := true
+	h := Holder{value: "hello".to_owned()}
+	out := if cond { h } else { Holder{value: "fallback".to_owned()} }
+	t := out.value
+	println(out.value)
+	_ = t
+}
+', 'println(out.value)', 'use of moved value: `out.value`'},
+		OwnershipModuleRejection{'conditional_channel_send_move', "
+fn main() {
+	cond := true
+	ch := chan string{cap: 1}
+	s := 'hello'.to_owned()
+	ch <- if cond { s } else { '' }
+	println(s)
+}
+", 'println(s)', 'use of moved value: `s`'},
+		OwnershipModuleRejection{'if_guard_preserves_outer_owned', "
+fn maybe_string() ?string {
+	return 'inner'
+}
+
+fn main() {
+	s := 'outer'.to_owned()
+	if inner := maybe_string() {
+		println(inner)
+	}
+	t := s
+	println(s)
+	_ = t
+}
+", 'println(s)', 'use of moved value: `s`'},
+		OwnershipModuleRejection{'if_guard_moves_owned_option_source', '
+struct Resource implements Owned {
+	id int
+}
+
+fn maybe_resource() ?Resource {
+	return Resource{id: 1}
+}
+
+fn main() {
+	opt := maybe_resource()
+	if r := opt {
+		t := r
+		_ = t
+	}
+	u := opt
+	_ = u
+}
+', 'u := opt', 'use of moved value: `opt`'},
+		OwnershipModuleRejection{'branch_merge_after_if', "
+fn main() {
+	cond := true
+	s := 'hello'.to_owned()
+	if cond {
+		t := s
+		println(t)
+	}
+	println(s)
+}
+	", 'println(s)', 'use of moved value: `s`'},
+		OwnershipModuleRejection{'select_branch_merge', "
+fn main() {
+	ch := chan bool{cap: 1}
+	mut s := 'hello'.to_owned()
+	select {
+		ch <- true {
+			s = 'literal'
+		}
+		else {}
+	}
+	t := s
+	println(s)
+	_ = t
+}
+", 'println(s)', 'use of moved value: `s`'},
+		OwnershipModuleRejection{'branch_merge_owned_assignment', "
+fn main() {
+	cond := true
+	mut s := ''
+	if cond {
+		s = 'a'.to_owned()
+	} else {
+		s = 'b'.to_owned()
+	}
+	t := s
+	println(s)
+	_ = t
+}
+", 'println(s)', 'use of moved value: `s`'},
+		OwnershipModuleRejection{'branch_plain_assignment_without_else_keeps_owned', "
 fn main() {
 	cond := true
 	mut s := 'hello'.to_owned()
@@ -3583,9 +3556,8 @@ fn main() {
 	println(s)
 	_ = t
 }
-")
-	assert fail_branch_plain_assign_without_else.exit_code != 0
-	assert fail_branch_plain_assign_without_else.output.contains('use of moved value: `s`'), fail_branch_plain_assign_without_else.output
+", 'println(s)', 'use of moved value: `s`'},
+	])
 }
 
 fn test_ownership_veb_implicit_context_arg_moves() {
