@@ -1681,14 +1681,21 @@ fn run_good_module_batch(v3_bin string, name string, cases []TransformFixture) {
 
 fn run_good_module_batch_with_flags(v3_bin string, name string, flags string, cases []TransformFixture) string {
 	mut files := map[string]string{}
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		source := 'module ${module_name}\n\n' + case.source
+		files['${module_name}/${case.name}.v'] = source.replace_once('\nfn main()', '\npub fn exercise()')
+	}
+	return run_good_module_fixture_project(v3_bin, name, flags, cases, mut files)
+}
+
+fn run_good_module_fixture_project(v3_bin string, name string, flags string, cases []TransformFixture, mut files map[string]string) string {
 	mut imports := []string{cap: cases.len}
 	mut calls := []string{cap: cases.len}
 	for i, case in cases {
 		module_name := 'fixture_${i}'
 		imports << 'import ${module_name}'
 		calls << "\t\t'${case.name}' { ${module_name}.exercise() }"
-		source := 'module ${module_name}\n\n' + case.source
-		files['${module_name}/${case.name}.v'] = source.replace_once('\nfn main()', '\npub fn exercise()')
 	}
 	files['main.v'] = "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
 	good_bin := compile_good_project(v3_bin, name, flags, files, '')
@@ -1706,6 +1713,49 @@ fn run_array_map_ownership_batch(name string, cases []TransformFixture) {
 	for i, case in cases {
 		body := c_fn_body(c_source, 'void fixture_${i}__exercise(void) {')
 		assert body.len > 0, '${case.name}: exercise body missing from generated C'
+		compact := body.replace(' ', '').replace('\t', '').replace('\n', '')
+		assert !compact.contains('array__free(&(__map_source_'), '${case.name}: ${body}'
+	}
+}
+
+struct ArrayMapEscapeCase {
+	name         string
+	files        map[string]string
+	expected     string
+	map_function string
+}
+
+fn run_array_map_escape_batch(cases []ArrayMapEscapeCase) {
+	v3_bin := build_v3_review_transform_ownership()
+	mut files := map[string]string{}
+	mut runtime_cases := []TransformFixture{cap: cases.len}
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		api_module := '${module_name}_api'
+		entry := case.files['main.v']
+			.replace_once('module main\n', 'module ${module_name}\n')
+			.replace_once('\nimport api\n', '\nimport ${api_module} as api\n')
+		files['${module_name}/${case.name}.v'] = entry.replace_once('\nfn main()', '\npub fn exercise()')
+		for file, body in case.files {
+			if file != 'main.v' {
+				files['${api_module}/${file}'] = body.replace_once('module api\n', 'module ${api_module}\n')
+			}
+		}
+		runtime_cases << TransformFixture{case.name, entry, case.expected}
+	}
+	good_bin := run_good_module_fixture_project(v3_bin, 'array_map_escape_sinks', '-ownership',
+		runtime_cases, mut files)
+	c_source := os.read_file(good_bin + '.c') or { panic(err) }
+	for i, case in cases {
+		mut signature := 'void fixture_${i}__exercise(void) {'
+		if case.map_function != '' {
+			prefix := 'Array fixture_${i}__${case.map_function}('
+			definitions := c_source.split_into_lines().filter(it.starts_with(prefix) && it.ends_with(' {'))
+			assert definitions.len == 1, '${case.name}: missing definition for ${case.map_function}'
+			signature = definitions[0]
+		}
+		body := c_fn_body(c_source, signature)
+		assert body.contains('__map_source_'), '${case.name}: map source missing from generated C'
 		compact := body.replace(' ', '').replace('\t', '').replace('\n', '')
 		assert !compact.contains('array__free(&(__map_source_'), '${case.name}: ${body}'
 	}
@@ -9501,19 +9551,22 @@ fn main() {
 	])
 }
 
-fn test_array_map_keeps_source_passed_to_globally_storing_call() {
-	v3_bin := build_v3_review_transform_ownership()
-	source := '@[has_globals]
+fn test_array_map_retains_temporary_sources_that_escape() {
+	run_array_map_escape_batch([
+		ArrayMapEscapeCase{
+			name:     'array_map_global_call_sink'
+			files:    {
+				'main.v': '@[has_globals]
 module main
 
 struct Item {
 	text string
 }
 
-__global retained &Item
+__global retained_direct &Item
 
 fn save(value &Item) {
-	retained = value
+	retained_direct = value
 }
 
 fn make_items() []Item {
@@ -9533,21 +9586,16 @@ fn main() {
 		}
 	})
 	println(selected[0])
-	println(retained.text)
+	println(retained_direct.text)
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'array_map_global_call_sink', '-ownership', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	assert out == '0\nsource'
-}
-
-fn test_array_map_keeps_source_passed_through_global_store_wrapper() {
-	v3_bin := build_v3_review_transform_ownership()
-	files := {
-		'v.mod':         "Module { name: 'array_map_global_wrapper_sink' }\n"
-		'api/store.v':   '@[has_globals]
+			}
+			expected: '0\nsource'
+		},
+		ArrayMapEscapeCase{
+			name:     'array_map_global_wrapper_sink'
+			files:    {
+				'store.v':   '@[has_globals]
 module api
 
 pub struct Item {
@@ -9555,23 +9603,23 @@ pub:
 	text string
 }
 
-__global retained &Item
+__global retained_global_wrapper &Item
 
 fn save(value &Item) {
-	retained = value
+	retained_global_wrapper = value
 }
 
 pub fn retained_text() string {
-	return retained.text
+	return retained_global_wrapper.text
 }
 '
-		'api/wrapper.v': 'module api
+				'wrapper.v': 'module api
 
 pub fn keep(value &Item) {
 	save(value)
 }
 '
-		'main.v':        'module main
+				'main.v':    'module main
 
 import api
 
@@ -9595,19 +9643,13 @@ fn main() {
 	println(api.retained_text())
 }
 '
-	}
-	out, c_source := run_good_project_with_c(v3_bin, 'array_map_global_wrapper_sink', '-ownership', files, 'main.v')
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	assert out == '0\nsource'
-}
-
-fn test_array_map_keeps_source_captured_by_callback_wrapper() {
-	v3_bin := build_v3_review_transform_ownership()
-	files := {
-		'v.mod':        "Module { name: 'array_map_callback_wrapper_sink' }\n"
-		'api/store.v':  '@[has_globals]
+			}
+			expected: '0\nsource'
+		},
+		ArrayMapEscapeCase{
+			name:     'array_map_callback_wrapper_sink'
+			files:    {
+				'store.v':  '@[has_globals]
 module api
 
 pub struct Item {
@@ -9615,23 +9657,23 @@ pub:
 	text string
 }
 
-__global retained &Item
+__global retained_callback_capture &Item
 
 pub fn save(value &Item) {
-	retained = value
+	retained_callback_capture = value
 }
 
 pub fn retained_text() string {
-	return retained.text
+	return retained_callback_capture.text
 }
 '
-		'api/invoke.v': 'module api
+				'invoke.v': 'module api
 
 pub fn invoke(callback fn ()) {
 	callback()
 }
 '
-		'main.v':       'module main
+				'main.v':   'module main
 
 import api
 
@@ -9658,19 +9700,13 @@ fn main() {
 	println(api.retained_text())
 }
 '
-	}
-	out, c_source := run_good_project_with_c(v3_bin, 'array_map_callback_wrapper_sink', '-ownership', files, 'main.v')
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	assert out == '0\nsource'
-}
-
-fn test_array_map_keeps_source_forwarded_through_callback_wrapper() {
-	v3_bin := build_v3_review_transform_ownership()
-	files := {
-		'v.mod':        "Module { name: 'array_map_forwarded_callback_wrapper_sink' }\n"
-		'api/store.v':  '@[has_globals]
+			}
+			expected: '0\nsource'
+		},
+		ArrayMapEscapeCase{
+			name:     'array_map_forwarded_callback_wrapper_sink'
+			files:    {
+				'store.v':  '@[has_globals]
 module api
 
 pub struct Item {
@@ -9678,23 +9714,23 @@ pub:
 	text string
 }
 
-__global retained &Item
+__global retained_forwarded_callback &Item
 
 pub fn save(value &Item) {
-	retained = value
+	retained_forwarded_callback = value
 }
 
 pub fn retained_text() string {
-	return retained.text
+	return retained_forwarded_callback.text
 }
 '
-		'api/invoke.v': 'module api
+				'invoke.v': 'module api
 
 pub fn invoke(callback fn (&Item), value &Item) {
 	callback(value)
 }
 '
-		'main.v':       'module main
+				'main.v':   'module main
 
 import api
 
@@ -9718,19 +9754,13 @@ fn main() {
 	println(api.retained_text())
 }
 '
-	}
-	out, c_source := run_good_project_with_c(v3_bin, 'array_map_forwarded_callback_wrapper_sink', '-ownership', files, 'main.v')
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	assert out == '0\nsource'
-}
-
-fn test_array_map_keeps_source_forwarded_through_callback_wrapper_local_alias() {
-	v3_bin := build_v3_review_transform_ownership()
-	files := {
-		'v.mod':        "Module { name: 'array_map_aliased_callback_wrapper_sink' }\n"
-		'api/store.v':  '@[has_globals]
+			}
+			expected: '0\nsource'
+		},
+		ArrayMapEscapeCase{
+			name:     'array_map_aliased_callback_wrapper_sink'
+			files:    {
+				'store.v':  '@[has_globals]
 module api
 
 pub struct Item {
@@ -9738,17 +9768,17 @@ pub:
 	text string
 }
 
-__global retained &Item
+__global retained_aliased_callback &Item
 
 pub fn save(value &Item) {
-	retained = value
+	retained_aliased_callback = value
 }
 
 pub fn retained_text() string {
-	return retained.text
+	return retained_aliased_callback.text
 }
 '
-		'api/invoke.v': 'module api
+				'invoke.v': 'module api
 
 pub fn invoke(callback fn (&Item), value &Item) {
 	callback_alias := callback
@@ -9756,7 +9786,7 @@ pub fn invoke(callback fn (&Item), value &Item) {
 	callback_alias(value_alias)
 }
 '
-		'main.v':       'module main
+				'main.v':   'module main
 
 import api
 
@@ -9780,19 +9810,13 @@ fn main() {
 	println(api.retained_text())
 }
 '
-	}
-	out, c_source := run_good_project_with_c(v3_bin, 'array_map_aliased_callback_wrapper_sink', '-ownership', files, 'main.v')
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	assert out == '0\nsource'
-}
-
-fn test_array_map_keeps_source_forwarded_through_callback_wrapper_helper_rebind() {
-	v3_bin := build_v3_review_transform_ownership()
-	files := {
-		'v.mod':        "Module { name: 'array_map_helper_rebound_callback_alias' }\n"
-		'api/store.v':  '@[has_globals]
+			}
+			expected: '0\nsource'
+		},
+		ArrayMapEscapeCase{
+			name:     'array_map_helper_rebound_callback_alias'
+			files:    {
+				'store.v':  '@[has_globals]
 module api
 
 pub struct Item {
@@ -9800,17 +9824,17 @@ pub:
 	text string
 }
 
-__global retained &Item
+__global retained_rebound_callback &Item
 
 pub fn save(value &Item) {
-	retained = value
+	retained_rebound_callback = value
 }
 
 pub fn retained_text() string {
-	return retained.text
+	return retained_rebound_callback.text
 }
 '
-		'api/invoke.v': 'module api
+				'invoke.v': 'module api
 
 fn rebind(mut target &Item, value &Item) {
 	target = value
@@ -9825,7 +9849,7 @@ pub fn invoke(callback fn (&Item), value &Item) {
 	callback(alias)
 }
 '
-		'main.v':       'module main
+				'main.v':   'module main
 
 import api
 
@@ -9849,17 +9873,13 @@ fn main() {
 	println(api.retained_text())
 }
 '
-	}
-	out, c_source := run_good_project_with_c(v3_bin, 'array_map_helper_rebound_callback_alias', '-ownership', files, 'main.v')
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	assert out == '0\nsource'
-}
-
-fn test_array_map_keeps_source_stored_through_explicitly_dereferenced_helper_target() {
-	v3_bin := build_v3_review_transform_ownership()
-	source := '@[has_globals]
+			}
+			expected: '0\nsource'
+		},
+		ArrayMapEscapeCase{
+			name:     'array_map_explicit_deref_helper_storage'
+			files:    {
+				'main.v': '@[has_globals]
 module main
 
 struct Item {
@@ -9903,18 +9923,13 @@ fn main() {
 	println(target.value.text)
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'array_map_explicit_deref_helper_storage', '-ownership', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	assert out == '0\nsource'
-}
-
-fn test_array_map_keeps_conditional_callback_source_aliases() {
-	v3_bin := build_v3_review_transform_ownership()
-	files := {
-		'v.mod':        "Module { name: 'array_map_conditional_callback_alias' }\n"
-		'api/store.v':  '@[has_globals]
+			}
+			expected: '0\nsource'
+		},
+		ArrayMapEscapeCase{
+			name:     'array_map_conditional_callback_alias'
+			files:    {
+				'store.v':  '@[has_globals]
 module api
 
 pub struct Item {
@@ -9922,17 +9937,17 @@ pub:
 	text string
 }
 
-__global retained &Item
+__global retained_conditional_callback &Item
 
 pub fn save(value &Item) {
-	retained = value
+	retained_conditional_callback = value
 }
 
 pub fn retained_text() string {
-	return retained.text
+	return retained_conditional_callback.text
 }
 '
-		'api/invoke.v': 'module api
+				'invoke.v': 'module api
 
 pub fn invoke(callback fn (&Item), value &Item, use_local bool) {
 	mut local := Item{
@@ -9945,7 +9960,7 @@ pub fn invoke(callback fn (&Item), value &Item, use_local bool) {
 	callback(alias)
 }
 '
-		'main.v':       'module main
+				'main.v':   'module main
 
 import api
 
@@ -9969,19 +9984,13 @@ fn main() {
 	println(api.retained_text())
 }
 '
-	}
-	out, c_source := run_good_project_with_c(v3_bin, 'array_map_conditional_callback_alias', '-ownership', files, 'main.v')
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	assert out == '0\nsource'
-}
-
-fn test_array_map_keeps_source_forwarded_through_branch_selected_callback_alias() {
-	v3_bin := build_v3_review_transform_ownership()
-	files := {
-		'v.mod':        "Module { name: 'array_map_branch_callback_alias' }\n"
-		'api/store.v':  '@[has_globals]
+			}
+			expected: '0\nsource'
+		},
+		ArrayMapEscapeCase{
+			name:     'array_map_branch_callback_alias'
+			files:    {
+				'store.v':  '@[has_globals]
 module api
 
 pub struct Item {
@@ -9989,17 +9998,17 @@ pub:
 	text string
 }
 
-__global retained &Item
+__global retained_branch_callback &Item
 
 pub fn save(value &Item) {
-	retained = value
+	retained_branch_callback = value
 }
 
 pub fn retained_text() string {
-	return retained.text
+	return retained_branch_callback.text
 }
 '
-		'api/invoke.v': 'module api
+				'invoke.v': 'module api
 
 fn ignore(_ &Item) {}
 
@@ -10036,7 +10045,7 @@ pub fn invoke_container(callback fn (&Item), value &Item) {
 	callbacks[0](value)
 }
 '
-		'main.v':       'module main
+				'main.v':   'module main
 
 import api
 
@@ -10093,19 +10102,13 @@ fn main() {
 	println(api.retained_text())
 }
 '
-	}
-	out, c_source := run_good_project_with_c(v3_bin, 'array_map_branch_callback_alias', '-ownership', files, 'main.v')
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_main.contains('array__free(&(__map_source_'), 'api.save retains the mapped element through a selected callback alias\n${main_body}'
-	assert out == '0\nsource\n0\nsource\n0\nsource\n0\nsource'
-}
-
-fn test_array_map_keeps_source_forwarded_through_nested_callback_wrappers() {
-	v3_bin := build_v3_review_transform_ownership()
-	files := {
-		'v.mod':        "Module { name: 'array_map_nested_callback_wrapper_sink' }\n"
-		'api/store.v':  '@[has_globals]
+			}
+			expected: '0\nsource\n0\nsource\n0\nsource\n0\nsource'
+		},
+		ArrayMapEscapeCase{
+			name:     'array_map_nested_callback_wrapper_sink'
+			files:    {
+				'store.v':  '@[has_globals]
 module api
 
 pub struct Item {
@@ -10113,17 +10116,17 @@ pub:
 	text string
 }
 
-__global retained &Item
+__global retained_nested_callback &Item
 
 pub fn save(value &Item) {
-	retained = value
+	retained_nested_callback = value
 }
 
 pub fn retained_text() string {
-	return retained.text
+	return retained_nested_callback.text
 }
 '
-		'api/invoke.v': 'module api
+				'invoke.v': 'module api
 
 pub fn invoke1(callback fn (&Item), value &Item) {
 	callback(value)
@@ -10133,7 +10136,7 @@ pub fn invoke2(callback fn (&Item), value &Item) {
 	invoke1(callback, value)
 }
 '
-		'main.v':       'module main
+				'main.v':   'module main
 
 import api
 
@@ -10157,27 +10160,23 @@ fn main() {
 	println(api.retained_text())
 }
 '
-	}
-	out, c_source := run_good_project_with_c(v3_bin, 'array_map_nested_callback_wrapper_sink', '-ownership', files, 'main.v')
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	assert out == '0\nsource'
-}
-
-fn test_array_map_keeps_source_passed_to_unresolved_pointer_call() {
-	v3_bin := build_v3_review_transform_ownership()
-	source := '@[has_globals]
+			}
+			expected: '0\nsource'
+		},
+		ArrayMapEscapeCase{
+			name:         'array_map_indirect_call_sink'
+			files:        {
+				'main.v': '@[has_globals]
 module main
 
 struct Item {
 	text string
 }
 
-__global retained &Item
+__global retained_indirect &Item
 
 fn save(value &Item) {
-	retained = value
+	retained_indirect = value
 }
 
 fn make_items() []Item {
@@ -10201,14 +10200,14 @@ fn map_with(callback fn (&Item)) []int {
 fn main() {
 	selected := map_with(save)
 	println(selected[0])
-	println(retained.text)
+	println(retained_indirect.text)
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'array_map_indirect_call_sink', '-ownership', source)
-	map_body := c_fn_body(c_source, 'Array main__map_with(')
-	compact_map := map_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_map.contains('array__free(&(__map_source_'), map_body
-	assert out == '0\nsource'
+			}
+			expected:     '0\nsource'
+			map_function: 'map_with'
+		},
+	])
 }
 
 fn test_array_map_keeps_source_passed_to_external_c_call() {
