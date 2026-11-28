@@ -199,11 +199,170 @@ fn run_good_module_batch(compiler string, name string, cases []TypeCheckerRuntim
 		files['${module_name}/${case.name}.v'] = source.replace_once('\nfn main()', '\npub fn exercise()')
 	}
 	files['main.v'] = "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
+	run_good_batch_cases(compiler, name, cases, files)
+}
+
+fn run_good_main_batch(compiler string, name string, cases []TypeCheckerRuntimeCase, extra_files map[string]string) string {
+	mut files := extra_files.clone()
+	mut calls := []string{cap: cases.len}
+	for case in cases {
+		files['${case.name}.v'] = case.source.replace_once('fn main() {', 'fn ${case.name}() {')
+		calls << "\t\t'${case.name}' { ${case.name}() }"
+	}
+	files['main.v'] = "module main\n\nimport os\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
+	return run_good_batch_cases(compiler, name, cases, files)
+}
+
+fn run_good_batch_cases(compiler string, name string, cases []TypeCheckerRuntimeCase, files map[string]string) string {
 	good_bin := compile_good_project(compiler, name, files, '')
 	for case in cases {
 		out := run_good_binary(case.name, good_bin, case.name)
 		assert out == case.expected, '${case.name}: expected `${case.expected}`, got `${out}`'
 	}
+	return good_bin
+}
+
+fn test_main_module_qualification() {
+	good_bin := run_good_main_batch(v3_bin, 'main_module_qualification', [
+		TypeCheckerRuntimeCase{'qualified_import_calls', 'module main
+
+import moda
+
+fn main() {
+	println(int_str(moda.answer()))
+	println(int_str(moda.after_chain()))
+}
+', '7\n7'},
+		TypeCheckerRuntimeCase{'disabled_if_declarations', 'module main
+
+import moda as m
+
+__global hit int
+
+@[if trace ?]
+fn trace(x int) {}
+
+fn side_effect() int {
+	hit = 99
+	return 1
+}
+
+@[if trace ?]
+struct DisabledStruct {
+	bad MissingDisabledType
+}
+
+struct EnabledStruct {
+	value int
+}
+
+fn main() {
+	trace(side_effect())
+	println(int_str(hit))
+	m.trace(side_effect())
+	println(int_str(hit))
+	println(int_str(m.run()))
+	println(int_str(EnabledStruct{value: 7}.value))
+}
+', '0\n0\n0\n7'},
+		TypeCheckerRuntimeCase{'good_aliased_sum_uses_full_suffix', 'module main\n\nimport other as _\nimport sub.tast\n\nfn main() {\n\tvalue := tast.make_beta()\n\tif value is tast.Beta {\n\t\tprintln(int_str(value.n))\n\t} else {\n\t\tprintln("wrong")\n\t}\n}\n', '9'},
+		TypeCheckerRuntimeCase{'good_module_local_error_type', 'module main\n\nimport fixture\n\nfn main() {\n\terr := fixture.make_error()\n\tprintln(err.msg())\n}\n', 'local'},
+		TypeCheckerRuntimeCase{'good_module_qualified_enum_if_expression', "module main\n\nimport mode\n\nfn selected() mode.Kind {\n\treturn if true {\n\t\tmode.Kind.hybrid\n\t} else {\n\t\tmode.Kind.portable\n\t}\n}\n\nfn main() {\n\tassert selected() == .hybrid\n\tprintln('ok')\n}\n", 'ok'},
+		TypeCheckerRuntimeCase{'good_module_qualified_enum_alias_selector', "module main\n\nimport mode\n\nfn main() {\n\tvalue := mode.KindAlias.hybrid\n\tassert value == .hybrid\n\tprintln('ok')\n}\n", 'ok'},
+		TypeCheckerRuntimeCase{'good_shadowed_const_fixed_storage', 'module main\n\nimport fixture\n\nconst xs = [10, 20, 30]\n\nfn all() []int {\n\treturn xs\n}\n\nfn main() {\n\tys := all()\n\tprintln(int_str(fixture.first() + ys.len + ys[2]))\n}\n', '34'},
+	], {
+		'moda/moda.v':     'module moda
+
+pub fn answer() int {
+	return 7
+}
+
+fn choose[T](x T) T {
+	$if T is u8 {
+		return x
+	} $else $if T is int {
+		return x
+	} $else {}
+	return x
+}
+
+pub fn after_chain() int {
+	return 7
+}
+
+__global hit int
+
+struct Tracer {}
+
+@[if trace ?]
+fn (t Tracer) trace(x int) {}
+
+fn side_effect() int {
+	hit = 99
+	return 1
+}
+
+pub fn run() int {
+	t := Tracer{}
+	t.trace(side_effect())
+	return hit
+}
+
+@[if trace ?]
+pub fn trace(x int) {}
+'
+		'v.mod':           "Module { name: 'aliased_sum_full_suffix' }\n"
+		'other/other.v':   'module other\n\npub struct Alpha {\npub:\n\tn int\n}\n\npub struct Beta {\npub:\n\tn int\n}\n\npub type Value = Beta | Alpha\n'
+		'sub/tast/tast.v': 'module tast\n\npub struct Alpha {\npub:\n\tn int\n}\n\npub struct Beta {\npub:\n\tn int\n}\n\npub type Value = Alpha | Beta\n\npub fn make_beta() Value {\n\treturn Beta{\n\t\tn: 9\n\t}\n}\n'
+		'fixture/fi.v':    "module fixture\n\npub struct Error {\n\tmessage string\n}\n\npub fn make_error() Error {\n\treturn Error{\n\t\tmessage: 'local'\n\t}\n}\n\npub fn (err Error) msg() string {\n\treturn err.message\n}\n" + '\npub const xs = [1, 2, 3]\n\npub fn first() int {\n\treturn xs[0]\n}\n'
+		'mode/mode.v':     'module mode\n\npub enum Kind {\n\tportable\n\thybrid\n}\n\npub type KindAlias = Kind\n'
+	})
+	shadowed_c := os.read_file(good_bin + '.c') or { panic(err) }
+	shadowed_compact := shadowed_c.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert shadowed_compact.contains('Arraymain__xs;'), shadowed_c
+	assert shadowed_compact.contains('returnmain__xs;'), shadowed_c
+	assert shadowed_compact.contains('fixture__xs[3]'), shadowed_c
+	assert shadowed_compact.contains('returnfixture__xs[0];'), shadowed_c
+}
+
+fn test_main_module_storage_and_symbols() {
+	good_bin := run_good_main_batch(v3_bin, 'main_module_storage_and_symbols', [
+		TypeCheckerRuntimeCase{'c_extern_suffix_does_not_hide_v_fn', 'fn C.answer() int
+
+fn answer() int {
+	return 42
+}
+
+fn main() {
+	println(answer())
+}
+', '42'},
+		TypeCheckerRuntimeCase{'global_amp_initializers', 'struct Point {\n\tx int\n\ty int\n}\n\ninterface Reader {\n\tn int\n\tread() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b Box) read() int {\n\treturn b.n + 1\n}\n\n__global (\n\tbase_point = Point{x: 1, y: 2}\n\tassoc_point = &Point{...base_point, y: 5}\n\treader_box = Box{n: 7}\n\treader_ref = &Reader(reader_box)\n)\n\nfn main() {\n\tprintln(int_str(assoc_point.y))\n\tprintln(int_str(reader_ref.n))\n\tprintln(int_str(reader_ref.read()))\n}\n', '5\n7\n8'},
+		TypeCheckerRuntimeCase{'good_callback_guarded_recursive_alias', 'type Handlers = map[string]fn (Handlers)\n\nfn main() {\n\thandlers := Handlers{}\n\tprintln(int_str(handlers.len))\n}\n', '0'},
+		TypeCheckerRuntimeCase{'good_indexed_const_returned_dynamic_array', 'const xs = [1, 2, 3]\nfn first() int {\n\treturn xs[0]\n}\nfn length_score() int {\n\treturn xs.len\n}\nfn all() []int {\n\treturn xs\n}\nfn main() {\n\tys := all()\n\tprintln(int_str(first() + length_score() + ys.len + ys[2]))\n}\n', '10'},
+		TypeCheckerRuntimeCase{'good_aligned_pointer_alias_heap_copy_run', '@[aligned: 64]\nstruct Aligned {\n\tx int\n}\nfn make() &Aligned {\n\tmut x := Aligned{\n\t\tx: 5\n\t}\n\tp := &x\n\treturn p\n}\nfn main() {\n\tp := make()\n\tprintln(int_str(p.x))\n\tunsafe {\n\t\tfree(p)\n\t}\n}\n', '5'},
+	], map[string]string{})
+	c_source := os.read_file(good_bin + '.c') or { panic(err) }
+	mixed_const_compact := c_source.replace('\t', '').replace(' ', '').replace('\n', '')
+	// v3 lowers V `int` to the target's pointer width (FlatGen.set_target picks
+	// `i32` when target.pointer_bits is 32), so spell the expected C type from
+	// the host width instead of hard-coding the 64-bit one.
+	int_ct := $if x32 { 'i32' } $else { 'i64' }
+	assert mixed_const_compact.contains('Arraymain__xs;'), c_source
+	assert mixed_const_compact.contains('main__xs=new_array_from_c_array(3,3,sizeof(${int_ct}),(${int_ct}[3]){1,2,3});'), c_source
+
+	assert mixed_const_compact.contains('return(*(${int_ct}*)array_get(main__xs,0));'), c_source
+	assert mixed_const_compact.contains('${int_ct}length_score(void){returnmain__xs.len;}'), c_source
+	assert mixed_const_compact.contains('Arrayall(void){returnmain__xs;}'), c_source
+	assert !mixed_const_compact.contains('returnnew_array_from_c_array(3,3,sizeof(${int_ct}),&main__xs);'), c_source
+
+	// Returning a pointer alias of an aligned local must use the aligned heap-copy helper, matching
+	// the free path for `&Aligned` values.
+	aligned_c := c_source.all_after('main__Aligned* make(void) {\n').all_before('\n}')
+	assert aligned_c.contains('v3_aligned_memdup('), aligned_c
+	assert !c_source.contains('memdup(p, sizeof(Aligned))'), c_source
+	aligned_run := c_source.all_after('void good_aligned_pointer_alias_heap_copy_run(void) {\n').all_before('\n}')
+	assert aligned_run.contains('v3_aligned_free(p)'), aligned_run
 }
 
 fn test_parallel_checker_preserves_diagnostic_order() {
@@ -233,21 +392,6 @@ fn test_parallel_checker_preserves_diagnostic_order() {
 	third := error_index(result.output, 'undefined ident: `missing_2`')
 	assert first < second
 	assert second < third
-}
-
-// test_type_checker_c_extern_suffix_does_not_hide_v_fn validates this v3 regression case.
-fn test_type_checker_c_extern_suffix_does_not_hide_v_fn() {
-	c_suffix_out := run_good(v3_bin, 'c_extern_suffix_does_not_hide_v_fn', 'fn C.answer() int
-
-fn answer() int {
-	return 42
-}
-
-fn main() {
-	println(answer())
-}
-')
-	assert c_suffix_out == '42'
 }
 
 // test_type_checker_reports_core_semantic_errors validates this v3 regression case.
@@ -468,37 +612,6 @@ fn main() {
 		'other.v':     'module main\n\nfn use_it() int {\n\treturn moda.answer()\n}\n'
 		'moda/moda.v': 'module moda\n\nfn answer() int {\n\treturn 7\n}\n'
 	}, '', 'undefined ident: `moda`')
-	import_calls_out := run_good_project(v3_bin, 'qualified_import_calls', {
-		'main.v':      'module main
-
-import moda
-
-fn main() {
-	println(int_str(moda.answer()))
-	println(int_str(moda.after_chain()))
-}
-'
-		'moda/moda.v': 'module moda
-
-pub fn answer() int {
-	return 7
-}
-
-fn choose[T](x T) T {
-	$if T is u8 {
-		return x
-	} $else $if T is int {
-		return x
-	} $else {}
-	return x
-}
-
-pub fn after_chain() int {
-	return 7
-}
-'
-	}, 'main.v')
-	assert import_calls_out == '7\n7'
 	init_order_out := run_good_project(v3_bin, 'module_init_order', {
 		'main.v':               'module main
 
@@ -551,66 +664,6 @@ pub fn value() int {
 		'modb/modb.v':          'module modb\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
 	}, 'main.v')
 	assert init_order_out == '41\n41\n41\n41\n41\n3\n41\n41'
-	global_amp_out := run_good(v3_bin, 'global_amp_initializers', 'struct Point {\n\tx int\n\ty int\n}\n\ninterface Reader {\n\tn int\n\tread() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b Box) read() int {\n\treturn b.n + 1\n}\n\n__global (\n\tbase_point = Point{x: 1, y: 2}\n\tassoc_point = &Point{...base_point, y: 5}\n\treader_box = Box{n: 7}\n\treader_ref = &Reader(reader_box)\n)\n\nfn main() {\n\tprintln(int_str(assoc_point.y))\n\tprintln(int_str(reader_ref.n))\n\tprintln(int_str(reader_ref.read()))\n}\n')
-	assert global_amp_out == '5\n7\n8'
-	disabled_if_out := run_good_project(v3_bin, 'disabled_if_declarations', {
-		'main.v':      'module main
-
-import moda as m
-
-__global hit int
-
-@[if trace ?]
-fn trace(x int) {}
-
-fn side_effect() int {
-	hit = 99
-	return 1
-}
-
-@[if trace ?]
-struct DisabledStruct {
-	bad MissingDisabledType
-}
-
-struct EnabledStruct {
-	value int
-}
-
-fn main() {
-	trace(side_effect())
-	println(int_str(hit))
-	m.trace(side_effect())
-	println(int_str(hit))
-	println(int_str(m.run()))
-	println(int_str(EnabledStruct{value: 7}.value))
-}
-'
-		'moda/moda.v': 'module moda
-
-__global hit int
-
-struct Tracer {}
-
-@[if trace ?]
-fn (t Tracer) trace(x int) {}
-
-fn side_effect() int {
-	hit = 99
-	return 1
-}
-
-pub fn run() int {
-	t := Tracer{}
-	t.trace(side_effect())
-	return hit
-}
-
-@[if trace ?]
-pub fn trace(x int) {}
-'
-	}, 'main.v')
-	assert disabled_if_out == '0\n0\n0\n7'
 	run_bad_project(v3_bin, 'array_append_distinct_module_types', {
 		'main.v':      'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tmut xs := []moda.Foo{}\n\tys := []modb.Foo{}\n\txs << ys\n}\n'
 		'moda/moda.v': 'module moda\n\npub struct Foo {\n\ta int\n}\n'
@@ -1306,38 +1359,6 @@ fn test_fixed_array_length_checks() {
 		// parameter (length 5) rejects a 4-element literal.
 		TypeCheckerRejection{'bad_shift_add_precedence_literal_len', 'fn take(a [1 << 2 + 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2, 3, 4]!)\n}\n', 'cannot use `[4]int` as `[1 << 2 + 1]int` in argument 1 to `bad_shift_add_precedence_literal_len.take`'},
 	])
-	mixed_const_src := 'const xs = [1, 2, 3]\nfn first() int {\n\treturn xs[0]\n}\nfn length_score() int {\n\treturn xs.len\n}\nfn all() []int {\n\treturn xs\n}\nfn main() {\n\tys := all()\n\tprintln(int_str(first() + length_score() + ys.len + ys[2]))\n}\n'
-	mixed_const_name := 'good_indexed_const_returned_dynamic_array'
-	mixed_const_bin := compile_good_source(v3_bin, mixed_const_name, mixed_const_src)
-	mixed_const := run_good_binary(mixed_const_name, mixed_const_bin)
-	assert mixed_const == '10'
-	mixed_const_c := os.read_file(mixed_const_bin + '.c') or { panic(err) }
-	mixed_const_compact := mixed_const_c.replace('\t', '').replace(' ', '').replace('\n', '')
-	// v3 lowers V `int` to the target's pointer width (FlatGen.set_target picks
-	// `i32` when target.pointer_bits is 32), so spell the expected C type from
-	// the host width instead of hard-coding the 64-bit one.
-	int_ct := $if x32 { 'i32' } $else { 'i64' }
-	assert mixed_const_compact.contains('Arraymain__xs;'), mixed_const_c
-	assert mixed_const_compact.contains('main__xs=new_array_from_c_array(3,3,sizeof(${int_ct}),(${int_ct}[3]){1,2,3});'), mixed_const_c
-
-	assert mixed_const_compact.contains('return(*(${int_ct}*)array_get(main__xs,0));'), mixed_const_c
-	assert mixed_const_compact.contains('${int_ct}length_score(void){returnmain__xs.len;}'), mixed_const_c
-	assert mixed_const_compact.contains('Arrayall(void){returnmain__xs;}'), mixed_const_c
-	assert !mixed_const_compact.contains('returnnew_array_from_c_array(3,3,sizeof(${int_ct}),&main__xs);'), mixed_const_c
-
-	shadowed_name := 'good_shadowed_const_fixed_storage'
-	shadowed_bin := compile_good_project(v3_bin, shadowed_name, {
-		'main.v':       'module main\n\nimport fixture\n\nconst xs = [10, 20, 30]\n\nfn all() []int {\n\treturn xs\n}\n\nfn main() {\n\tys := all()\n\tprintln(int_str(fixture.first() + ys.len + ys[2]))\n}\n'
-		'fixture/fi.v': 'module fixture\n\npub const xs = [1, 2, 3]\n\npub fn first() int {\n\treturn xs[0]\n}\n'
-	}, 'main.v')
-	shadowed := run_good_binary(shadowed_name, shadowed_bin)
-	assert shadowed == '34'
-	shadowed_c := os.read_file(shadowed_bin + '.c') or { panic(err) }
-	shadowed_compact := shadowed_c.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert shadowed_compact.contains('Arraymain__xs;'), shadowed_c
-	assert shadowed_compact.contains('returnmain__xs;'), shadowed_c
-	assert shadowed_compact.contains('fixture__xs[3]'), shadowed_c
-	assert shadowed_compact.contains('returnfixture__xs[0];'), shadowed_c
 }
 
 fn test_conditional_values_and_result_paths() {
@@ -1470,13 +1491,6 @@ fn test_pr_review_struct_sum_scope_and_gated_regressions() {
 		'main.v': 'module main\n\nimport m\n\nstruct Foo {}\n\nfn main() {\n\t_ = m.consume(Foo{})\n}\n'
 		'm/m.v':  'module m\n\npub const value = 1\n\npub fn consume(x Foo) int {\n\treturn value\n}\n'
 	}, 'main.v', 'unknown type')
-	aliased_sum := run_good_project(v3_bin, 'good_aliased_sum_uses_full_suffix', {
-		'v.mod':           "Module { name: 'aliased_sum_full_suffix' }\n"
-		'main.v':          'module main\n\nimport other as _\nimport sub.tast\n\nfn main() {\n\tvalue := tast.make_beta()\n\tif value is tast.Beta {\n\t\tprintln(int_str(value.n))\n\t} else {\n\t\tprintln("wrong")\n\t}\n}\n'
-		'other/other.v':   'module other\n\npub struct Alpha {\npub:\n\tn int\n}\n\npub struct Beta {\npub:\n\tn int\n}\n\npub type Value = Beta | Alpha\n'
-		'sub/tast/tast.v': 'module tast\n\npub struct Alpha {\npub:\n\tn int\n}\n\npub struct Beta {\npub:\n\tn int\n}\n\npub type Value = Alpha | Beta\n\npub fn make_beta() Value {\n\treturn Beta{\n\t\tn: 9\n\t}\n}\n'
-	}, 'main.v')
-	assert aliased_sum == '9'
 }
 
 fn test_collapsed_struct_fields_use_positional_target() {
@@ -1510,14 +1524,6 @@ fn main() {
 		'main.v':            'module main\n\nimport fixture\n\nfn main() {\n\tfixture.use(secret: 1)\n}\n'
 		'fixture/fixture.v': 'module fixture\n\n@[params]\npub struct Config {\n\tsecret int\npub:\n\tcount int\n}\n\npub fn use(config Config) {\n\t_ = config\n}\n'
 	}, 'main.v', 'cannot access private field `secret` on `fixture.Config`')
-}
-
-fn test_module_local_error_type_shadows_builtin_error() {
-	out := run_good_project(v3_bin, 'good_module_local_error_type', {
-		'main.v':       'module main\n\nimport fixture\n\nfn main() {\n\terr := fixture.make_error()\n\tprintln(err.msg())\n}\n'
-		'fixture/fi.v': "module fixture\n\npub struct Error {\n\tmessage string\n}\n\npub fn make_error() Error {\n\treturn Error{\n\t\tmessage: 'local'\n\t}\n}\n\npub fn (err Error) msg() string {\n\treturn err.message\n}\n"
-	}, 'main.v')
-	assert out == 'local'
 }
 
 fn test_static_method_values_and_local_type_scope() {
@@ -2096,17 +2102,6 @@ fn test_pointer_assignments_and_escaping_aliases() {
 }
 
 fn test_pr_review_codegen_batch_twentynine() {
-	// Returning a pointer alias of an aligned local must use the aligned heap-copy helper, matching
-	// the free path for `&Aligned` values.
-	aligned_alias_source := '@[aligned: 64]\nstruct Aligned {\n\tx int\n}\nfn make() &Aligned {\n\tmut x := Aligned{\n\t\tx: 5\n\t}\n\tp := &x\n\treturn p\n}\nfn main() {\n\tp := make()\n\tprintln(int_str(p.x))\n\tunsafe {\n\t\tfree(p)\n\t}\n}\n'
-	aligned_name := 'good_aligned_pointer_alias_heap_copy_run'
-	aligned_bin := compile_good_source(v3_bin, aligned_name, aligned_alias_source)
-	aligned_c := os.read_file(aligned_bin + '.c') or { panic(err) }
-	assert aligned_c.contains('v3_aligned_memdup('), aligned_c
-	assert !aligned_c.contains('memdup(p, sizeof(Aligned))'), aligned_c
-	assert aligned_c.contains('v3_aligned_free(p)'), aligned_c
-	aligned_alias := run_good_binary(aligned_name, aligned_bin)
-	assert aligned_alias == '5'
 	// A capitalized field followed by a const-sized fixed array is a named field whose type is
 	// `[n]int`, not a failed generic embedded-field probe that skips `[n]` and leaves `int`.
 	fixed_field := run_good(v3_bin, 'good_capitalized_fixed_array_field', '@[translated]\nmodule main\n\nconst n = 2\nstruct S {\n\tFoo [n]int\n}\nfn main() {\n\ts := S{\n\t\tFoo: [1, 2]!\n\t}\n\tprintln(int_str(s.Foo.len) + ":" + int_str(s.Foo[1]))\n}\n')
@@ -2140,28 +2135,13 @@ fn test_defer_result_review_regressions() {
 
 fn test_recursive_alias_review_regressions() {
 	run_bad(v3_bin, 'bad_direct_recursive_alias', 'type A = A\n\nfn main() {}\n', 'a type alias can not refer to itself: A')
-	valid_callback := run_good(v3_bin, 'good_callback_guarded_recursive_alias', 'type Handlers = map[string]fn (Handlers)\n\nfn main() {\n\thandlers := Handlers{}\n\tprintln(int_str(handlers.len))\n}\n')
-	assert valid_callback == '0'
 }
 
 fn test_if_guard_rejects_or_handled_value() {
 	run_bad(v3_bin, 'bad_if_guard_or_handled_value', 'fn maybe() ?int {\n\treturn 1\n}\nfn main() {\n\tif value := maybe() or { return } {\n\t\tprintln(int_str(value))\n\t}\n}\n', 'if guard condition expression is illegal, it should return an Option')
 }
 
-fn test_module_qualified_enum_value_in_if_expression() {
-	output := run_good_project(v3_bin, 'good_module_qualified_enum_if_expression', {
-		'main.v':      "module main\n\nimport mode\n\nfn selected() mode.Kind {\n\treturn if true {\n\t\tmode.Kind.hybrid\n\t} else {\n\t\tmode.Kind.portable\n\t}\n}\n\nfn main() {\n\tassert selected() == .hybrid\n\tprintln('ok')\n}\n"
-		'mode/mode.v': 'module mode\n\npub enum Kind {\n\tportable\n\thybrid\n}\n'
-	}, 'main.v')
-	assert output == 'ok'
-}
-
 fn test_module_qualified_type_chaining_only_allows_enums() {
-	output := run_good_project(v3_bin, 'good_module_qualified_enum_alias_selector', {
-		'main.v':      "module main\n\nimport mode\n\nfn main() {\n\tvalue := mode.KindAlias.hybrid\n\tassert value == .hybrid\n\tprintln('ok')\n}\n"
-		'mode/mode.v': 'module mode\n\npub enum Kind {\n\tportable\n\thybrid\n}\n\npub type KindAlias = Kind\n'
-	}, 'main.v')
-	assert output == 'ok'
 	run_bad_project(v3_bin, 'bad_module_qualified_struct_field_selector', {
 		'main.v':        'module main\n\nimport model\n\nfn main() {\n\tprintln(model.Item.value)\n}\n'
 		'model/model.v': 'module model\n\npub struct Item {\npub:\n\tvalue int\n}\n'
