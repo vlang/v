@@ -1,0 +1,373 @@
+name: Partial cache helper prototypes
+on:
+  pull_request:
+    paths:
+      - vlib/v/gen/c/cleanc.v
+      - vlib/v/gen/c/struct.v
+      - vlib/v/tests/builtin_maps/map_fixed_array_keys_struct_default_test.v
+      - vlib/v/gen/c/cache_declarations_test.v
+      - vlib/v/tests/module_cache_reuse_test.v
+      - .github/workflows/partial_cache_helper_prototypes_ci.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/cache-apt-packages-action
+        with:
+          profile: full
+      - uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: false
+          symlink: false
+      - name: Rebuild candidate and verify formatting
+        run: |
+          ./v self
+          if ! ./v fmt -verify vlib/v/gen/c/cleanc.v vlib/v/gen/c/struct.v vlib/v/gen/c/cache_declarations_test.v vlib/v/tests/module_cache_reuse_test.v vlib/v/tests/builtin_maps/map_fixed_array_keys_struct_default_test.v; then
+            ./v fmt -w vlib/v/gen/c/cleanc.v vlib/v/gen/c/struct.v vlib/v/gen/c/cache_declarations_test.v vlib/v/tests/module_cache_reuse_test.v vlib/v/tests/builtin_maps/map_fixed_array_keys_struct_default_test.v
+            git diff
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+        with:
+          ref: 02b6b90e8093b36c3f640efe855eeb7fb89c7c72
+          path: baseline
+          persist-credentials: false
+      - name: Reproduce partial-cache ordering on unchanged baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -C baseline -j4
+          cp vlib/v/gen/c/cache_declarations_test.v baseline/vlib/v/gen/c/cache_declarations_test.v
+          cd baseline
+          set +e
+          ./v -cc clang vlib/v/gen/c/cache_declarations_test.v > "$RUNNER_TEMP/baseline-ordering.log" 2>&1
+          rc=$?
+          set -e
+          cat "$RUNNER_TEMP/baseline-ordering.log"
+          test "$rc" -ne 0
+          # The test harness reports the assertion's helper, not the caller.
+          grep -F 'fn check_cache_map_key_helper_prototypes' "$RUNNER_TEMP/baseline-ordering.log"
+          grep -F 'assert prototype < definition' "$RUNNER_TEMP/baseline-ordering.log"
+          grep -F 'fast_string_eq((*left)[i], (*right)[i])' "$RUNNER_TEMP/baseline-ordering.log"
+          # Distinguish the existing demand-mode control from the partial-cache failure.
+          ./v -cc clang -run-only c.test_cache_map_key_helpers_follow_their_builtin_prototypes vlib/v/gen/c/cache_declarations_test.v
+          set +e
+          ./v -cc clang -run-only c.test_partial_cache_map_key_helpers_follow_their_builtin_prototypes vlib/v/gen/c/cache_declarations_test.v > "$RUNNER_TEMP/baseline-partial-only.log" 2>&1
+          partial_rc=$?
+          set -e
+          cat "$RUNNER_TEMP/baseline-partial-only.log"
+          test "$partial_rc" -ne 0
+          grep -F 'fn check_cache_map_key_helper_prototypes' "$RUNNER_TEMP/baseline-partial-only.log"
+          grep -F 'assert prototype < definition' "$RUNNER_TEMP/baseline-partial-only.log"
+          grep -F 'fast_string_eq((*left)[i], (*right)[i])' "$RUNNER_TEMP/baseline-partial-only.log"
+      - name: Candidate declaration and actual partial-cache tests
+        shell: bash
+        run: |
+          ./v -cc clang vlib/v/gen/c/cache_declarations_test.v
+          ./v -cc clang vlib/v/tests/builtin_maps/map_fixed_array_keys_test.v
+          ./v -cc clang -nocache vlib/v/tests/builtin_maps/map_fixed_array_keys_struct_default_test.v
+          ./v -cc clang vlib/v/tests/module_cache_reuse_test.v
+      - name: Install Objective-C dependencies
+        run: sudo apt-get install -y gobjc libobjc-14-dev
+      - name: Full compiler regression
+        run: |
+          ./v -silent vlib/v/compiler_errors_test.v
+          ./v -silent test vlib/v/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: partial-cache-baseline-log
+          path: |
+            ${{ runner.temp }}/baseline-ordering.log
+            ${{ runner.temp }}/baseline-partial-only.log
+
+  # Run the unchanged C-backend suite independently, so a canceled broad
+  # compiler job cannot prevent it from being executed.
+  c-backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/cache-apt-packages-action
+        with:
+          profile: full
+      - uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: false
+          symlink: false
+      - name: Rebuild candidate and install Objective-C dependencies
+        run: |
+          ./v self
+          sudo apt-get install -y gobjc libobjc-14-dev
+      - name: Full C backend regression
+        run: ./v -silent test vlib/v/gen/c/
+
+  real-object:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    # Match the legacy Ubuntu musl lane that actually emitted the diagnostic.
+    container:
+      image: thevlang/vlang:ubuntu-build
+      env:
+        V_CI_UBUNTU_MUSL: 1
+        VFLAGS: -cc musl-gcc -gc none -d use_bundled_libgc
+    env:
+      V_CI_MUSL: 1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build candidate in the original musl environment
+        run: |
+          musl-gcc --version
+          make -j4
+          ./v -prod -cg -o v cmd/v
+          ./v fmt -verify vlib/v/tests/module_cache_reuse_test.v
+      - uses: actions/checkout@v7
+        with:
+          ref: 02b6b90e8093b36c3f640efe855eeb7fb89c7c72
+          path: baseline
+          persist-credentials: false
+      - name: Compare real partial module objects with the original musl flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="$(pwd -P)/v"
+          (cd baseline && make -j4 && ./v -prod -cg -o v cmd/v)
+          baseline="$(pwd -P)/baseline/v"
+          logs="$RUNNER_TEMP/partial-cache-native"
+          mkdir -p "$logs"
+          unset VFLAGS VEXE V3_CACHE_FORCE_SOURCE V3_INTERNAL_CACHE_FORCE_SOURCE
+          flags=(-cc musl-gcc -gc none -d use_bundled_libgc -no-retry-compilation -showcc -show-timings)
+
+          # Use standalone programs rather than a silent test selector. The
+          # second case also instantiates the fixed-array map inside datatypes.
+          for role in baseline candidate; do
+            if [[ $role == baseline ]]; then exe="$baseline"; else exe="$candidate"; fi
+            "$exe" version
+            for variant in stack set; do
+              root="$logs/$role-$variant"
+              mkdir -p "$root/cache"
+              export VTMP="$root/cache" V3CACHE="$root/cache" V3_CACHE_TRACE=1
+              printf '%s\n' 'fn main() { println(1) }' > "$root/main.v"
+              "$exe" "${flags[@]}" -o "$root/cold" "$root/main.v" 2>&1 | tee "$root/cold.log"
+              test "$("$root/cold")" = 1
+              test -z "$(find "$root/cache" -name 'datatypes_*.o' -print -quit)"
+              if [[ $variant == stack ]]; then
+                cat > "$root/main.v" <<'V'
+          import datatypes
+          fn main() {
+              mut stack := datatypes.Stack[int]{}
+              stack.push(7)
+              mut counts := map[[2]string]int{}
+              key := ['first', 'second']!
+              counts[key] = stack.len()
+              assert counts[['first', 'second']!] == 1
+              println(counts[key])
+          }
+          V
+              else
+                cat > "$root/main.v" <<'V'
+          import datatypes
+          fn main() {
+              mut set := datatypes.Set[[2]string]{}
+              key := ['first', 'second']!
+              set.add(key)
+              assert set.exists(['first', 'second']!)
+              println(set.size())
+          }
+          V
+              fi
+              echo "EXECUTING $role $variant partial object"
+              rc=0
+              "$exe" "${flags[@]}" -o "$root/partial" "$root/main.v" > "$root/partial.log" 2>&1 || rc=$?
+              cat "$root/partial.log"
+              echo "$rc" > "$root/partial.status"
+              echo "PARTIAL_STATUS $role $variant $rc"
+              if [[ $role == candidate ]]; then
+                test "$rc" -eq 0
+                if grep -E 'failed to build cached module object|V3 module cache fallback' "$root/partial.log"; then
+                  exit 1
+                fi
+                test "$("$root/partial")" = 1
+                find "$root/cache" -name 'datatypes_*.o' -type f -print | tee "$root/objects.txt"
+                test -s "$root/objects.txt"
+                "$exe" "${flags[@]}" -o "$root/warm" "$root/main.v" 2>&1 | tee "$root/warm.log"
+                test "$("$root/warm")" = 1
+                if grep -E 'failed to build cached module object|V3 module cache fallback|V3 module cache object miss|V3 module cache dependency miss|Caching module ' "$root/warm.log"; then
+                  exit 1
+                fi
+                grep -F 'parsed .v files' "$root/warm.log" | tail -n 1 | grep -E 'parsed \.v files[[:space:]]+1([[:space:]]|$)'
+              fi
+            done
+          done
+
+          # The historical failure was a *recovered* object compilation error,
+          # so a zero top-level exit is not sufficient to call the baseline good.
+          # Require the exact compiler diagnostic and the matching candidate C
+          # file with a real published object, not merely a synthetic assertion.
+          matched=0
+          for variant in stack set; do
+            old="$logs/baseline-$variant/partial.log"
+            if grep -E 'failed to build cached module object .*datatypes_.*\.o' "$old" &&
+               grep -E 'conflicting types for .*fast_string_eq|implicit declaration of .*fast_string_eq' "$old"; then
+              grep -F 'fast_string_eq((*left)[i], (*right)[i])' "$old"
+              new="$logs/candidate-$variant"
+              ordered=0
+              while IFS= read -r c; do
+                test -f "${c%.c}.o" || continue
+                use=$(grep -n -m 1 -F 'fast_string_eq((*left)[i], (*right)[i])' "$c" | cut -d: -f1 || true)
+                [[ -n $use ]] || continue
+                proto=$(grep -n -m 1 -E '^[[:space:]]*bool fast_string_eq\(' "$c" | cut -d: -f1 || true)
+                test -n "$proto"
+                test "$proto" -lt "$use"
+                echo "ORDERED $variant $c prototype=$proto call=$use"
+                ordered=1
+              done < <(find "$new/cache" -name 'datatypes_*.c' -type f)
+              test "$ordered" -eq 1
+              matched=1
+            fi
+          done
+          test "$matched" -eq 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: partial-cache-real-object-logs
+          include-hidden-files: true
+          path: |
+            ${{ runner.temp }}/partial-cache-native/**/*.log
+            ${{ runner.temp }}/partial-cache-native/**/*.status
+            ${{ runner.temp }}/partial-cache-native/**/main.v
+            ${{ runner.temp }}/partial-cache-native/**/datatypes_*.c
+            ${{ runner.temp }}/partial-cache-native/**/objects.txt
+
+  # Diagnose the independently failing generic Set constructor. Keep the
+  # existing real-object gate intact, and do not use -keepc for cache builds:
+  # the driver explicitly disables the module cache with that flag.
+  generic-set-diagnostics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    container:
+      image: thevlang/vlang:ubuntu-build
+    env:
+      V_CI_MUSL: 1
+      V_CI_UBUNTU_MUSL: 1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build candidate
+        run: |
+          make -j4
+          ./v -prod -cg -o v cmd/v
+      - uses: actions/checkout@v7
+        with:
+          ref: 02b6b90e8093b36c3f640efe855eeb7fb89c7c72
+          path: baseline
+          persist-credentials: false
+      - name: Compare source-only and partial-cache generic map defaults
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="$(pwd -P)/v"
+          (cd baseline && make -j4 && ./v -prod -cg -o v cmd/v)
+          baseline="$(pwd -P)/baseline/v"
+          logs="$RUNNER_TEMP/generic-set-diagnostics"
+          mkdir -p "$logs"
+          unset VFLAGS VEXE V3_CACHE_FORCE_SOURCE V3_INTERNAL_CACHE_FORCE_SOURCE
+          flags=(-cc musl-gcc -gc none -d use_bundled_libgc -no-retry-compilation -showcc -show-timings)
+          failed=0
+          for role in baseline candidate; do
+            if [[ $role == baseline ]]; then exe="$baseline"; else exe="$candidate"; fi
+            "$exe" version
+            for mode in serial parallel; do
+              for variant in direct set; do
+                root="$logs/$role-$mode-$variant"
+                mkdir -p "$root/cache" "$root/source-cache"
+                export VTMP="$root/source-cache" V3CACHE="$root/source-cache" V3_CACHE_TRACE=1 VJOBS=2
+                mode_flags=()
+                if [[ $mode == serial ]]; then mode_flags=(-no-parallel); export VJOBS=1; fi
+                if [[ $variant == set ]]; then
+                  cat > "$root/main.v" <<'V'
+          import datatypes
+          fn main() {
+              mut set := datatypes.Set[[2]string]{}
+              key := ['first', 'second']!
+              set.add(key)
+              assert set.exists(['first', 'second']!)
+              println(set.size())
+          }
+          V
+                else
+                  cat > "$root/main.v" <<'V'
+          fn main() {
+              mut counts := map[[2]string]int{}
+              key := ['first', 'second']!
+              counts[key] = 1
+              assert counts[['first', 'second']!] == 1
+              println(counts[key])
+          }
+          V
+                fi
+                echo "CASE $role $mode $variant"
+                gen_rc=0
+                V3_CACHE_FORCE_SOURCE=1 "$exe" "${flags[@]}" "${mode_flags[@]}" -nocache -o "$root/source.c" "$root/main.v" > "$root/source-c.log" 2>&1 || gen_rc=$?
+                cat "$root/source-c.log"
+                source_rc=0
+                V3_CACHE_FORCE_SOURCE=1 "$exe" "${flags[@]}" "${mode_flags[@]}" -nocache -o "$root/source" "$root/main.v" > "$root/source.log" 2>&1 || source_rc=$?
+                cat "$root/source.log"
+                if [[ $source_rc == 0 ]]; then
+                  if ! test "$("$root/source")" = 1; then source_rc=99; fi
+                fi
+                # Warm only builtin, then import datatypes. Do not use source
+                # mode or -keepc for these commands.
+                export VTMP="$root/cache" V3CACHE="$root/cache"
+                cp "$root/main.v" "$root/fixture.txt"
+                printf '%s\n' 'fn main() { println(1) }' > "$root/main.v"
+                "$exe" "${flags[@]}" "${mode_flags[@]}" -o "$root/cold" "$root/main.v" > "$root/cold.log" 2>&1
+                test "$("$root/cold")" = 1
+                test -z "$(find "$root/cache" -name 'datatypes_*.o' -print -quit)"
+                cp "$root/fixture.txt" "$root/main.v"
+                partial_rc=0
+                "$exe" "${flags[@]}" "${mode_flags[@]}" -o "$root/partial" "$root/main.v" > "$root/partial.log" 2>&1 || partial_rc=$?
+                cat "$root/partial.log"
+                if [[ $partial_rc == 0 ]]; then
+                  if ! test "$("$root/partial")" = 1; then partial_rc=99; fi
+                fi
+                echo "RESULT $role $mode $variant generated=$gen_rc source=$source_rc partial=$partial_rc" | tee "$root/result.txt"
+                # Print all actual occurrences (including prototypes,
+                # definitions and uses) and preserve C for offline comparison.
+                while IFS= read -r -d '' c; do
+                  if grep -q 'Array_fixed_string_2_map_key_' "$c"; then
+                    echo "HELPERS $c"
+                    grep -n 'Array_fixed_string_2_map_key_' "$c"
+                  fi
+                done < <(find "$root" -name '*.c' -type f -print0)
+                if [[ $role == candidate ]]; then
+                  if [[ $gen_rc != 0 || $source_rc != 0 || $partial_rc != 0 ]]; then failed=1; fi
+                  if grep -E 'failed to build cached module object|V3 module cache fallback' "$root/partial.log"; then failed=1; fi
+                  if [[ $variant == set ]] && [[ -z $(find "$root/cache" -name 'datatypes_*.o' -type f -print -quit) ]]; then failed=1; fi
+                fi
+              done
+            done
+          done
+          test "$failed" -eq 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: generic-set-diagnostics
+          include-hidden-files: true
+          path: |
+            ${{ runner.temp }}/generic-set-diagnostics/**/*.log
+            ${{ runner.temp }}/generic-set-diagnostics/**/*.txt
+            ${{ runner.temp }}/generic-set-diagnostics/**/*.v
+            ${{ runner.temp }}/generic-set-diagnostics/**/*.c

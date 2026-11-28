@@ -282,6 +282,14 @@ fn test_cache_demand_keeps_shared_wrapper_payload_layouts() {
 }
 
 fn test_cache_map_key_helpers_follow_their_builtin_prototypes() {
+	check_cache_map_key_helper_prototypes(true)
+}
+
+fn test_partial_cache_map_key_helpers_follow_their_builtin_prototypes() {
+	check_cache_map_key_helper_prototypes(false)
+}
+
+fn check_cache_map_key_helper_prototypes(demand bool) {
 	mut a := flat.FlatAst.new()
 	file_id := a.add_val(.file, 'builtin.vh')
 	module_id := a.add_val(.module_decl, 'builtin')
@@ -297,7 +305,10 @@ fn test_cache_map_key_helpers_follow_their_builtin_prototypes() {
 	g.a = &a
 	g.tc = &tc
 	g.top_level_node_ids = [int(file_id), int(module_id), int(fn_id)]
-	g.cache_decl_demand = true
+	g.cache_decl_demand = demand
+	if !demand {
+		g.cache_const_source_modules['datatypes'] = true
+	}
 	g.fixed_array_map_key_types['Array_fixed_string_2'] = types.ArrayFixed{
 		elem_type: types.Type(types.string_)
 		len:       2
