@@ -5045,10 +5045,10 @@ fn main() {
 	assert out == '42'
 }
 
-fn test_synthetic_closure_runtime_import_preserves_user_alias() {
+fn test_closure_runtime_imports_and_embedded_receivers() {
 	v3_bin := build_v3_review_transform()
-	aliased := run_good_project(v3_bin, 'closure_runtime_user_alias', {
-		'main.v':                    'module main
+	cases := [
+		TransformFixture{'closure_runtime_user_alias', 'module main
 
 import app.callbacks as closure
 
@@ -5059,15 +5059,94 @@ fn main() {
 	}
 	println(int_str(closure.answer() + callback()))
 }
-'
+', '42'},
+		TransformFixture{'closure_runtime_imported_capture', 'module main
+
+import app.worker
+
+fn main() {
+	println(int_str(worker.answer()))
+}
+', '42'},
+		TransformFixture{'embedded_method_value_across_modules', 'import shapes
+
+struct Local {
+	shapes.Plain
+}
+
+fn main() {
+	p := shapes.Plain{
+		Base: shapes.Base{
+			id: 3
+		}
+	}
+	d := p.describe
+	w := shapes.Wrap[string]{
+		Base: shapes.Base{
+			id: 4
+		}
+		item: "x"
+	}
+	wd := w.describe
+	l := Local{
+		Plain: p
+	}
+	ld := l.describe
+	println(d() + "," + wd() + "," + ld())
+}
+', 'base 3,base 4,base 3'},
+		TransformFixture{'embedded_mut_method_value_in_scope_borrows_receiver', embedded_mut_receiver_source + 'fn main() {
+	mut holder := Holder{}
+	callback := holder.next
+	println(int_str(callback()))
+	println(int_str(holder.value))
+}
+', '1\n1'},
+	]
+	mut files := {
 		'app/callbacks/callbacks.v': 'module callbacks
 
 pub fn answer() int {
 	return 39
 }
 '
-	}, 'main.v')
-	assert aliased == '42'
+		'app/worker/worker.v':       'module worker
+
+pub fn answer() int {
+	value := 42
+	callback := fn [value] () int {
+		return value
+	}
+	return callback()
+}
+'
+		'shapes/shapes.v':           'module shapes
+
+pub struct Base {
+pub:
+	id int
+}
+
+pub fn (b Base) describe() string {
+	return "base " + b.id.str()
+}
+
+pub struct Plain {
+	Base
+}
+
+pub struct Wrap[T] {
+	Base
+pub:
+	item T
+}
+'
+	}
+	run_good_main_fixture_project(v3_bin, 'closure_runtime_imports', cases, mut files)
+}
+
+fn test_synthetic_closure_runtime_import_preserves_user_alias() {
+	v3_bin := build_v3_review_transform()
 	natural := run_good_project(v3_bin, 'closure_runtime_natural_alias', {
 		'main.v':                'module main
 
@@ -5085,27 +5164,6 @@ pub fn answer() int {
 '
 	}, 'main.v')
 	assert natural == '42'
-	imported_capture := run_good_project(v3_bin, 'closure_runtime_imported_capture', {
-		'main.v':              'module main
-
-import app.worker
-
-fn main() {
-	println(int_str(worker.answer()))
-}
-'
-		'app/worker/worker.v': 'module worker
-
-pub fn answer() int {
-	value := 42
-	callback := fn [value] () int {
-		return value
-	}
-	return callback()
-}
-'
-	}, 'main.v')
-	assert imported_capture == '42'
 }
 
 fn test_escaping_mut_method_value_rejects_stack_receiver() {
@@ -5223,73 +5281,6 @@ struct Holder {
 	Counter
 }
 '
-
-fn test_embedded_mut_method_value_can_borrow_in_scope() {
-	v3_bin := build_v3_review_transform()
-	in_scope := run_good(v3_bin, 'embedded_mut_method_value_in_scope_borrows_receiver', embedded_mut_receiver_source + 'fn main() {
-	mut holder := Holder{}
-	callback := holder.next
-	println(int_str(callback()))
-	println(int_str(holder.value))
-}
-')
-	assert in_scope == '1\n1'
-}
-
-fn test_method_value_of_a_struct_embedded_from_another_module_binds_the_embedded_struct() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'embedded_method_value_across_modules', {
-		'main.v':          'import shapes
-
-struct Local {
-	shapes.Plain
-}
-
-fn main() {
-	p := shapes.Plain{
-		Base: shapes.Base{
-			id: 3
-		}
-	}
-	d := p.describe
-	w := shapes.Wrap[string]{
-		Base: shapes.Base{
-			id: 4
-		}
-		item: "x"
-	}
-	wd := w.describe
-	l := Local{
-		Plain: p
-	}
-	ld := l.describe
-	println(d() + "," + wd() + "," + ld())
-}
-'
-		'shapes/shapes.v': 'module shapes
-
-pub struct Base {
-pub:
-	id int
-}
-
-pub fn (b Base) describe() string {
-	return "base " + b.id.str()
-}
-
-pub struct Plain {
-	Base
-}
-
-pub struct Wrap[T] {
-	Base
-pub:
-	item T
-}
-'
-	}, 'main.v')
-	assert out == 'base 3,base 4,base 3'
-}
 
 fn test_mutable_method_call_rejects_constant_receiver() {
 	v3_bin := build_v3_review_transform()
