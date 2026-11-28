@@ -113,6 +113,9 @@ fn test_median_large_integers() {
 	assert stats.median([max_u64 - 1, max_u64]) == max_u64 - 1
 	assert stats.median([min_i64, max_i64]) == 0
 	assert stats.median([i8(-3), i8(0)]) == -1
+	assert stats.median([-4, 0]) == -2
+	assert stats.median([i8(-4), i8(0)]) == -2
+	assert stats.median([min_i64, i64(0)]) == min_i64 / 2
 }
 
 fn test_median_large_floats() {
