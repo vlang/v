@@ -159,33 +159,8 @@ fn main() {
 	assert !c_source.contains('} Cursor;'), c_source
 }
 
-fn test_non_mut_reference_parameter_requires_addressable_value() {
-	v3_bin := ownership_compiler
-	ok := run_ownership_check(v3_bin, 'borrow_named_value', '
-fn borrowed_len(value &string) int {
-	return value.len
-}
-
-fn main() {
-	value := "literal"
-	assert borrowed_len(value) == 7
-}
-')
-	assert ok.exit_code == 0, ok.output
-}
-
 fn test_ownership_move_on_assign_and_clone_escape() {
 	v3_bin := ownership_compiler
-
-	ok := run_ownership_check(v3_bin, 'clone_assign', "
-fn main() {
-	s1 := 'hello'.to_owned()
-	s2 := s1.clone()
-	println(s1)
-	println(s2)
-}
-")
-	assert ok.exit_code == 0, ok.output
 
 	fail_if_expr_owned := run_ownership_check(v3_bin, 'if_expr_owned_result', "
 fn main() {
@@ -238,32 +213,6 @@ fn main() {
 	assert fail_or_fallback_owned.output.contains('use of moved value: `s`'), fail_or_fallback_owned.output
 	assert fail_or_fallback_owned.output.contains('use of moved value: `x`'), fail_or_fallback_owned.output
 
-	ok_plain_to_owned_method := run_ownership_check(v3_bin, 'plain_to_owned_method', '
-struct Foo {}
-
-fn (f Foo) to_owned() Foo {
-	return f
-}
-
-fn main() {
-	f := Foo{}
-	g := f.to_owned()
-	h := g
-	println(g)
-	_ = h
-}
-	')
-	assert ok_plain_to_owned_method.exit_code == 0, ok_plain_to_owned_method.output
-
-	ok_builtin_string_receiver := run_ownership_check(v3_bin, 'builtin_string_receiver_borrows', "
-fn main() {
-	s := 'hello'.to_owned()
-	println(s.contains('h'))
-	println(s.contains('e'))
-}
-	")
-	assert ok_builtin_string_receiver.exit_code == 0, ok_builtin_string_receiver.output
-
 	fail_user_string_receiver := run_ownership_check(v3_bin, 'user_string_receiver_moves', '
 fn (s string) consume() {
 	_ = s
@@ -277,85 +226,6 @@ fn main() {
 	')
 	assert fail_user_string_receiver.exit_code != 0
 	assert fail_user_string_receiver.output.contains('use of moved value: `s`'), fail_user_string_receiver.output
-
-	ok_non_owned_clone_return := run_ownership_check(v3_bin, 'owned_receiver_clone_returns_int', '
-struct Resource implements Owned {
-	id int
-}
-
-fn (r Resource) clone() int {
-	return r.id
-}
-
-fn main() {
-	r := Resource{id: 1}
-	n := r.clone()
-	m := n
-	println(n)
-	_ = m
-}
-	')
-	assert ok_non_owned_clone_return.exit_code == 0, ok_non_owned_clone_return.output
-
-	ok_iclone_default_clone := run_ownership_check(v3_bin, 'iclone_default_clone', '
-struct Resource implements IClone {
-	id int
-}
-
-fn main() {
-	r := Resource{id: 7}
-	c := r.clone()
-	println(c.id)
-}
-	')
-	assert ok_iclone_default_clone.exit_code == 0, ok_iclone_default_clone.output
-
-	ok_iclone_drop_temporary := run_ownership_check(v3_bin, 'iclone_drop_temporary', '
-interface Drop {
-mut:
-	drop()
-}
-
-struct Resource implements IClone, Drop {
-	id int
-}
-
-fn make_resource() Resource {
-	return Resource{id: 7}
-}
-
-fn (mut resource Resource) drop() {
-	println(resource.id)
-}
-
-fn main() {
-	_ := make_resource().clone()
-}
-	')
-	assert ok_iclone_drop_temporary.exit_code == 0, ok_iclone_drop_temporary.output
-
-	ok_iclone_if_expr_clone := run_ownership_check(v3_bin, 'iclone_if_expr_clone', '
-struct Resource implements IClone {
-	id int
-}
-
-fn pick(cond bool, left Resource, right Resource) Resource {
-	res := if cond {
-		left.clone()
-	} else {
-		right.clone()
-	}
-	return res
-}
-
-fn main() {
-	left := Resource{id: 7}
-	right := Resource{id: 9}
-	res := pick(true, left, right)
-	println(res.id)
-}
-	')
-	assert ok_iclone_if_expr_clone.exit_code == 0, ok_iclone_if_expr_clone.output
 
 	fail_inferred_owned_global := run_ownership_check(v3_bin, 'inferred_owned_global', '
 struct Resource implements Owned {
@@ -596,29 +466,6 @@ pub __global g = Resource{id: 1}
 
 fn test_ownership_plain_reassignment_clears_owned_state() {
 	v3_bin := ownership_compiler
-	ok := run_ownership_check(v3_bin, 'plain_reassign', "
-fn main() {
-	mut s := 'hello'.to_owned()
-	s = 'literal'
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert ok.exit_code == 0, ok.output
-
-	ok_defer_read_after_reassign_at_exit := run_ownership_check(v3_bin, 'defer_read_after_reassign_at_exit', "
-fn main() {
-	mut s := 'hello'.to_owned()
-	t := s
-	defer {
-		println(s)
-	}
-	s = 'literal'
-	_ = t
-}
-")
-	assert ok_defer_read_after_reassign_at_exit.exit_code == 0, ok_defer_read_after_reassign_at_exit.output
 
 	ok_function_defer_return_branch := run_ownership_check(v3_bin, 'function_defer_return_branch_does_not_leak', "
 fn main() {
@@ -1833,16 +1680,9 @@ fn check_ownership_module_rejections(name string, cases []OwnershipModuleRejecti
 
 fn check_ownership_module_multi_rejections(name string, cases []OwnershipModuleRejections) {
 	root := os.join_path(ownership_work_dir, name)
-	mut imports := []string{cap: cases.len}
-	mut calls := []string{cap: cases.len}
 	mut rejected_lines := [][]int{cap: cases.len}
 	for case in cases {
-		dir := os.join_path(root, case.name)
-		os.mkdir_all(dir) or { panic(err) }
-		source := 'module ${case.name}\n' + case.source.replace_once('\nfn main() {',
-			'\npub fn exercise() {')
-		os.write_file(os.join_path(dir, '${case.name}.v'), source) or { panic(err) }
-		lines := source.split_into_lines().map(it.trim_space())
+		lines := ownership_module_source(case.name, case.source).split_into_lines().map(it.trim_space())
 		mut case_lines := []int{cap: case.sites.len}
 		for site in case.sites {
 			line := lines.index(site.statement)
@@ -1850,13 +1690,8 @@ fn check_ownership_module_multi_rejections(name string, cases []OwnershipModuleR
 			case_lines << line + 1
 		}
 		rejected_lines << case_lines
-		imports << 'import ${case.name}'
-		calls << '\t${case.name}.exercise()'
 	}
-	main_path := os.join_path(root, 'main.v')
-	os.write_file(main_path, '${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n') or {
-		panic(err)
-	}
+	main_path := write_ownership_module_cases(root, cases.map(OwnershipModuleCase{it.name, it.source}))
 	// Every case reports its own errors, so the default cap of 20 printed errors is lifted.
 	result := os.exec([ownership_compiler, '-ownership', '-message-limit', '100000', '-b', 'c',
 		'-o', os.join_path(root, 'out'), main_path])
@@ -1868,6 +1703,46 @@ fn check_ownership_module_multi_rejections(name string, cases []OwnershipModuleR
 			assert diagnostics.any(it.contains(location) && it.contains(site.expected)), '${case.name}: expected `${site.expected}` at ${location}\n${result.output}'
 		}
 	}
+}
+
+struct OwnershipModuleCase {
+	name   string
+	source string
+}
+
+// check_ownership_module_acceptances builds all cases as modules of one program, which must
+// compile and link.
+fn check_ownership_module_acceptances(name string, cases []OwnershipModuleCase) {
+	root := os.join_path(ownership_work_dir, name)
+	main_path := write_ownership_module_cases(root, cases)
+	result := os.exec([ownership_compiler, '-ownership', '-b', 'c', '-o', os.join_path(root, 'out'),
+		main_path])
+	assert result.exit_code == 0, result.output
+}
+
+// ownership_module_source turns a case program into module `name`, its `main` into `exercise`.
+fn ownership_module_source(name string, source string) string {
+	return 'module ${name}\n' + source.replace_once('\nfn main() {', '\npub fn exercise() {')
+}
+
+// write_ownership_module_cases writes every case as a module under `root` and a main.v that
+// calls each case. It returns the path of main.v.
+fn write_ownership_module_cases(root string, cases []OwnershipModuleCase) string {
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for case in cases {
+		dir := os.join_path(root, case.name)
+		os.mkdir_all(dir) or { panic(err) }
+		os.write_file(os.join_path(dir, '${case.name}.v'), ownership_module_source(case.name,
+			case.source)) or { panic(err) }
+		imports << 'import ${case.name}'
+		calls << '\t${case.name}.exercise()'
+	}
+	main_path := os.join_path(root, 'main.v')
+	os.write_file(main_path, '${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n') or {
+		panic(err)
+	}
+	return main_path
 }
 
 fn test_ownership_assignment_to_storage_consumes_rhs() {
@@ -3856,5 +3731,141 @@ fn main() {
 ', [
 			OwnershipRejectionSite{'u := m["k"]', 'use of moved value: `m[k]`'},
 		]},
+	])
+}
+
+fn test_ownership_accepts_clone_and_receiver_programs() {
+	check_ownership_module_acceptances('clone_and_receiver_acceptances', [
+		OwnershipModuleCase{'borrow_named_value', '
+fn borrowed_len(value &string) int {
+	return value.len
+}
+
+fn main() {
+	value := "literal"
+	assert borrowed_len(value) == 7
+}
+'},
+		OwnershipModuleCase{'clone_assign', "
+fn main() {
+	s1 := 'hello'.to_owned()
+	s2 := s1.clone()
+	println(s1)
+	println(s2)
+}
+"},
+		OwnershipModuleCase{'plain_to_owned_method', '
+struct Foo {}
+
+fn (f Foo) to_owned() Foo {
+	return f
+}
+
+fn main() {
+	f := Foo{}
+	g := f.to_owned()
+	h := g
+	println(g)
+	_ = h
+}
+	'},
+		OwnershipModuleCase{'builtin_string_receiver_borrows', "
+fn main() {
+	s := 'hello'.to_owned()
+	println(s.contains('h'))
+	println(s.contains('e'))
+}
+	"},
+		OwnershipModuleCase{'owned_receiver_clone_returns_int', '
+struct Resource implements Owned {
+	id int
+}
+
+fn (r Resource) clone() int {
+	return r.id
+}
+
+fn main() {
+	r := Resource{id: 1}
+	n := r.clone()
+	m := n
+	println(n)
+	_ = m
+}
+	'},
+		OwnershipModuleCase{'iclone_default_clone', '
+struct Resource implements IClone {
+	id int
+}
+
+fn main() {
+	r := Resource{id: 7}
+	c := r.clone()
+	println(c.id)
+}
+	'},
+		OwnershipModuleCase{'iclone_drop_temporary', '
+interface Drop {
+mut:
+	drop()
+}
+
+struct Resource implements IClone, Drop {
+	id int
+}
+
+fn make_resource() Resource {
+	return Resource{id: 7}
+}
+
+fn (mut resource Resource) drop() {
+	println(resource.id)
+}
+
+fn main() {
+	_ := make_resource().clone()
+}
+	'},
+		OwnershipModuleCase{'iclone_if_expr_clone', '
+struct Resource implements IClone {
+	id int
+}
+
+fn pick(cond bool, left Resource, right Resource) Resource {
+	res := if cond {
+		left.clone()
+	} else {
+		right.clone()
+	}
+	return res
+}
+
+fn main() {
+	left := Resource{id: 7}
+	right := Resource{id: 9}
+	res := pick(true, left, right)
+	println(res.id)
+}
+	'},
+		OwnershipModuleCase{'plain_reassign', "
+fn main() {
+	mut s := 'hello'.to_owned()
+	s = 'literal'
+	t := s
+	println(s)
+	_ = t
+}
+"},
+		OwnershipModuleCase{'defer_read_after_reassign_at_exit', "
+fn main() {
+	mut s := 'hello'.to_owned()
+	t := s
+	defer {
+		println(s)
+	}
+	s = 'literal'
+	_ = t
+}
+"},
 	])
 }
