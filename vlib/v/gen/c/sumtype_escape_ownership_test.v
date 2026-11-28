@@ -807,18 +807,14 @@ fn flow_next(mut state FlowState) !bool { if state.ready { return error("absent"
 			assert control.exit_code == 0, '${mode}, prealloc=${prealloc}: ${control.output}'
 		}
 	}
-	for source in mixed_sources {
-		os.write_file(invalid, source)!
-		for mode in ['-autofree', '-ownership'] {
-			for prealloc in [false, true] {
-				mut command := [compiler, '-no-closures', '-gc', 'none', mode]
-				if prealloc { command << '-prealloc' }
-				command << ['-check', invalid]
-				result := os.exec(command)
-				assert result.exit_code != 0
-				assert result.output.contains('borrowed by `alias`'), result.output
-				assert result.output.contains('ambiguous.v:12:'), result.output
-			}
+	mixed_checks := write_module_programs(os.join_path(dir, 'mixed_checks'), mixed_sources)!
+	for mode in ['-autofree', '-ownership'] {
+		for prealloc in [false, true] {
+			mut command := [compiler, '-no-closures', '-gc', 'none', '-message-limit', '100000',
+				mode]
+			if prealloc { command << '-prealloc' }
+			command << ['-check', mixed_checks]
+			assert_programs_rejected(os.exec(command), []ProgramRejection{len: mixed_sources.len, init: ProgramRejection{12, 'borrowed by `alias`'}})
 		}
 	}
 	distinct_loan := 'struct Item implements Drop { code int }
@@ -879,17 +875,13 @@ fn main() {
 	assert moved.exit_code != 0
 	assert moved.output.contains('use of moved value: `source.value`'), moved.output
 	assert moved.output.contains('ambiguous.v:12:'), moved.output
-	for source in mixed_sources {
-		os.write_file(invalid, source.replace('mut local :=', 'local :=').replace(' local = Item{code: 3}\n', '').replace(' assert alias is &Item', ' assert alias is &Item\n assert (value as &Item).code == 1'))!
-		for prealloc in [false, true] {
-			mut command := [compiler, '-no-closures', '-gc', 'none', '-ownership']
-			if prealloc { command << '-prealloc' }
-			command << ['-check', invalid]
-			mixed_moved := os.exec(command)
-			assert mixed_moved.exit_code != 0
-			assert mixed_moved.output.contains('use of moved value: `value`'), mixed_moved.output
-			assert mixed_moved.output.contains('ambiguous.v:13:'), mixed_moved.output
-		}
+	mixed_moves := write_module_programs(os.join_path(dir, 'mixed_moves'), mixed_sources.map(it.replace('mut local :=', 'local :=').replace(' local = Item{code: 3}\n', '').replace(' assert alias is &Item', ' assert alias is &Item\n assert (value as &Item).code == 1')))!
+	for prealloc in [false, true] {
+		mut command := [compiler, '-no-closures', '-gc', 'none', '-message-limit', '100000',
+			'-ownership']
+		if prealloc { command << '-prealloc' }
+		command << ['-check', mixed_moves]
+		assert_programs_rejected(os.exec(command), []ProgramRejection{len: mixed_sources.len, init: ProgramRejection{13, 'use of moved value: `value`'}})
 	}
 	storage_move := 'struct Item implements Drop { code int }
 fn (mut item Item) drop() {}
@@ -947,4 +939,25 @@ fn write_module_programs(root string, sources []string) !string {
 	main_path := os.join_path(root, 'main.v')
 	os.write_file(main_path, '${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n')!
 	return main_path
+}
+
+struct ProgramRejection {
+	line     int // 1-based line of the program; 0 accepts any line
+	expected string
+}
+
+// assert_programs_rejected checks that a build of write_module_programs reports each program's
+// rejection in that program's file.
+fn assert_programs_rejected(result os.Result, rejections []ProgramRejection) {
+	assert result.exit_code != 0, result.output
+	diagnostics := result.output.split_into_lines().filter(it.contains(': error: '))
+	for i, rejection in rejections {
+		// The module clause moves every program line down by one.
+		location := if rejection.line > 0 {
+			'case_${i}.v:${rejection.line + 1}:'
+		} else {
+			'case_${i}.v:'
+		}
+		assert diagnostics.any(it.contains(location) && it.contains(rejection.expected)), 'case ${i}: expected `${rejection.expected}` at ${location}\n${result.output}'
+	}
 }
