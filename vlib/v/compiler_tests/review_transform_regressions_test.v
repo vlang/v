@@ -2313,67 +2313,13 @@ fn main() {
 	assert !out.contains('Value(...)'), out
 }
 
-fn test_import_aliased_variadic_call_uses_exact_module() {
+fn test_imported_calls_and_type_resolution() {
 	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'import_aliased_variadic_call', {
-		'v.mod':         "Module { name: 'import_aliased_variadic_call' }\n"
-		'a/http/http.v': 'module http\n\npub fn total(values []int) int {\n\treturn values.len\n}\n'
-		'b/http/http.v': 'module http\n\npub fn total(values ...int) int {\n\treturn values.len\n}\n'
-		'main.v':        'module main\n\nimport a.http as other_http\nimport b.http\n\nfn main() {\n\t_ := other_http.total([1, 2])\n\tprintln(int_str(http.total(3, 4, 5)))\n}\n'
-	}, 'main.v')
-	assert out == '3'
-}
-
-fn test_imported_interface_const_method_uses_interface_dispatch() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'imported_interface_const_method', {
-		'v.mod':                     "Module { name: 'imported_interface_const_method' }\n"
-		'errorsource/errorsource.v': "module errorsource\n\npub const sentinel = error_with_code('sentinel', 37)\n"
-		'main.v':                    'module main\n\nimport errorsource\n\nfn main() {\n\tprintln(int_str(errorsource.sentinel.code()))\n}\n'
-	}, 'main.v')
-	assert out == '37'
-}
-
-fn test_array_field_stringification_prefers_local_type_over_imported_homonym() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'array_field_string_local_type_collision', {
-		'v.mod':       "Module { name: 'array_field_string_local_type_collision' }\n"
-		'other/mod.v': 'module other\n\npub struct Event {\npub:\n\tname string\n}\n'
-		'main.v':      "module main\n\nimport other\n\nstruct Event {\n\tkind int\n}\n\nstruct App {\n\tevents []Event\n}\n\nfn main() {\n\t_ := other.Event{\n\t\tname: 'imported'\n\t}\n\tapp := App{\n\t\tevents: [Event{\n\t\t\tkind: 7\n\t\t}]\n\t}\n\tprintln(app.events)\n}\n"
-	}, 'main.v')
-	assert out == '[Event{\n    kind: 7\n}]'
-}
-
-fn test_array_stringification_prefers_local_struct_over_imported_alias() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'array_str_local_struct_imported_alias_collision', {
-		'v.mod':         "Module { name: 'array_str_local_struct_imported_alias_collision' }\n"
-		'other/event.v': 'module other\n\npub struct ForeignEvent {\npub:\n\ttouches int\n}\n\npub type Event = ForeignEvent\n'
-		'main.v':        "module main\n\nimport other\n\nstruct Event {\n\tkind int\n\targ string\n}\n\nfn main() {\n\t_ := other.Event(other.ForeignEvent{\n\t\ttouches: 3\n\t})\n\tevents := [Event{\n\t\tkind: 7\n\t\targ: 'ok'\n\t}]\n\tprintln(events)\n}\n"
-	}, 'main.v')
-	assert out == "[Event{\n    kind: 7\n    arg: 'ok'\n}]"
-}
-
-fn test_imported_generic_alias_expands_in_declaration_module() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'imported_generic_alias_decl_module', {
-		'v.mod':     "Module { name: 'imported_generic_alias_decl_module' }\n"
-		'a/types.v': 'module a
-
-pub struct Inner[T] {
-pub:
-	value T
-}
-
-pub type Box[T] = Inner[T]
-
-pub fn make() Box[int] {
-	return Inner[int]{
-		value: 7
-	}
-}
-'
-		'main.v':    'module main
+	cases := [
+		TransformFixture{'import_aliased_variadic_call', 'module main\n\nimport a.http as other_http\nimport b.http\n\nfn main() {\n\t_ := other_http.total([1, 2])\n\tprintln(int_str(http.total(3, 4, 5)))\n}\n', '3'},
+		TransformFixture{'imported_interface_const_method', 'module main\n\nimport errorsource\n\nfn main() {\n\tprintln(int_str(errorsource.sentinel.code()))\n}\n', '37'},
+		TransformFixture{'array_field_string_local_type_collision', "module main\n\nimport other\n\nstruct Event {\n\tkind int\n}\n\nstruct App {\n\tevents []Event\n}\n\nfn main() {\n\t_ := other.Event{\n\t\tname: 'imported'\n\t}\n\tapp := App{\n\t\tevents: [Event{\n\t\t\tkind: 7\n\t\t}]\n\t}\n\tprintln(app.events)\n}\n", '[Event{\n    kind: 7\n}]'},
+		TransformFixture{'imported_generic_alias_decl_module', 'module main
 
 import a
 
@@ -2388,9 +2334,69 @@ fn read(box a.Box[int]) int {
 fn main() {
 	println(int_str(read(a.make())))
 }
+', '7'},
+		TransformFixture{'generic_specialization_module_collision', 'module main\n\nimport a\nimport b\n\nfn main() {\n\tprintln(int_str(a.id[int](1)))\n\tprintln(int_str(b.id[int](2)))\n}\n', '1\n12'},
+		TransformFixture{'generic_function_value_module_collision', 'module main\n\nimport a\n\nfn pick[T](value T) T {\n\treturn value + 100\n}\n\nfn main() {\n\timported := a.make_picker()\n\tlocal := pick[int]\n\tprintln(int_str(imported(1)))\n\tprintln(int_str(local(1)))\n}\n', '2\n101'},
+		TransformFixture{'selector_generic_function_value', 'module main\n\nimport worker\n\nfn identity[T](value T) T {\n\treturn value + 100\n}\n\nfn main() {\n\tcallback := worker.identity[int]\n\tlocal := identity[int]\n\tprintln(int_str(callback(42)))\n\tprintln(int_str(local(1)))\n}\n', '42\n101'},
+		TransformFixture{'selective_import_generic_function_value', 'module main\n\nimport lib { id }\n\nfn main() {\n\tcallback := id[int]\n\tprintln(int_str(callback(41)))\n}\n', '42'},
+		TransformFixture{'optional_if_guard_local_type_collision', "module main\n\nimport other\n\nstruct Server {\n\tid int\n}\n\nfn find_server() ?Server {\n\treturn Server{\n\t\tid: 9\n\t}\n}\n\nfn main() {\n\t_ := other.Server{\n\t\tname: 'imported'\n\t}\n\tif server := find_server() {\n\t\tprintln(int_str(server.id))\n\t}\n}\n", '9'},
+		TransformFixture{'nested_string_array_alias', "module main\n\nimport syntax\n\nfn main() {\n\tmut h := syntax.Highlighter{}\n\th.load()\n\tprintln(h.multiline['v']['comment'][0][0])\n\tprintln(h.multiline['v']['comment'][0][1])\n}\n", '/*\n*/'},
+		TransformFixture{'generic_specialization_aliased_import_paths', "module main\n\nimport a.tast as left\nimport b.tast\n\nfn keep[T](value T) T {\n\treturn value\n}\n\nfn main() {\n\tleft_value := keep(left.Value{\n\t\tn: 41\n\t})\n\tright_value := keep(tast.Value{\n\t\ttext: 'ok'\n\t})\n\tprintln(int_str(left_value.n))\n\tprintln(right_value.text)\n}\n", '41\nok'},
+	]
+	mut files := {
+		'v.mod':                     "Module { name: 'imported_calls_and_type_resolution' }\n"
+		'a/http/http.v':             'module http\n\npub fn total(values []int) int {\n\treturn values.len\n}\n'
+		'b/http/http.v':             'module http\n\npub fn total(values ...int) int {\n\treturn values.len\n}\n'
+		'errorsource/errorsource.v': "module errorsource\n\npub const sentinel = error_with_code('sentinel', 37)\n"
+		'other/mod.v':               'module other\n\npub struct Event {\npub:\n\tname string\n}\n'
+		'a/types.v':                 'module a
+
+pub struct Inner[T] {
+pub:
+	value T
+}
+
+pub type Box[T] = Inner[T]
+
+pub fn make() Box[int] {
+	return Inner[int]{
+		value: 7
+	}
+}
 '
+		'a/a.v':                     'module a\n\npub fn id[T](value T) T {\n\treturn value\n}\n'
+		'b/b.v':                     'module b\n\npub fn id[T](value T) T {\n\treturn value + 10\n}\n'
+		'a/picker.v':                'module a\n\nfn pick[T](value T) T {\n\treturn value + 1\n}\n\npub fn make_picker() fn (int) int {\n\treturn pick[int]\n}\n'
+		'worker/worker.v':           'module worker\n\npub fn identity[T](value T) T {\n\treturn value\n}\n'
+		'lib/lib.v':                 'module lib\n\npub fn id[T](value T) T {\n\treturn value + 1\n}\n'
+		'other/other.v':             'module other\n\npub struct Server {\npub:\n\tname string\n}\n'
+		'syntax/syntax.v':           "module syntax\n\ntype MapArrayStrings = map[string][][]string\n\npub struct Highlighter {\npub mut:\n\tmultiline map[string]MapArrayStrings\n}\n\npub fn (mut h Highlighter) load() {\n\th.multiline['v'] = {\n\t\t'comment': [['/*', '*/']]\n\t}\n}\n"
+		'a/tast/value.v':            'module tast\n\npub struct Value {\npub:\n\tn int\n}\n'
+		'b/tast/value.v':            'module tast\n\npub struct Value {\npub:\n\ttext string\n}\n'
+	}
+	// Keep each caller in its own main-module file so its imports stay file-local.
+	mut calls := []string{cap: cases.len}
+	for case in cases {
+		calls << "\t\t'${case.name}' { ${case.name}() }"
+		files['${case.name}.v'] = case.source.replace_once('fn main() {', 'fn ${case.name}() {')
+	}
+	files['main.v'] = "module main\n\nfn main() {\n\tmatch arguments()[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
+	name := 'imported_calls_and_type_resolution'
+	good_bin := compile_good_project(v3_bin, name, '', files, '')
+	for case in cases {
+		out := run_good_binary(good_bin, case.name, case.name)
+		assert out == case.expected, '${case.name}: expected `${case.expected}`, got `${out}`'
+	}
+}
+
+fn test_array_stringification_prefers_local_struct_over_imported_alias() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'array_str_local_struct_imported_alias_collision', {
+		'v.mod':         "Module { name: 'array_str_local_struct_imported_alias_collision' }\n"
+		'other/event.v': 'module other\n\npub struct ForeignEvent {\npub:\n\ttouches int\n}\n\npub type Event = ForeignEvent\n'
+		'main.v':        "module main\n\nimport other\n\nstruct Event {\n\tkind int\n\targ string\n}\n\nfn main() {\n\t_ := other.Event(other.ForeignEvent{\n\t\ttouches: 3\n\t})\n\tevents := [Event{\n\t\tkind: 7\n\t\targ: 'ok'\n\t}]\n\tprintln(events)\n}\n"
 	}, 'main.v')
-	assert out == '7'
+	assert out == "[Event{\n    kind: 7\n    arg: 'ok'\n}]"
 }
 
 fn test_imported_struct_zero_fields_use_declaration_module_aliases() {
@@ -2676,53 +2682,12 @@ fn test_nested_generic_main_type_does_not_emit_imported_homonym_specialization()
 	assert !generated.contains('codec__Decoder_other__Item__decode_value'), generated
 }
 
-fn test_same_generic_specialization_name_in_different_modules_keeps_both_bodies() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'generic_specialization_module_collision', {
-		'v.mod':  "Module { name: 'generic_specialization_module_collision' }\n"
-		'a/a.v':  'module a\n\npub fn id[T](value T) T {\n\treturn value\n}\n'
-		'b/b.v':  'module b\n\npub fn id[T](value T) T {\n\treturn value + 10\n}\n'
-		'main.v': 'module main\n\nimport a\nimport b\n\nfn main() {\n\tprintln(int_str(a.id[int](1)))\n\tprintln(int_str(b.id[int](2)))\n}\n'
-	}, 'main.v')
-	assert out == '1\n12'
-}
-
-fn test_imported_module_generic_function_value_prefers_local_declaration() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'generic_function_value_module_collision', {
-		'v.mod':  "Module { name: 'generic_function_value_module_collision' }\n"
-		'a/a.v':  'module a\n\nfn pick[T](value T) T {\n\treturn value + 1\n}\n\npub fn make_picker() fn (int) int {\n\treturn pick[int]\n}\n'
-		'main.v': 'module main\n\nimport a\n\nfn pick[T](value T) T {\n\treturn value + 100\n}\n\nfn main() {\n\timported := a.make_picker()\n\tlocal := pick[int]\n\tprintln(int_str(imported(1)))\n\tprintln(int_str(local(1)))\n}\n'
-	}, 'main.v')
-	assert out == '2\n101'
-}
-
 fn test_building_v_function_values_keep_plain_and_module_helpers() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project_with_flags(v3_bin, 'building_v_function_value_reachability', '-building-v', {
 		'v.mod':           "Module { name: 'building_v_function_value_reachability' }\n"
 		'worker/worker.v': 'module worker\n\nfn local_helper() int {\n\treturn 19\n}\n\nfn apply(callback fn () int) int {\n\treturn callback()\n}\n\npub fn local_value() int {\n\treturn apply(local_helper)\n}\n\npub fn selected_helper() int {\n\treturn 23\n}\n'
 		'main.v':          'module main\n\nimport worker\n\nfn apply(callback fn () int) int {\n\treturn callback()\n}\n\nfn main() {\n\tprintln(worker.local_value() + apply(worker.selected_helper))\n}\n'
-	}, 'main.v')
-	assert out == '42'
-}
-
-fn test_imported_selector_generic_function_value_is_specialized() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'selector_generic_function_value', {
-		'v.mod':           "Module { name: 'selector_generic_function_value' }\n"
-		'worker/worker.v': 'module worker\n\npub fn identity[T](value T) T {\n\treturn value\n}\n'
-		'main.v':          'module main\n\nimport worker\n\nfn identity[T](value T) T {\n\treturn value + 100\n}\n\nfn main() {\n\tcallback := worker.identity[int]\n\tlocal := identity[int]\n\tprintln(int_str(callback(42)))\n\tprintln(int_str(local(1)))\n}\n'
-	}, 'main.v')
-	assert out == '42\n101'
-}
-
-fn test_selectively_imported_generic_function_value_is_specialized() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'selective_import_generic_function_value', {
-		'v.mod':     "Module { name: 'selective_import_generic_function_value' }\n"
-		'lib/lib.v': 'module lib\n\npub fn id[T](value T) T {\n\treturn value + 1\n}\n'
-		'main.v':    'module main\n\nimport lib { id }\n\nfn main() {\n\tcallback := id[int]\n\tprintln(int_str(callback(41)))\n}\n'
 	}, 'main.v')
 	assert out == '42'
 }
@@ -2740,42 +2705,11 @@ fn test_qualified_generic_function_value_without_generic_calls_is_specialized() 
 	assert out == '42\n42'
 }
 
-fn test_optional_if_guard_prefers_local_type_over_imported_homonym() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'optional_if_guard_local_type_collision', {
-		'v.mod':         "Module { name: 'optional_if_guard_local_type_collision' }\n"
-		'other/other.v': 'module other\n\npub struct Server {\npub:\n\tname string\n}\n'
-		'main.v':        "module main\n\nimport other\n\nstruct Server {\n\tid int\n}\n\nfn find_server() ?Server {\n\treturn Server{\n\t\tid: 9\n\t}\n}\n\nfn main() {\n\t_ := other.Server{\n\t\tname: 'imported'\n\t}\n\tif server := find_server() {\n\t\tprintln(int_str(server.id))\n\t}\n}\n"
-	}, 'main.v')
-	assert out == '9'
-}
-
 fn test_fixed_array_alias_is_not_requalified_in_importing_module() {
 	v3_bin := build_v3_review_transform()
 	generated := gen_c_from_source(v3_bin, 'fixed_array_alias_import_context', 'import gg\nimport sokol.gfx\n\nfn main() {\n\t_ := gg.Color{}\n\t_ := gfx.ImageData{}\n}\n')
 	assert generated.contains('Array_fixed_struct_sg_range_16'), generated
 	assert !generated.contains('Array_fixed_gg__Range_16'), generated
-}
-
-fn test_nested_string_array_literal_keeps_alias_element_type() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'nested_string_array_alias', {
-		'v.mod':           "Module { name: 'nested_string_array_alias' }\n"
-		'syntax/syntax.v': "module syntax\n\ntype MapArrayStrings = map[string][][]string\n\npub struct Highlighter {\npub mut:\n\tmultiline map[string]MapArrayStrings\n}\n\npub fn (mut h Highlighter) load() {\n\th.multiline['v'] = {\n\t\t'comment': [['/*', '*/']]\n\t}\n}\n"
-		'main.v':          "module main\n\nimport syntax\n\nfn main() {\n\tmut h := syntax.Highlighter{}\n\th.load()\n\tprintln(h.multiline['v']['comment'][0][0])\n\tprintln(h.multiline['v']['comment'][0][1])\n}\n"
-	}, 'main.v')
-	assert out == '/*\n*/'
-}
-
-fn test_generic_specializations_keep_full_aliased_import_paths() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'generic_specialization_aliased_import_paths', {
-		'v.mod':          "Module { name: 'generic_specialization_aliased_import_paths' }\n"
-		'a/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\tn int\n}\n'
-		'b/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\ttext string\n}\n'
-		'main.v':         "module main\n\nimport a.tast as left\nimport b.tast\n\nfn keep[T](value T) T {\n\treturn value\n}\n\nfn main() {\n\tleft_value := keep(left.Value{\n\t\tn: 41\n\t})\n\tright_value := keep(tast.Value{\n\t\ttext: 'ok'\n\t})\n\tprintln(int_str(left_value.n))\n\tprintln(right_value.text)\n}\n"
-	}, 'main.v')
-	assert out == '41\nok'
 }
 
 fn test_nested_inferred_fixed_array_literal_parses() {
