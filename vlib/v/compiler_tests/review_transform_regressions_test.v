@@ -2034,9 +2034,10 @@ fn main() {
 	])
 }
 
-fn test_auto_str_preserves_distinct_structs_beyond_inline_depth() {
+fn test_runtime_type_and_value_semantics() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'auto_str_distinct_struct_depth', 'struct D {
+	cases := [
+		TransformFixture{'auto_str_distinct_struct_depth', 'struct D {
 	value int
 }
 
@@ -2064,8 +2065,7 @@ fn main() {
 	}
 	println(value)
 }
-')
-	assert out == 'A{
+', 'A{
     b: B{
         c: C{
             d: D{
@@ -2073,7 +2073,169 @@ fn main() {
             }
         }
     }
-}'
+}'},
+		TransformFixture{'generic_body_materialized_interface_implementer', 'interface Any {
+	str() string
+}
+
+struct Box[T] {
+	value T
+}
+
+fn main() {
+	boxed := Any(Box[int]{
+		value: 7
+	})
+	println(boxed.type_name() + ":" + boxed.str())
+}
+', 'Box[int]:Box[int]{\n    value: 7\n}'},
+		TransformFixture{'typeof_idx_smartcast', 'struct Foo {}
+struct Bar {}
+
+type SmartcastValue = Foo | Bar
+
+fn show(value SmartcastValue) {
+	if value is Foo {
+		println(typeof(value).name)
+		println((typeof(value).idx == typeof[Foo]().idx).str())
+	}
+	match value {
+		Bar {
+			println(typeof(value).name)
+			println((typeof(value).idx == typeof[Bar]().idx).str())
+		}
+		else {}
+	}
+}
+
+fn main() {
+	show(Foo{})
+	show(Bar{})
+}
+', 'Foo\ntrue\nBar\ntrue'},
+		TransformFixture{'empty_interface_mixed_array_stringification', 'interface Value {}
+
+fn main() {
+	values := [Value([1, 2]), Value(["x"])]
+	for value in values {
+		println(value)
+	}
+	println(values[0].type_idx() != values[1].type_idx())
+}
+', "Value([1, 2])\nValue(['x'])\ntrue"},
+		TransformFixture{'generic_mut_parameter_typeof', 'struct Item {}
+
+fn mut_parameter_type_name[T](mut value T) string {
+	_ = value
+	return typeof(value).name
+}
+
+fn main() {
+	mut item := Item{}
+	println(mut_parameter_type_name(mut item))
+}
+', '&Item'},
+		TransformFixture{'struct_str_dereferenced_call_once', 'struct Node {
+	value int
+}
+
+struct Counter {
+mut:
+	calls int
+}
+
+fn next_node(mut counter Counter) &Node {
+	counter.calls++
+	return &Node{
+		value: counter.calls
+	}
+}
+
+fn main() {
+	mut counter := Counter{}
+	println("\${*next_node(mut counter)}")
+	println(int_str(counter.calls))
+}
+', 'Node{\n    value: 1\n}\n1'},
+		TransformFixture{'generic_local_function_name_collision', 'import math
+
+struct Log {}
+
+fn type_name[T](_ T) string {
+	return typeof(T).name
+}
+
+fn main() {
+	logs := [Log{}]
+	for log in logs {
+		println(type_name(log))
+	}
+	_ = math.log(1.0)
+}
+', 'Log'},
+		TransformFixture{'comptime_main_enum_field_type_group', 'enum State {
+	idle
+	running
+}
+
+struct Job {
+	state State
+}
+
+fn enum_fields[T]() int {
+	mut count := 0
+	$for field in T.fields {
+		$if field.unaliased_typ is $enum {
+			count++
+		}
+	}
+	return count
+}
+
+fn main() {
+	println(enum_fields[Job]())
+}
+', '1'},
+		TransformFixture{'map_value_lookup_lazy_default', "fn read_present(values map[string]map[string]int) int {\n\treturn values['present'].len\n}\n\nfn set_nested(mut values map[string]map[string]int) {\n\tvalues['created']['answer'] = 42\n}\n\nfn main() {\n\tmut values := {\n\t\t'present': {'answer': 7}\n\t}\n\tfor _ in 0 .. 100 {\n\t\tassert read_present(values) == 1\n\t}\n\tset_nested(mut values)\n\tprintln(int_str(values['created']['answer']))\n}\n", '42'},
+		TransformFixture{'explicit_array_deref_equality', 'fn main() {
+	values := [1, 2, 3]
+	p := &values
+	assert *p == values
+	assert values == *p
+	println("ok")
+}
+', 'ok'},
+	]
+	// Keep the fixture declarations in main so their type names stay unqualified.
+	mut files := map[string]string{}
+	mut calls := []string{cap: cases.len}
+	for case in cases {
+		files['${case.name}.v'] = case.source.replace_once('fn main()', 'fn ${case.name}()')
+		calls << "\t\t'${case.name}' { ${case.name}() }"
+	}
+	files['main.v'] = "import os\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
+	good_bin := compile_good_project(v3_bin, 'runtime_type_and_value_semantics', '', files, '')
+	for case in cases {
+		out := run_good_binary(good_bin, case.name, case.name)
+		assert out == case.expected, '${case.name}: expected `${case.expected}`, got `${out}`'
+	}
+	c_source := os.read_file(good_bin + '.c') or { panic(err) }
+	deref_body := c_fn_body(c_source, 'void explicit_array_deref_equality(void) {')
+	assert deref_body.len > 0, 'missing explicit array dereference fixture'
+	assert !deref_body.contains('**p'), deref_body
+	read_body := c_fn_body(c_source, 'i64 read_present(map values) {')
+	read_check := read_body.index('map__get_check') or { -1 }
+	read_default := read_body.index('new_map(') or { -1 }
+	assert read_check >= 0, read_body
+	assert read_default > read_check, read_body
+	assert read_body[read_check..read_default].contains('?'), read_body
+	set_body := c_fn_body(c_source, 'void set_nested(map* values) {')
+	set_check := set_body.index('map__get_check') or { -1 }
+	set_default := set_body.index('new_map(') or { -1 }
+	assert set_check >= 0, set_body
+	assert set_default > set_check, set_body
+	set_guard := set_body[set_check..set_default]
+	assert set_guard.contains('?') || set_guard.contains('if (!') || set_guard.contains('== NULL)'), set_body
 }
 
 fn test_recursive_interface_auto_str_uses_helper() {
@@ -3193,21 +3355,6 @@ fn test_reject_dynamic_arrays_for_fixed_array_expectations() {
 			expected: 'cannot use'
 		},
 	])
-}
-
-fn test_explicitly_dereferenced_array_equality_is_not_double_dereferenced() {
-	v3_bin := build_v3_review_transform()
-	source := 'fn main() {
-	values := [1, 2, 3]
-	p := &values
-	assert *p == values
-	assert values == *p
-	println("ok")
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'explicit_array_deref_equality', '', source)
-	assert !c_source.contains('**p'), c_source
-	assert out == 'ok'
 }
 
 fn test_mut_array_loop_sort_receiver_is_not_double_dereferenced() {
@@ -5606,26 +5753,6 @@ fn main() {
 	assert out == 'ok'
 }
 
-fn test_materialized_generic_interface_implementer_has_runtime_type_name() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'generic_body_materialized_interface_implementer', 'interface Any {
-	str() string
-}
-
-struct Box[T] {
-	value T
-}
-
-fn main() {
-	boxed := Any(Box[int]{
-		value: 7
-	})
-	println(boxed.type_name() + ":" + boxed.str())
-}
-')
-	assert out == 'Box[int]:Box[int]{\n    value: 7\n}'
-}
-
 fn test_array_literal_separator_handling() {
 	v3_bin := build_v3_review_transform()
 	run_bad(v3_bin, 'array_literal_doubled_comma', 'fn main() {\n\t_ := [1,,2]\n}\n', 'unexpected token `,`, expecting `]`')
@@ -5640,26 +5767,6 @@ fn test_container_wrapped_import_alias_type_resolves() {
 		'main.v':    'module main\n\nimport foo\n\nfn main() {\n\th := foo.make()\n\tmut out := int_str(h.items[0].n) + int_str(h.items[1].n)\n\tif v := h.one {\n\t\tout += int_str(v.n)\n\t}\n\tprintln(out)\n}\n'
 	}, 'main.v')
 	assert out == '127'
-}
-
-fn test_map_value_lookup_constructs_default_only_for_missing_key() {
-	v3_bin := build_v3_review_transform()
-	source := "fn read_present(values map[string]map[string]int) int {\n\treturn values['present'].len\n}\n\nfn set_nested(mut values map[string]map[string]int) {\n\tvalues['created']['answer'] = 42\n}\n\nfn main() {\n\tmut values := {\n\t\t'present': {'answer': 7}\n\t}\n\tfor _ in 0 .. 100 {\n\t\tassert read_present(values) == 1\n\t}\n\tset_nested(mut values)\n\tprintln(int_str(values['created']['answer']))\n}\n"
-	c_source := gen_c_from_source(v3_bin, 'map_value_lookup_lazy_default_c', source)
-	read_body := c_fn_body(c_source, 'i64 read_present(map values) {')
-	read_check := read_body.index('map__get_check') or { -1 }
-	read_default := read_body.index('new_map(') or { -1 }
-	assert read_check >= 0, read_body
-	assert read_default > read_check, read_body
-	assert read_body[read_check..read_default].contains('?'), read_body
-	set_body := c_fn_body(c_source, 'void set_nested(map* values) {')
-	set_check := set_body.index('map__get_check') or { -1 }
-	set_default := set_body.index('new_map(') or { -1 }
-	assert set_check >= 0, set_body
-	assert set_default > set_check, set_body
-	set_guard := set_body[set_check..set_default]
-	assert set_guard.contains('?') || set_guard.contains('if (!') || set_guard.contains('== NULL)'), set_body
-	assert run_good(v3_bin, 'map_value_lookup_lazy_default', source) == '42'
 }
 
 fn test_cyclic_interface_default_does_not_deref_nil_global() {
@@ -5819,50 +5926,6 @@ fn test_parallel_monomorphization_registers_worker_fixed_array_signatures() {
 	src := '${declarations.join('\n')}\n\nfn fixed_pair[T](value T) [2]int {\n\t_ = value\n\treturn [1, 2]!\n}\n\nfn main() {\n\tmut total := 0\n${calls.join('\n')}\n\tprintln(total)\n}\n'
 	out := run_good_with_env(v3_bin, 'parallel_monomorph_signatures', 'VJOBS=4', src)
 	assert out == '40'
-}
-
-fn test_typeof_idx_uses_active_smartcast() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'typeof_idx_smartcast', 'struct Foo {}
-struct Bar {}
-
-type Value = Foo | Bar
-
-fn show(value Value) {
-	if value is Foo {
-		println(typeof(value).name)
-		println((typeof(value).idx == typeof[Foo]().idx).str())
-	}
-	match value {
-		Bar {
-			println(typeof(value).name)
-			println((typeof(value).idx == typeof[Bar]().idx).str())
-		}
-		else {}
-	}
-}
-
-fn main() {
-	show(Foo{})
-	show(Bar{})
-}
-')
-	assert out == 'Foo\ntrue\nBar\ntrue'
-}
-
-fn test_empty_interface_stringification_distinguishes_array_element_types() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'empty_interface_mixed_array_stringification', 'interface Value {}
-
-fn main() {
-	values := [Value([1, 2]), Value(["x"])]
-	for value in values {
-		println(value)
-	}
-	println(values[0].type_idx() != values[1].type_idx())
-}
-')
-	assert out == "Value([1, 2])\nValue(['x'])\ntrue"
 }
 
 fn test_boxed_container_runtime_type_indexes_resolve_hash_collisions() {
@@ -6133,34 +6196,6 @@ fn main() {
 '
 	}, 'main.v')
 	assert out == 'value\ntrue\ntrue\nmain_attr'
-}
-
-fn test_comptime_main_enum_field_matches_enum_type_group() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'comptime_main_enum_field_type_group', 'enum State {
-	idle
-	running
-}
-
-struct Job {
-	state State
-}
-
-fn enum_fields[T]() int {
-	mut count := 0
-	$for field in T.fields {
-		$if field.unaliased_typ is $enum {
-			count++
-		}
-	}
-	return count
-}
-
-fn main() {
-	println(enum_fields[Job]())
-}
-')
-	assert out == '1'
 }
 
 fn test_json2_encode_keeps_independent_array_element_specializations() {
@@ -11787,23 +11822,6 @@ println(json2.encode(value))
 	assert out == '{"a":2,"b":1}'
 }
 
-fn test_generic_mut_parameter_typeof_keeps_pointer_shape() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'generic_mut_parameter_typeof', 'struct Item {}
-
-fn type_name[T](mut value T) string {
-	_ = value
-	return typeof(value).name
-}
-
-fn main() {
-	mut item := Item{}
-	println(type_name(mut item))
-}
-')
-	assert out == '&Item'
-}
-
 fn test_result_unwrapped_sum_collections_compare_semantically() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'result_unwrapped_sum_collection_equality', 'type Value = bool | string
@@ -12300,33 +12318,6 @@ fn test_parallel_transform_merges_generic_call_metadata() {
 	assert out == expected.str()
 }
 
-fn test_struct_stringification_evaluates_dereferenced_pointer_call_once() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'struct_str_dereferenced_call_once', 'struct Node {
-	value int
-}
-
-struct Counter {
-mut:
-	calls int
-}
-
-fn next_node(mut counter Counter) &Node {
-	counter.calls++
-	return &Node{
-		value: counter.calls
-	}
-}
-
-fn main() {
-	mut counter := Counter{}
-	println("\${*next_node(mut counter)}")
-	println(int_str(counter.calls))
-}
-')
-	assert out == 'Node{\n    value: 1\n}\n1'
-}
-
 fn test_imported_generic_default_uses_main_struct_defaults_after_short_name_collision() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'generic_main_default_short_name_collision', {
@@ -12497,27 +12488,6 @@ fn main() {
 }
 ', 'ok\ncustom:ok'},
 	]
-}
-
-fn test_generic_inference_prefers_local_over_same_named_function() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'generic_local_function_name_collision', 'import math
-
-struct Log {}
-
-fn type_name[T](_ T) string {
-	return typeof(T).name
-}
-
-fn main() {
-	logs := [Log{}]
-	for log in logs {
-		println(type_name(log))
-	}
-	_ = math.log(1.0)
-}
-')
-	assert out == 'Log'
 }
 
 fn test_local_enum_equality_ignores_same_named_imported_struct() {
