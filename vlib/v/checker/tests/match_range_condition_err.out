@@ -1,0 +1,13 @@
+vlib/v/checker/tests/match_range_condition_err.vv:2:8: error: range cannot be used as a condition, iterate with `for i in low .. high` instead
+    1 | fn main() {
+    2 |     match 0 .. 10 {
+      |           ~~~~~~~
+    3 |         1 {
+    4 |             println('one')
+vlib/v/checker/tests/match_range_condition_err.vv:10:9: error: range cannot be used as a condition, iterate with `for i in low .. high` instead
+    8 |         }
+    9 |     }
+   10 |     match (0 .. 10) {
+      |            ~~~~~~~
+   11 |         1 {
+   12 |             println('one')

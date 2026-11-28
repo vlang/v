@@ -1,0 +1,18 @@
+fn main() {
+	match 0 .. 10 {
+		1 {
+			println('one')
+		}
+		else {
+			println('other')
+		}
+	}
+	match (0 .. 10) {
+		1 {
+			println('one')
+		}
+		else {
+			println('other')
+		}
+	}
+}

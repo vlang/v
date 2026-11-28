@@ -1,0 +1,9 @@
+fn f[T](x T) {
+	for 0 .. 3 {
+		println(x)
+	}
+}
+
+fn main() {
+	f(1)
+}

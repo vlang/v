@@ -1,0 +1,5 @@
+vlib/v/checker/tests/assert_range_condition_err.vv:2:9: error: range cannot be used as a condition, iterate with `for i in low .. high` instead
+    1 | fn main() {
+    2 |     assert 0 .. 10
+      |            ~~~~~~~
+    3 | }
