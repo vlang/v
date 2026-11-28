@@ -3243,9 +3243,28 @@ fn test_heap_attribute_does_not_promote_channel_with_imported_pointer_element() 
 	assert out == '42'
 }
 
-fn test_non_escaping_local_closures_are_reclaimed_in_hot_loop() {
+struct ClosureCleanupCase {
+	name                  string
+	source                string
+	expected              string
+	cleanup_targets       []string
+	minimum_cleanup_count int = 1
+}
+
+fn test_scope_local_closures_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
-	source := 'fn main() {
+	value_source := 'struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+'
+	cases := [
+		ClosureCleanupCase{
+			name:            'local_closure_hot_loop'
+			source:          'fn main() {
 	for i in 0 .. 50_000 {
 		value := i
 		callback := fn [value] () int {
@@ -3256,24 +3275,13 @@ fn test_non_escaping_local_closures_are_reclaimed_in_hot_loop() {
 	println("ok")
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'local_closure_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
-	assert out == 'ok'
-}
-
-fn test_branch_selected_local_method_closures_preserve_receiver_and_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
-fn exercise(flag bool) int {
+			expected:        'ok'
+			cleanup_targets: ['callback);']
+		},
+		ClosureCleanupCase{
+			name:            'branch_selected_local_method_closures'
+			source:          local_callback_counter_source + '
+fn read_selected_callbacks(flag bool) int {
 	mut first := Counter{
 		value: 1
 	}
@@ -3293,15 +3301,306 @@ fn exercise(flag bool) int {
 fn main() {
 	mut total := 0
 	for i in 0 .. 50_000 {
-		total += exercise(i % 2 == 0)
+		total += read_selected_callbacks(i % 2 == 0)
 	}
 	println(int_str(total))
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'branch_selected_local_method_closures', '', source)
-	assert c_source.contains('closure__closure_try_destroy(callback_if);'), c_source
-	assert c_source.contains('closure__closure_try_destroy(callback_match);'), c_source
-	assert out == '1100000'
+			expected:        '1100000'
+			cleanup_targets: ['callback_if);', 'callback_match);']
+		},
+		ClosureCleanupCase{
+			name:            'local_bound_method_hot_loop'
+			source:          value_source + '
+fn main() {
+	for i in 0 .. 50_000 {
+		value := Value{
+			n: i
+		}
+		callback := value.get
+		assert callback() == i
+	}
+	println("ok")
+}
+'
+			expected:        'ok'
+			cleanup_targets: ['callback);']
+		},
+		ClosureCleanupCase{
+			name:            'deferred_local_bound_method'
+			source:          local_callback_counter_source + '
+fn deferred_read(value int) {
+	mut counter := Counter{
+		value: value
+	}
+	callback := counter.read
+	defer {
+		assert callback() == value + 1
+	}
+	counter.value++
+}
+
+fn main() {
+	for i in 0 .. 50_000 {
+		deferred_read(i)
+	}
+	println("ok")
+}
+'
+			expected:        'ok'
+			cleanup_targets: ['callback);']
+		},
+		ClosureCleanupCase{
+			name:            'locally_aliased_bound_method_hot_loop'
+			source:          local_callback_counter_source + '
+fn make_callback(value int) fn () int {
+	mut counter := Counter{
+		value: value
+	}
+	callback := counter.read
+	alias := callback
+	counter.value++
+	return alias
+}
+
+fn main() {
+	escaped := make_callback(77)
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut counter := Counter{
+			value: i
+		}
+		callback := counter.read
+		alias := callback
+		counter.value++
+		total += alias()
+		assert counter.value == i + 1
+	}
+	assert escaped() == 78
+	println(int_str(total))
+}
+'
+			expected:        '1250025000'
+			cleanup_targets: ['callback);']
+		},
+		ClosureCleanupCase{
+			name:                  'reassigned_local_bound_method_hot_loop'
+			source:                value_source + '
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		first := Value{
+			n: i
+		}
+		second := Value{
+			n: i + 1
+		}
+		mut callback := first.get
+		callback = second.get
+		total += callback()
+	}
+	println(int_str(total))
+}
+'
+			expected:              '1250025000'
+			cleanup_targets:       ['callback);']
+			minimum_cleanup_count: 2
+		},
+		ClosureCleanupCase{
+			name:                  'conditionally_reassigned_bound_method'
+			source:                value_source + '
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		first := Value{
+			n: i
+		}
+		second := Value{
+			n: i + 1
+		}
+		mut callback := first.get
+		callback = if i % 2 == 0 { callback } else { second.get }
+		total += callback()
+	}
+	println(int_str(total))
+}
+'
+			expected:              '1250000000'
+			cleanup_targets:       ['callback);']
+			minimum_cleanup_count: 2
+		},
+		ClosureCleanupCase{
+			name:                  'match_self_reassigned_bound_method'
+			source:                local_callback_counter_source + '
+fn main() {
+	mut total := 0
+	for i in 0 .. 50_000 {
+		mut first := Counter{
+			value: i
+		}
+		other := Counter{
+			value: i + 1
+		}
+		keep := i % 2 == 0
+		mut callback := first.read
+		callback = match keep {
+			true { callback }
+			else { other.read }
+		}
+		first.value += 10
+		if keep {
+			assert callback() == i + 10
+		} else {
+			assert callback() == i + 1
+		}
+		total += callback()
+	}
+	println(int_str(total))
+}
+'
+			expected:              '1250250000'
+			cleanup_targets:       ['callback);']
+			minimum_cleanup_count: 2
+		},
+		ClosureCleanupCase{
+			name:                  'disjoint_same_name_closure_bindings'
+			source:                '@[heap]
+struct Value {
+mut:
+	n int
+}
+
+fn (value &Value) read() int {
+	return value.n
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 10_000 {
+		if i >= 0 {
+			mut first := Value{
+				n: i
+			}
+			callback := first.read
+			first.n += 10
+			total += callback()
+		}
+		if i < 10_000 {
+			mut second := Value{
+				n: i + 1
+			}
+			callback := second.read
+			second.n += 20
+			total += callback()
+		}
+	}
+	println(int_str(total))
+}
+'
+			expected:              '100300000'
+			cleanup_targets:       ['callback);']
+			minimum_cleanup_count: 2
+		},
+		ClosureCleanupCase{
+			name:                  'branch_immediate_method_closures'
+			source:                '@[heap]
+struct Value {
+	n int
+}
+
+fn (value &Value) read() int {
+	return value.n
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 20_000 {
+		first := Value{
+			n: i
+		}
+		second := Value{
+			n: i + 100
+		}
+		keep := i % 2 == 0
+		total += (if keep { first.read } else { second.read })()
+		total += (match keep {
+			true { first.read }
+			else { second.read }
+		})()
+	}
+	println(int_str(total))
+}
+'
+			expected:              '401980000'
+			cleanup_targets:       ['']
+			minimum_cleanup_count: 2
+		},
+		ClosureCleanupCase{
+			name:                  'array_branch_bound_method_callbacks'
+			source:                '@[heap]
+struct Rule {
+	min    int
+	offset int
+mut:
+	calls int
+}
+
+fn (mut rule Rule) accept(value int) bool {
+	rule.calls++
+	return value >= rule.min
+}
+
+fn (mut rule Rule) shift(value int) int {
+	rule.calls++
+	return value + rule.offset
+}
+
+fn main() {
+	mut total := 0
+	for i in 0 .. 20_000 {
+		first := Rule{
+			min: 3
+			offset: 10
+		}
+		second := Rule{
+			min: 2
+			offset: 20
+		}
+		use_first := i % 2 == 0
+		filtered := [1, 2, 3, 4].filter(if use_first { first.accept } else { second.accept })
+		mapped := [1, 2, 3].map(match use_first {
+			true { first.shift }
+			else { second.shift }
+		})
+		assert first.calls + second.calls == 7
+		total += filtered.len + mapped[0]
+	}
+	println(int_str(total))
+}
+'
+			expected:              '370000'
+			cleanup_targets:       ['']
+			minimum_cleanup_count: 2
+		},
+	]
+	fixtures := cases.map(TransformFixture{it.name, it.source, it.expected})
+	good_bin := run_good_module_batch_with_flags(v3_bin, 'scope_local_closure_cleanup', '', fixtures)
+	c_source := os.read_file(good_bin + '.c') or { panic(err) }
+	for i, case in cases {
+		module_name := 'fixture_${i}'
+		signature := match case.name {
+			'branch_selected_local_method_closures' {
+				'i64 ${module_name}__read_selected_callbacks(bool flag) {'
+			}
+			'deferred_local_bound_method' { 'void ${module_name}__deferred_read(i64 value) {' }
+			else { 'void ${module_name}__exercise(void) {' }
+		}
+		body := c_fn_body(c_source, signature)
+		for target in case.cleanup_targets {
+			cleanup := 'closure__closure_try_destroy(${target}'
+			assert body.count(cleanup) >= case.minimum_cleanup_count, '${case.name}: ${body}'
+		}
+	}
 }
 
 fn test_discarded_returned_closures_are_reclaimed_in_hot_loop() {
@@ -3425,112 +3724,6 @@ fn main() {
 	out, c_source := run_good_with_c(v3_bin, 'discarded_static_fn_return', '', source)
 	assert !c_source.contains('closure__closure_try_destroy(__discarded_closure_'), c_source
 	assert out == 'ok'
-}
-
-fn test_non_escaping_bound_method_closures_are_reclaimed_in_hot_loop() {
-	v3_bin := build_v3_review_transform()
-	source := 'struct Value {
-	n int
-}
-
-fn (value Value) get() int {
-	return value.n
-}
-
-fn main() {
-	for i in 0 .. 50_000 {
-		value := Value{
-			n: i
-		}
-		callback := value.get
-		assert callback() == i
-	}
-	println("ok")
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'local_bound_method_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
-	assert out == 'ok'
-}
-
-fn test_deferred_local_bound_method_closures_remain_scope_owned() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
-fn deferred_read(value int) {
-	mut counter := Counter{
-		value: value
-	}
-	callback := counter.read
-	defer {
-		assert callback() == value + 1
-	}
-	counter.value++
-}
-
-fn main() {
-	for i in 0 .. 50_000 {
-		deferred_read(i)
-	}
-	println("ok")
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'deferred_local_bound_method', '', source)
-	body := c_fn_body(c_source, 'void deferred_read(i64 value) {')
-	assert body.contains('closure__closure_try_destroy(callback);'), body
-	assert out == 'ok'
-}
-
-fn test_locally_aliased_bound_method_closures_remain_scope_owned_until_the_alias_escapes() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
-fn make_callback(value int) fn () int {
-	mut counter := Counter{
-		value: value
-	}
-	callback := counter.read
-	alias := callback
-	counter.value++
-	return alias
-}
-
-fn main() {
-	escaped := make_callback(77)
-	mut total := 0
-	for i in 0 .. 50_000 {
-		mut counter := Counter{
-			value: i
-		}
-		callback := counter.read
-		alias := callback
-		counter.value++
-		total += alias()
-		assert counter.value == i + 1
-	}
-	assert escaped() == 78
-	println(int_str(total))
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'locally_aliased_bound_method_hot_loop', '', source)
-	assert c_source.contains('closure__closure_try_destroy(callback);'), c_source
-	assert out == '1250025000'
 }
 
 const local_callback_counter_source = '@[heap]
@@ -4129,111 +4322,6 @@ fn main() {
 	])
 }
 
-fn test_reassigned_non_escaping_bound_method_closures_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := 'struct Value {
-	n int
-}
-
-fn (value Value) get() int {
-	return value.n
-}
-
-fn main() {
-	mut total := 0
-	for i in 0 .. 50_000 {
-		first := Value{
-			n: i
-		}
-		second := Value{
-			n: i + 1
-		}
-		mut callback := first.get
-		callback = second.get
-		total += callback()
-	}
-	println(int_str(total))
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'reassigned_local_bound_method_hot_loop', '', source)
-	assert c_source.count('closure__closure_try_destroy(callback);') >= 2, c_source
-	assert out == '1250025000'
-}
-
-fn test_conditionally_self_reassigned_bound_method_closures_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := 'struct Value {
-	n int
-}
-
-fn (value Value) get() int {
-	return value.n
-}
-
-fn main() {
-	mut total := 0
-	for i in 0 .. 50_000 {
-		first := Value{
-			n: i
-		}
-		second := Value{
-			n: i + 1
-		}
-		mut callback := first.get
-		callback = if i % 2 == 0 { callback } else { second.get }
-		total += callback()
-	}
-	println(int_str(total))
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'conditionally_reassigned_bound_method', '', source)
-	assert c_source.count('closure__closure_try_destroy(callback);') >= 2, c_source
-	assert out == '1250000000'
-}
-
-fn test_match_self_reassigned_bound_method_closures_remain_scope_owned() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Counter {
-mut:
-	value int
-}
-
-fn (counter &Counter) read() int {
-	return counter.value
-}
-
-fn main() {
-	mut total := 0
-	for i in 0 .. 50_000 {
-		mut first := Counter{
-			value: i
-		}
-		other := Counter{
-			value: i + 1
-		}
-		keep := i % 2 == 0
-		mut callback := first.read
-		callback = match keep {
-			true { callback }
-			else { other.read }
-		}
-		first.value += 10
-		if keep {
-			assert callback() == i + 10
-		} else {
-			assert callback() == i + 1
-		}
-		total += callback()
-	}
-	println(int_str(total))
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'match_self_reassigned_bound_method', '', source)
-	assert c_source.count('closure__closure_try_destroy(callback);') >= 2, c_source
-	assert out == '1250250000'
-}
-
 fn test_immediately_invoked_bound_method_closures_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct Value {
@@ -4631,82 +4719,6 @@ fn test_immediately_invoked_closure_keeps_channel_sent_capture_alive() {
 	assert println_pos >= 0, main_body
 	assert destroy_pos > println_pos, main_body
 	assert out == '42'
-}
-
-fn test_disjoint_same_name_closure_bindings_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Value {
-mut:
-	n int
-}
-
-fn (value &Value) read() int {
-	return value.n
-}
-
-fn main() {
-	mut total := 0
-	for i in 0 .. 10_000 {
-		if i >= 0 {
-			mut first := Value{
-				n: i
-			}
-			callback := first.read
-			first.n += 10
-			total += callback()
-		}
-		if i < 10_000 {
-			mut second := Value{
-				n: i + 1
-			}
-			callback := second.read
-			second.n += 20
-			total += callback()
-		}
-	}
-	println(int_str(total))
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'disjoint_same_name_closure_bindings', '', source)
-	assert c_source.count('closure__closure_try_destroy(callback);') >= 2, c_source
-	assert out == '100300000'
-}
-
-fn test_branch_produced_immediate_method_closures_are_reclaimed() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Value {
-	n int
-}
-
-fn (value &Value) read() int {
-	return value.n
-}
-
-fn main() {
-	mut total := 0
-	for i in 0 .. 20_000 {
-		first := Value{
-			n: i
-		}
-		second := Value{
-			n: i + 100
-		}
-		keep := i % 2 == 0
-		total += (if keep { first.read } else { second.read })()
-		total += (match keep {
-			true { first.read }
-			else { second.read }
-		})()
-	}
-	println(int_str(total))
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'branch_immediate_method_closures', '', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	assert main_body.count('closure__closure_try_destroy(') >= 2, main_body
-	assert out == '401980000'
 }
 
 fn test_fixed_array_defer_results_use_semantic_array_storage() {
@@ -11819,55 +11831,6 @@ println(json2.encode(value))
 '
 	out := run_good(v3_bin, 'json_map_sort_pointer_names', source)
 	assert out == '{"a":2,"b":1}'
-}
-
-fn test_array_filter_and_map_reclaim_branch_selected_bound_methods() {
-	v3_bin := build_v3_review_transform()
-	source := '@[heap]
-struct Rule {
-	min    int
-	offset int
-mut:
-	calls int
-}
-
-fn (mut rule Rule) accept(value int) bool {
-	rule.calls++
-	return value >= rule.min
-}
-
-fn (mut rule Rule) shift(value int) int {
-	rule.calls++
-	return value + rule.offset
-}
-
-fn main() {
-	mut total := 0
-	for i in 0 .. 20_000 {
-		first := Rule{
-			min: 3
-			offset: 10
-		}
-		second := Rule{
-			min: 2
-			offset: 20
-		}
-		use_first := i % 2 == 0
-		filtered := [1, 2, 3, 4].filter(if use_first { first.accept } else { second.accept })
-		mapped := [1, 2, 3].map(match use_first {
-			true { first.shift }
-			else { second.shift }
-		})
-		assert first.calls + second.calls == 7
-		total += filtered.len + mapped[0]
-	}
-	println(int_str(total))
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'array_branch_bound_method_callbacks', '', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	assert main_body.count('closure__closure_try_destroy(') >= 2, main_body
-	assert out == '370000'
 }
 
 fn test_generic_mut_parameter_typeof_keeps_pointer_shape() {
