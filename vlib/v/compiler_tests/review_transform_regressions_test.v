@@ -11409,98 +11409,6 @@ fn main() {
 	println(selected[0].value.text)
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'array_map_mutator_storage_overwrite', '-ownership', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	source_drop_pos := main_body.index('array__free(&(') or { -1 }
-	result_move_pos := main_body.index('Array selected = ') or { -1 }
-	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
-	assert out == 'external'
-
-	early_return_source := source.replace('box.value = value\n\tbox.value = replacement', 'box.value = value\n\tif true {\n\t\treturn\n\t}\n\tbox.value = replacement')
-	assert early_return_source != source
-	early_return_out, early_return_c_source := run_good_with_c(v3_bin, 'array_map_mutator_storage_early_return', '-ownership', early_return_source)
-	early_return_main_body := c_fn_body(early_return_c_source, 'int main(int argc, char** argv) {')
-	compact_early_return_main :=
-		early_return_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_early_return_main.contains('array__free(&(__map_source_'), early_return_main_body
-
-	assert early_return_out == 'source'
-
-	delegated_source := source.replace('fn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {\n\tbox.value = value', 'fn (mut box PointerBox) store(value &Item) {\n\tbox.value = value\n}\n\nfn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {\n\tbox.store(value)')
-	assert delegated_source != source
-	delegated_out, delegated_c_source := run_good_with_c(v3_bin, 'array_map_delegated_mutator_storage_overwrite', '-ownership', delegated_source)
-	delegated_main_body := c_fn_body(delegated_c_source, 'int main(int argc, char** argv) {')
-	delegated_source_drop_pos := delegated_main_body.index('array__free(&(') or { -1 }
-	delegated_result_move_pos := delegated_main_body.index('Array selected = ') or { -1 }
-	assert delegated_source_drop_pos >= 0 && delegated_source_drop_pos < delegated_result_move_pos, delegated_main_body
-
-	assert delegated_out == 'external'
-
-	reverse_delegated_source := source.replace('fn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {\n\tbox.value = value\n\tbox.value = replacement', 'fn store(mut box PointerBox, value &Item) {\n\tbox.value = value\n}\n\nfn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {\n\tbox.value = value\n\tstore(mut box, replacement)')
-	assert reverse_delegated_source != source
-	reverse_delegated_out, reverse_delegated_c_source := run_good_with_c(v3_bin, 'array_map_reverse_delegated_mutator_storage_overwrite', '-ownership', reverse_delegated_source)
-	reverse_delegated_main_body := c_fn_body(reverse_delegated_c_source, 'int main(int argc, char** argv) {')
-	reverse_delegated_source_drop_pos := reverse_delegated_main_body.index('array__free(&(') or {
-		-1
-	}
-	reverse_delegated_result_move_pos := reverse_delegated_main_body.index('Array selected = ') or {
-		-1
-	}
-	assert reverse_delegated_source_drop_pos >= 0
-		&& reverse_delegated_source_drop_pos < reverse_delegated_result_move_pos, reverse_delegated_main_body
-
-	assert reverse_delegated_out == 'external'
-
-	loop_source := source.replace('box.value = value\n\tbox.value = replacement', 'for {\n\t\tbox.value = value\n\t\tif true {\n\t\t\tbreak\n\t\t}\n\t\tbox.value = replacement\n\t\tbreak\n\t}')
-	assert loop_source != source
-	loop_out, loop_c_source := run_good_with_c(v3_bin, 'array_map_mutator_storage_loop_break', '-ownership', loop_source)
-	loop_main_body := c_fn_body(loop_c_source, 'int main(int argc, char** argv) {')
-	compact_loop_main := loop_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_loop_main.contains('array__free(&(__map_source_'), loop_main_body
-	assert loop_out == 'source'
-
-	deferred_source := source.replace('box.value = value\n\tbox.value = replacement', 'defer {\n\t\tbox.value = value\n\t}\n\tbox.value = replacement')
-	assert deferred_source != source
-	deferred_out, deferred_c_source := run_good_with_c(v3_bin, 'array_map_mutator_storage_deferred', '-ownership', deferred_source)
-	deferred_main_body := c_fn_body(deferred_c_source, 'int main(int argc, char** argv) {')
-	compact_deferred_main := deferred_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_deferred_main.contains('array__free(&(__map_source_'), deferred_main_body
-	assert deferred_out == 'source'
-
-	deferred_exit_alias_source := source.replace('box.value = value\n\tbox.value = replacement', 'mut alias := unsafe { value }\n\tdefer {\n\t\tbox.value = alias\n\t}\n\tif true {\n\t\treturn\n\t}\n\talias = unsafe { replacement }')
-	assert deferred_exit_alias_source != source
-	deferred_exit_alias_out, deferred_exit_alias_c_source := run_good_with_c(v3_bin, 'array_map_mutator_storage_deferred_exit_alias', '-ownership', deferred_exit_alias_source)
-	deferred_exit_alias_main := c_fn_body(deferred_exit_alias_c_source, 'int main(int argc, char** argv) {')
-	compact_deferred_exit_alias_main :=
-		deferred_exit_alias_main.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_deferred_exit_alias_main.contains('array__free(&(__map_source_'), deferred_exit_alias_main
-	assert deferred_exit_alias_out == 'source'
-
-	nested_deferred_exit_alias_source := source.replace('box.value = value\n\tbox.value = replacement', 'if true {\n\t\tmut local := PointerBox{\n\t\t\tvalue: unsafe { replacement }\n\t\t}\n\t\tmut alias := &local\n\t\tdefer {\n\t\t\talias.value = value\n\t\t}\n\t\talias = &box\n\t}')
-	assert nested_deferred_exit_alias_source != source
-	nested_deferred_exit_alias_out, nested_deferred_exit_alias_c_source := run_good_with_c(v3_bin, 'array_map_mutator_storage_nested_deferred_exit_alias', '-ownership', nested_deferred_exit_alias_source)
-	nested_deferred_exit_alias_main := c_fn_body(nested_deferred_exit_alias_c_source, 'int main(int argc, char** argv) {')
-	compact_nested_deferred_exit_alias_main :=
-		nested_deferred_exit_alias_main.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_nested_deferred_exit_alias_main.contains('array__free(&(__map_source_'), nested_deferred_exit_alias_main
-	assert nested_deferred_exit_alias_out == 'source'
-
-	late_defer_source := source.replace('box.value = value\n\tbox.value = replacement', 'box.value = value\n\tif value.text.len > 0 {\n\t\treturn\n\t}\n\tdefer {\n\t\tbox.value = replacement\n\t}')
-	assert late_defer_source != source
-	late_defer_out, late_defer_c_source := run_good_with_c(v3_bin, 'array_map_mutator_storage_late_defer', '-ownership', late_defer_source)
-	late_defer_main := c_fn_body(late_defer_c_source, 'int main(int argc, char** argv) {')
-	compact_late_defer_main := late_defer_main.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_late_defer_main.contains('array__free(&(__map_source_'), late_defer_main
-	assert late_defer_out == 'source'
-
-	select_source := source.replace('box.value = value\n\tbox.value = replacement', 'signal := chan bool{cap: 1}\n\tsignal <- true\n\tselect {\n\t\t<-signal {\n\t\t\tbox.value = value\n\t\t}\n\t\telse {\n\t\t\tbox.value = replacement\n\t\t}\n\t}')
-	assert select_source != source
-	select_out, select_c_source := run_good_with_c(v3_bin, 'array_map_mutator_storage_select', '-ownership', select_source)
-	select_main_body := c_fn_body(select_c_source, 'int main(int argc, char** argv) {')
-	compact_select_main := select_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_select_main.contains('array__free(&(__map_source_'), select_main_body
-	assert select_out == 'source'
-
 	direct_exit_source := 'struct Item {
 text string
 }
@@ -11550,8 +11458,59 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	direct_exit_out := run_good_with_flags(v3_bin, 'array_map_deferred_direct_exit_alias', '-ownership', direct_exit_source)
-	assert direct_exit_out == '7\nsource'
+	early_return_source := source.replace('box.value = value\n\tbox.value = replacement', 'box.value = value\n\tif true {\n\t\treturn\n\t}\n\tbox.value = replacement')
+	assert early_return_source != source
+	delegated_source := source.replace('fn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {\n\tbox.value = value', 'fn (mut box PointerBox) store(value &Item) {\n\tbox.value = value\n}\n\nfn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {\n\tbox.store(value)')
+	assert delegated_source != source
+	reverse_delegated_source := source.replace('fn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {\n\tbox.value = value\n\tbox.value = replacement', 'fn store(mut box PointerBox, value &Item) {\n\tbox.value = value\n}\n\nfn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {\n\tbox.value = value\n\tstore(mut box, replacement)')
+	assert reverse_delegated_source != source
+	loop_source := source.replace('box.value = value\n\tbox.value = replacement', 'for {\n\t\tbox.value = value\n\t\tif true {\n\t\t\tbreak\n\t\t}\n\t\tbox.value = replacement\n\t\tbreak\n\t}')
+	assert loop_source != source
+	deferred_source := source.replace('box.value = value\n\tbox.value = replacement', 'defer {\n\t\tbox.value = value\n\t}\n\tbox.value = replacement')
+	assert deferred_source != source
+	deferred_exit_alias_source := source.replace('box.value = value\n\tbox.value = replacement', 'mut alias := unsafe { value }\n\tdefer {\n\t\tbox.value = alias\n\t}\n\tif true {\n\t\treturn\n\t}\n\talias = unsafe { replacement }')
+	assert deferred_exit_alias_source != source
+	nested_deferred_exit_alias_source := source.replace('box.value = value\n\tbox.value = replacement', 'if true {\n\t\tmut local := PointerBox{\n\t\t\tvalue: unsafe { replacement }\n\t\t}\n\t\tmut alias := &local\n\t\tdefer {\n\t\t\talias.value = value\n\t\t}\n\t\talias = &box\n\t}')
+	assert nested_deferred_exit_alias_source != source
+	late_defer_source := source.replace('box.value = value\n\tbox.value = replacement', 'box.value = value\n\tif value.text.len > 0 {\n\t\treturn\n\t}\n\tdefer {\n\t\tbox.value = replacement\n\t}')
+	assert late_defer_source != source
+	select_source := source.replace('box.value = value\n\tbox.value = replacement', 'signal := chan bool{cap: 1}\n\tsignal <- true\n\tselect {\n\t\t<-signal {\n\t\t\tbox.value = value\n\t\t}\n\t\telse {\n\t\t\tbox.value = replacement\n\t\t}\n\t}')
+	assert select_source != source
+
+	drop_cases := [
+		TransformFixture{'array_map_mutator_storage_overwrite', source, 'external'},
+		TransformFixture{'array_map_delegated_mutator_storage_overwrite', delegated_source, 'external'},
+		TransformFixture{'array_map_reverse_delegated_mutator_storage_overwrite', reverse_delegated_source, 'external'},
+	]
+	retained_cases := [
+		TransformFixture{'array_map_mutator_storage_early_return', early_return_source, 'source'},
+		TransformFixture{'array_map_mutator_storage_loop_break', loop_source, 'source'},
+		TransformFixture{'array_map_mutator_storage_deferred', deferred_source, 'source'},
+		TransformFixture{'array_map_mutator_storage_deferred_exit_alias', deferred_exit_alias_source, 'source'},
+		TransformFixture{'array_map_mutator_storage_nested_deferred_exit_alias', nested_deferred_exit_alias_source, 'source'},
+		TransformFixture{'array_map_mutator_storage_late_defer', late_defer_source, 'source'},
+		TransformFixture{'array_map_mutator_storage_select', select_source, 'source'},
+	]
+	checked_cases := [...drop_cases, ...retained_cases]
+	fixtures := [
+		...checked_cases,
+		TransformFixture{'array_map_deferred_direct_exit_alias', direct_exit_source, '7\nsource'},
+	]
+	good_bin := run_good_module_batch_with_flags(v3_bin, 'array_map_mutator_storage', '-ownership',
+		fixtures)
+	c_source := os.read_file(good_bin + '.c') or { panic(err) }
+	for i, case in checked_cases {
+		body := c_fn_body(c_source, 'void fixture_${i}__exercise(void) {')
+		assert body.contains('__map_source_'), '${case.name}: map source missing from generated C'
+		compact := body.replace(' ', '').replace('\t', '').replace('\n', '')
+		source_drop_pos := compact.index('array__free(&(__map_source_') or { -1 }
+		if i < drop_cases.len {
+			result_move_pos := compact.index('Arrayselected=') or { -1 }
+			assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, '${case.name}: ${body}'
+		} else {
+			assert source_drop_pos == -1, '${case.name}: ${body}'
+		}
+	}
 }
 
 fn test_array_map_evaluates_return_expression_before_deferred_origin_snapshot() {
