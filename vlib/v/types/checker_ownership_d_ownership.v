@@ -7733,6 +7733,12 @@ fn (mut tc TypeChecker) ownership_after_assign(lhs_id flat.NodeId, rhs_id flat.N
 				tc.ownership_state().skip_drop_before_assign[int(assign_id)] = true
 			}
 		}
+	} else if lhs_name in tc.ownership_state().moved_vars
+		&& !ownership_storage_key_has_dynamic_index(lhs_name) {
+		// Moved on some paths only (`if c { all << s }`): the branch merge keeps the
+		// local owned, but its old value may now belong to the move destination.
+		// Scope exit already leaves such a local alone, so the reassignment must too.
+		tc.ownership_state().skip_drop_before_assign[int(assign_id)] = true
 	}
 	assignment_type := tc.ownership_assignment_type(lhs_type, rhs_type)
 	if tc.ownership_type_requires_destruction(assignment_type)
