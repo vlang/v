@@ -625,13 +625,48 @@ fn compose_v_cmd(vexe string, args []string, source string) string {
 }
 
 fn run_cmd(cmd string) ! {
-	result := os.exec(os.split_args(cmd) or { panic(err) })
+	result := exec_cmd(cmd)
 	if result.exit_code != 0 {
 		return error(result.output)
 	}
 	if result.output.len > 0 {
 		println(result.output.trim_space())
 	}
+}
+
+fn exec_cmd(cmd string) os.Result {
+	return os.exec(os.split_args(cmd) or { panic(err) })
+}
+
+// run_training runs the instrumented compiler on cmd/v. With `serial`, a second
+// run with VJOBS=1 writes `serial_output` at the same time: it keeps one core
+// busy, so the pair takes little longer than the parallel run alone.
+fn run_training(pgo_binary string, training_args []string, pgo_workspace string, serial_output string, serial bool, backend string) bool {
+	training_cmd := 'env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE ' +
+		compose_v_cmd(pgo_binary, training_args, full_v_cli_source)
+	mut serial_runs := []thread os.Result{}
+	if serial {
+		serial_cmd := 'env VJOBS=1 env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE ' +
+			compose_v_cmd(pgo_binary, with_output_arg(training_args, os.join_path(pgo_workspace,
+				serial_output)), full_v_cli_source)
+		serial_runs << spawn exec_cmd(serial_cmd)
+	}
+	mut runs := [exec_cmd(training_cmd)]
+	runs << serial_runs.wait()
+	for i, run in runs {
+		if run.exit_code != 0 {
+			kind := if i == 0 { '' } else { 'serial ' }
+			eprintln('PGO step failed while generating the ${kind}${backend}profiling data.')
+			eprintln(run.output)
+			return false
+		}
+	}
+	for run in runs {
+		if run.output.len > 0 {
+			println(run.output.trim_space())
+		}
+	}
+	return true
 }
 
 fn try_compile(cmd string) bool {
@@ -678,6 +713,12 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 	generate_args << ['-cflags', os.quoted_path('-fprofile-generate=${profile_dir}')]
 	// Training uses worker threads, so counter increments must not lose updates.
 	generate_args << ['-cflags', '-fprofile-update=atomic']
+	if cc_kind == 'clang' {
+		// Clang inserts the counters before link time optimization, so the profile
+		// still matches the final LTO build. Without LTO the linker does not optimize
+		// the generated unit a second time, which saves a quarter of this build.
+		generate_args << ['-cflags', '-fno-lto']
+	}
 	generate_cmd := compose_v_cmd(vexe, generate_args, full_v_cli_source)
 	run_cmd(generate_cmd) or {
 		eprintln('PGO step failed while building the instrumented compiler.')
@@ -692,21 +733,13 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 	if no_parallel {
 		training_args << '-no-parallel'
 	}
-	training_cmd := 'env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE ' +
-		compose_v_cmd(pgo_binary, training_args, full_v_cli_source)
-	run_cmd(training_cmd) or {
-		eprintln('PGO step failed while generating the profiling data.')
-		eprintln(err.msg())
+	// Cover both worker dispatch and the serial checker/codegen paths. The serial
+	// run changes only its child's environment, not the final build's.
+	serial_training := !no_parallel && os.getenv('VJOBS') != '1'
+	if !run_training(pgo_binary, training_args, pgo_workspace, 'cmd_v_serial_training.c',
+		serial_training, '')
+	{
 		return false
-	}
-	if !no_parallel && os.getenv('VJOBS') != '1' {
-		// Cover both worker dispatch and the serial checker/codegen paths. The
-		// second run changes only its child's environment, not the final build's.
-		run_cmd('env VJOBS=1 ${training_cmd}') or {
-			eprintln('PGO step failed while generating the serial profiling data.')
-			eprintln(err.msg())
-			return false
-		}
 	}
 	if self_build_trains_fastc(effective_self_build_args(args))
 		&& os.is_executable(os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')) {
@@ -715,19 +748,10 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 		mut fastc_training_args := with_output_arg(training_args, os.join_path(pgo_workspace,
 			'cmd_v_fastc_training.c'))
 		fastc_training_args << ['-b', 'fastc', '-no-memory-limit']
-		fastc_training_cmd := 'env -u VFLAGS -u VEXE -u LLVM_PROFILE_FILE ' +
-			compose_v_cmd(pgo_binary, fastc_training_args, full_v_cli_source)
-		run_cmd(fastc_training_cmd) or {
-			eprintln('PGO step failed while generating the FastC profiling data.')
-			eprintln(err.msg())
+		if !run_training(pgo_binary, fastc_training_args, pgo_workspace,
+			'cmd_v_fastc_serial_training.c', serial_training, 'FastC ')
+		{
 			return false
-		}
-		if !no_parallel && os.getenv('VJOBS') != '1' {
-			run_cmd('env VJOBS=1 ${fastc_training_cmd}') or {
-				eprintln('PGO step failed while generating the serial FastC profiling data.')
-				eprintln(err.msg())
-				return false
-			}
 		}
 	}
 	if cc_kind == 'clang' {
