@@ -1,0 +1,166 @@
+name: macOS strict compiler probe overflow diagnostics
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/macos_probe_overflow_diagnostic.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  replay:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - role: original
+            revision: cd3df54950546c39c6457897a87bc942375184e9
+          - role: current
+            revision: 358b5b765da692d6cf95cea2b543cbec8132b51f
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      VFLAGS: -cc clang
+      VJOBS: '3'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ matrix.revision }}
+          persist-credentials: false
+      - name: Build original optimized compiler from pinned source
+        uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: 'false'
+      - name: Check compiler and original setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD
+          uname -a
+          sysctl hw.ncpu
+          ./v version
+          printf 'fn main() { println(6 * 7) }\n' > "$RUNNER_TEMP/v3_canary.v"
+          ./v -v run "$RUNNER_TEMP/v3_canary.v" > "$RUNNER_TEMP/canary.log" 2>&1
+          cat "$RUNNER_TEMP/canary.log"
+          grep -F '=== V compiler benchmark ===' "$RUNNER_TEMP/canary.log"
+          grep -x '42' "$RUNNER_TEMP/canary.log"
+          ./v -d arm64 -silent test vlib/v/gen/fastc/if_condition_arm64_test.v
+          ./v run ci/macos_ci.vsh test_symlink
+          ./v run ci/macos_ci.vsh v_doctor
+      - name: Compare exact strict build with worker-init and serial controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/probe-replay"
+          out="$RUNNER_TEMP/probe-replay"
+          unset V3_NO_LEAN_CGEN_WORKER_INIT
+          failed=0
+          for iteration in 1 2 3 4 5; do
+            for mode in default eager serial; do
+              rm -f vstrict1
+              log="$out/$iteration-$mode.log"
+              rc=0
+              case "$mode" in
+                default) ./v -cg -cstrict -o vstrict1 cmd/v > "$log" 2>&1 || rc=$? ;;
+                eager) V3_NO_LEAN_CGEN_WORKER_INIT=1 ./v -cg -cstrict -o vstrict1 cmd/v > "$log" 2>&1 || rc=$? ;;
+                serial) ./v -no-parallel -cg -cstrict -o vstrict1 cmd/v > "$log" 2>&1 || rc=$? ;;
+              esac
+              printf 'iteration=%s mode=%s status=%s\n' "$iteration" "$mode" "$rc" | tee -a "$out/status.txt"
+              cat "$log"
+              if [ "$rc" -eq 0 ]; then
+                test -x vstrict1
+                ./vstrict1 version
+              else
+                failed=1
+              fi
+            done
+          done
+          # A passing control is diagnostic only; it cannot turn a baseline failure green.
+          exit "$failed"
+      - name: Preserve native results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-probe-${{ matrix.role }}
+          path: |
+            ${{ runner.temp }}/probe-replay/
+            ${{ runner.temp }}/canary.log
+
+  instrumented:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [debug, asan]
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      VFLAGS: -cc clang
+      VJOBS: '3'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: cd3df54950546c39c6457897a87bc942375184e9
+          persist-credentials: false
+      - name: Prepare original optimized compiler
+        uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: 'false'
+      - name: Add diagnostic-only probe state to pinned source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object vlib/builtin/map.v)" = 9db7e320b203962db742ea8e2a5a107a12eb56f2
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('vlib/builtin/map.v')
+          src = path.read_text()
+          old = "\tprobe_count := (meta >> hashbits) - 1\n\tm.ensure_extra_metas(probe_count)"
+          new = "\tprobe_count := (meta >> hashbits) - 1\n\tif probe_count >= 128 {\n\t\teprintln('PROBE_STATE map_ptr=${uint(m)} len=${m.len} dense_len=${m.key_values.len} dense_cap=${m.key_values.cap} even_index=${m.even_index} extra=${m.extra_metas} shift=${m.shift} cached=${m.cached_hashbits} key_bytes=${m.key_bytes} value_bytes=${m.value_bytes} start_index=${_index} start_meta=${_metas} start_kvi=${kvi} end_index=${index} end_meta=${meta} end_kvi=${kv_index} count=${probe_count}')\n\t}\n\tm.ensure_extra_metas(probe_count)"
+          assert src.count(old) == 1
+          path.write_text(src.replace(old, new, 1))
+          PY
+          git diff --check
+          ./v fmt -w vlib/builtin/map.v
+          git diff -- vlib/builtin/map.v
+      - name: Build instrumented compiler and replay original strict command
+        shell: bash
+        env:
+          MODE: ${{ matrix.mode }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/probe-instrumented"
+          mkdir -p "$out"
+          flags=(-cg)
+          if [ "$MODE" = asan ]; then
+            flags+=(-cflags -fsanitize=address -cflags -fno-omit-frame-pointer)
+          fi
+          ./v "${flags[@]}" -o vprobe cmd/v > "$out/build.log" 2>&1 || { cat "$out/build.log"; exit 1; }
+          cat "$out/build.log"
+          ./vprobe version
+          git diff -- vlib/builtin/map.v > "$out/instrumentation.diff"
+          git restore -- vlib/builtin/map.v
+          test "$(git hash-object vlib/builtin/map.v)" = 9db7e320b203962db742ea8e2a5a107a12eb56f2
+          shasum -a 256 v vprobe | tee "$out/binaries.sha256"
+          mv v v.original
+          mv vprobe v
+          failed=0
+          for iteration in 1 2 3 4 5; do
+            rm -f vstrict1
+            log="$out/$iteration.log"
+            rc=0
+            ./v -cg -cstrict -o vstrict1 cmd/v > "$log" 2>&1 || rc=$?
+            printf 'iteration=%s mode=%s status=%s\n' "$iteration" "$MODE" "$rc" | tee -a "$out/status.txt"
+            cat "$log"
+            if [ "$rc" -eq 0 ]; then
+              test -x vstrict1
+              ./vstrict1 version
+            else
+              failed=1
+            fi
+          done
+          exit "$failed"
+      - name: Preserve instrumented output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-probe-instrumented-${{ matrix.mode }}
+          path: ${{ runner.temp }}/probe-instrumented/
