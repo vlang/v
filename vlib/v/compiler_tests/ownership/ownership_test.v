@@ -1445,21 +1445,6 @@ fn main() {
 
 fn test_ownership_returning_owned_value_and_param() {
 	v3_bin := ownership_compiler
-	fail_owned := run_ownership_check(v3_bin, 'return_owned', "
-fn make() string {
-	return 'hello'.to_owned()
-}
-
-fn main() {
-	s1 := make()
-	s2 := s1
-	println(s1)
-	_ = s2
-}
-")
-	assert fail_owned.exit_code != 0
-	assert fail_owned.output.contains('use of moved value: `s1`'), fail_owned.output
-
 	ok_local_return := run_ownership_check(v3_bin, 'return_local_owned', "
 fn make() string {
 	s := 'hello'.to_owned()
@@ -1472,37 +1457,6 @@ fn main() {
 }
 ")
 	assert ok_local_return.exit_code == 0, ok_local_return.output
-
-	fail_param := run_ownership_check(v3_bin, 'return_param', "
-fn pass(s string) string {
-	return s
-}
-
-fn main() {
-	s1 := 'hello'.to_owned()
-	s2 := pass(s1)
-	s3 := s2
-	println(s2)
-	_ = s3
-}
-")
-	assert fail_param.exit_code != 0
-	assert fail_param.output.contains('use of moved value: `s2`'), fail_param.output
-
-	fail_param_expr_arg := run_ownership_check(v3_bin, 'return_param_expr_arg', "
-fn main() {
-	x := pass('hello'.to_owned())
-	y := x
-	println(x)
-	_ = y
-}
-
-fn pass(s string) string {
-	return s
-}
-")
-	assert fail_param_expr_arg.exit_code != 0
-	assert fail_param_expr_arg.output.contains('use of moved value: `x`'), fail_param_expr_arg.output
 
 	// Owning calls copy literals, so their returned copies keep move tracking.
 	fail_param_literal_after_owned_call := run_ownership_check(v3_bin, 'return_param_literal_after_owned_call', "
@@ -1562,22 +1516,6 @@ fn main() {
 ")
 	assert ok_nested_fn_literal_return.exit_code == 0, ok_nested_fn_literal_return.output
 
-	fail_multi_return_reassign := run_ownership_check(v3_bin, 'multi_return_reassign_owned_slot', "
-fn make() (string, int) {
-	return 'hello'.to_owned(), 0
-}
-
-fn main() {
-	mut s := ''
-	s, _ = make()
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert fail_multi_return_reassign.exit_code != 0
-	assert fail_multi_return_reassign.output.contains('use of moved value: `s`'), fail_multi_return_reassign.output
-
 	ok_multi_return_reassign_plain := run_ownership_check(v3_bin, 'multi_return_reassign_plain_slot', "
 fn make() (string, int) {
 	return 'literal', 0
@@ -1605,41 +1543,6 @@ fn main() {
 }
 ")
 	assert ok_owned_swap.exit_code == 0, ok_owned_swap.output
-
-	fail_clone_return_order := run_ownership_check(v3_bin, 'clone_return_before_decl', "
-fn main() {
-	s1 := make()
-	s2 := s1
-	println(s1)
-	_ = s2
-}
-
-fn make() string {
-	s := 'hello'.to_owned()
-	return s.clone()
-}
-")
-	assert fail_clone_return_order.exit_code != 0
-	assert fail_clone_return_order.output.contains('use of moved value: `s1`'), fail_clone_return_order.output
-
-	fail_conditional_return := run_ownership_check(v3_bin, 'conditional_return_owned', "
-fn main() {
-	s1 := make(true)
-	s2 := s1
-	println(s1)
-	_ = s2
-}
-
-fn make(cond bool) string {
-	return if cond {
-		'a'.to_owned()
-	} else {
-		'b'.to_owned()
-	}
-}
-")
-	assert fail_conditional_return.exit_code != 0
-	assert fail_conditional_return.output.contains('use of moved value: `s1`'), fail_conditional_return.output
 
 	ok_return_conditional_move_does_not_leak := run_ownership_check(v3_bin, 'return_conditional_move_does_not_leak', "
 fn f(cond bool) string {
@@ -1703,36 +1606,6 @@ pub fn pass(s string) string {
 ')
 	assert fail_module_param.exit_code != 0
 	assert fail_module_param.output.contains('use of moved value: `s1`'), fail_module_param.output
-
-	fail_fn_value_return := run_ownership_check(v3_bin, 'fn_value_return_owned', "
-fn make() string {
-	return 'hello'.to_owned()
-}
-
-fn main() {
-	f := make
-	s := f()
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert fail_fn_value_return.exit_code != 0
-	assert fail_fn_value_return.output.contains('use of moved value: `s`'), fail_fn_value_return.output
-
-	fail_fn_literal_return := run_ownership_check(v3_bin, 'fn_literal_return_owned', "
-fn main() {
-	f := fn () string {
-		return 'hello'.to_owned()
-	}
-	s := f()
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert fail_fn_literal_return.exit_code != 0
-	assert fail_fn_literal_return.output.contains('use of moved value: `s`'), fail_fn_literal_return.output
 }
 
 struct OwnershipModuleMoveRejection {
@@ -2118,6 +1991,164 @@ fn pass(a string) string {
 	])
 }
 
+fn test_ownership_return_call_move_rejections() {
+	check_ownership_module_move_rejections('return_call_move_rejections', [
+		OwnershipModuleMoveRejection{'return_owned', "
+fn make() string {
+	return 'hello'.to_owned()
+}
+
+fn main() {
+	s1 := make()
+	s2 := s1
+	println(s1)
+	_ = s2
+}
+", 's1'},
+		OwnershipModuleMoveRejection{'return_param', "
+fn pass(s string) string {
+	return s
+}
+
+fn main() {
+	s1 := 'hello'.to_owned()
+	s2 := pass(s1)
+	s3 := s2
+	println(s2)
+	_ = s3
+}
+", 's2'},
+		OwnershipModuleMoveRejection{'return_param_expr_arg', "
+fn main() {
+	x := pass('hello'.to_owned())
+	y := x
+	println(x)
+	_ = y
+}
+
+fn pass(s string) string {
+	return s
+}
+", 'x'},
+		OwnershipModuleMoveRejection{'multi_return_reassign_owned_slot', "
+fn make() (string, int) {
+	return 'hello'.to_owned(), 0
+}
+
+fn main() {
+	mut s := ''
+	s, _ = make()
+	t := s
+	println(s)
+	_ = t
+}
+", 's'},
+		OwnershipModuleMoveRejection{'clone_return_before_decl', "
+fn main() {
+	s1 := make()
+	s2 := s1
+	println(s1)
+	_ = s2
+}
+
+fn make() string {
+	s := 'hello'.to_owned()
+	return s.clone()
+}
+", 's1'},
+		OwnershipModuleMoveRejection{'conditional_return_owned', "
+fn main() {
+	s1 := make(true)
+	s2 := s1
+	println(s1)
+	_ = s2
+}
+
+fn make(cond bool) string {
+	return if cond {
+		'a'.to_owned()
+	} else {
+		'b'.to_owned()
+	}
+}
+", 's1'},
+		OwnershipModuleMoveRejection{'fn_value_return_owned', "
+fn make() string {
+	return 'hello'.to_owned()
+}
+
+fn main() {
+	f := make
+	s := f()
+	t := s
+	println(s)
+	_ = t
+}
+", 's'},
+		OwnershipModuleMoveRejection{'fn_literal_return_owned', "
+fn main() {
+	f := fn () string {
+		return 'hello'.to_owned()
+	}
+	s := f()
+	t := s
+	println(s)
+	_ = t
+}
+", 's'},
+		OwnershipModuleMoveRejection{'static_call_return_metadata', "
+struct Factory {}
+
+fn Factory.make() string {
+	return 'hello'.to_owned()
+}
+
+fn wrap() string {
+	return Factory.make()
+}
+
+fn main() {
+	s1 := wrap()
+	s2 := s1
+	println(s1)
+	_ = s2
+}
+", 's1'},
+		OwnershipModuleMoveRejection{'static_call_return_param_metadata', "
+struct Factory {}
+
+fn Factory.pass(value string) string {
+	return value
+}
+
+fn wrap(value string) string {
+	return Factory.pass(value)
+}
+
+fn main() {
+	owned := 'hello'.to_owned()
+	s1 := wrap(owned)
+	s2 := s1
+	println(s1)
+	_ = s2
+}
+", 's1'},
+		OwnershipModuleMoveRejection{'array_pop_return_from_later_fn', '
+fn main() {
+	x := make()
+	y := x
+	println(x)
+	_ = y
+}
+
+fn make() string {
+	mut arr := ["item".to_owned()]
+	return arr.pop()
+}
+', 'x'},
+	])
+}
+
 fn check_ownership_module_move_rejections(name string, cases []OwnershipModuleMoveRejection) {
 	root := os.join_path(ownership_work_dir, name)
 	mut imports := []string{cap: cases.len}
@@ -2149,52 +2180,6 @@ fn check_ownership_module_move_rejections(name string, cases []OwnershipModuleMo
 		expected := 'use of moved value: `${case.moved_value}`'
 		assert diagnostics.any(it.contains(location) && it.contains(expected)), '${case.name}: expected `${expected}` at ${location}\n${result.output}'
 	}
-}
-
-fn test_ownership_static_call_return_metadata_reaches_wrapper() {
-	v3_bin := ownership_compiler
-	fail := run_ownership_check(v3_bin, 'static_call_return_metadata', "
-struct Factory {}
-
-fn Factory.make() string {
-	return 'hello'.to_owned()
-}
-
-fn wrap() string {
-	return Factory.make()
-}
-
-fn main() {
-	s1 := wrap()
-	s2 := s1
-	println(s1)
-	_ = s2
-}
-")
-	assert fail.exit_code != 0
-	assert fail.output.contains('use of moved value: `s1`'), fail.output
-
-	fail_param := run_ownership_check(v3_bin, 'static_call_return_param_metadata', "
-struct Factory {}
-
-fn Factory.pass(value string) string {
-	return value
-}
-
-fn wrap(value string) string {
-	return Factory.pass(value)
-}
-
-fn main() {
-	owned := 'hello'.to_owned()
-	s1 := wrap(owned)
-	s2 := s1
-	println(s1)
-	_ = s2
-}
-")
-	assert fail_param.exit_code != 0
-	assert fail_param.output.contains('use of moved value: `s1`'), fail_param.output
 }
 
 fn test_ownership_assignment_to_storage_consumes_rhs() {
@@ -2413,22 +2398,6 @@ fn main() {
 }
 ')
 	assert ok_array_loop_dynamic_append_return.exit_code == 0, ok_array_loop_dynamic_append_return.output
-
-	fail_array_pop_return_from_fn := run_ownership_check(v3_bin, 'array_pop_return_from_later_fn', '
-fn main() {
-	x := make()
-	y := x
-	println(x)
-	_ = y
-}
-
-fn make() string {
-	mut arr := ["item".to_owned()]
-	return arr.pop()
-}
-')
-	assert fail_array_pop_return_from_fn.exit_code != 0
-	assert fail_array_pop_return_from_fn.output.contains('use of moved value: `x`'), fail_array_pop_return_from_fn.output
 
 	ok_array_first_call_arg := run_ownership_check(v3_bin, 'array_first_call_arg_clones_element', '
 fn sink(s string) {
