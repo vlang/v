@@ -1920,6 +1920,253 @@ fn main() {
 	println(int_str(typeof_calls))
 }
 ', 'int\nstring\nstring\nunknown Value\n&Value\nValue\n0'},
+		ReviewRuntimeCase{'fixed_array_pointers_evaluates_receiver_once', '__global row_calls int
+
+fn next_row() int {
+	row_calls = row_calls + 1
+	return 0
+}
+
+fn main() {
+	mut rows := [1][2]int{}
+	rows[0][0] = 5
+	ptrs := unsafe { rows[next_row()].pointers() }
+	unsafe {
+		p0 := &int(ptrs[0])
+		*p0 = 8
+	}
+	println(int_str(row_calls))
+	println(int_str(rows[0][0]))
+}
+', '1\n8'},
+		ReviewRuntimeCase{'selector_interface_upcast_caches_side_effectful_base', 'interface Base {
+	value() int
+}
+
+interface Child {
+	Base
+	extra() int
+}
+
+struct Item {
+	n int
+}
+
+struct ChildHolder {
+	child Child
+}
+
+__global (
+	upcast_calls     int
+	idx_calls int
+)
+
+fn (i Item) value() int {
+	return i.n
+}
+
+fn (i Item) extra() int {
+	return i.n + 100
+}
+
+fn next_holder() ChildHolder {
+	upcast_calls = upcast_calls + 1
+	return ChildHolder{
+		child: Child(Item{
+			n: upcast_calls
+		})
+	}
+}
+
+fn next_index() int {
+	idx_calls = idx_calls + 1
+	return 0
+}
+
+fn take_base(b Base) int {
+	return b.value()
+}
+
+fn main() {
+	println(int_str(take_base(next_holder().child)))
+	println(int_str(upcast_calls))
+	holders := [ChildHolder{
+		child: Child(Item{
+			n: 7
+		})
+	}]
+	println(int_str(take_base(holders[next_index()].child)))
+	println(int_str(idx_calls))
+}
+', '1\n1\n7\n1'},
+		ReviewRuntimeCase{'review_index_overload_regressions', "__global (
+	hits int
+)
+
+fn next() int {
+	hits++
+	return 0
+}
+
+type Key = string
+type Label = string
+
+fn next_key() Key {
+	hits++
+	return Key('name')
+}
+
+struct Dict {
+mut:
+	values map[string]int
+}
+
+fn (d Dict) [] (key string) int {
+	return d.values[key]
+}
+
+fn (mut d Dict) []= (key string, value int) {
+	d.values[key] = value
+}
+
+struct AliasDict {
+mut:
+	values map[string]int
+}
+
+fn (d AliasDict) [] (key Key) int {
+	return d.values[string(key)]
+}
+
+fn (mut d AliasDict) []= (key string, value int) {
+	d.values[key] = value
+}
+
+struct TextDict {
+mut:
+	values map[string]Label
+}
+
+fn (d TextDict) [] (key string) Label {
+	return d.values[key]
+}
+
+fn (mut d TextDict) []= (key string, value Label) {
+	d.values[key] = value
+}
+
+struct Amount {
+	n int
+}
+
+fn (a Amount) + (b Amount) Amount {
+	return Amount{
+		n: a.n + b.n
+	}
+}
+
+struct AmountDict {
+mut:
+	values map[string]Amount
+}
+
+fn (d AmountDict) [] (key string) Amount {
+	return d.values[key]
+}
+
+fn (mut d AmountDict) []= (key string, value Amount) {
+	d.values[key] = value
+}
+
+struct Bag {
+mut:
+	values []int
+}
+
+fn (b Bag) [] (i int) int {
+	return b.values[i]
+}
+
+fn (mut b Bag) []= (i int, value int) {
+	b.values[i] = value
+}
+
+fn main() {
+	mut d := Dict{
+		values: {
+			'name': 7
+		}
+	}
+	println(d['name'].str())
+	d['name'] += 5
+	println(d.values['name'].str())
+	mut alias_d := AliasDict{
+		values: {
+			'name': 4
+		}
+	}
+	alias_d[next_key()] += 6
+	println(hits.str())
+	println(alias_d.values['name'].str())
+	mut text_d := TextDict{
+		values: {
+			'name': Label('a')
+		}
+	}
+	text_d['name'] += Label('x')
+	println(text_d.values['name'])
+	mut amount_d := AmountDict{
+		values: {
+			'sum': Amount{
+				n: 2
+			}
+		}
+	}
+	amount_d['sum'] += Amount{
+		n: 3
+	}
+	println(amount_d.values['sum'].n.str())
+	mut b := Bag{
+		values: [1]
+	}
+	b[next()] += 4
+	println(hits.str())
+	println(b.values[0].str())
+}
+", '7\n12\n1\n10\nax\n5\n2\n5'},
+		ReviewRuntimeCase{'promoted_embed_call_default', '__global default_calls int
+
+struct CallInner {
+	a int
+	b int
+}
+
+struct CallOuter {
+	CallInner = make_call_inner()
+}
+
+fn make_call_inner() CallInner {
+	default_calls++
+	return CallInner{
+		a: 5
+		b: 6
+	}
+}
+
+fn main() {
+	value := CallOuter{
+		b: 7
+	}
+	heap := &CallOuter{
+		b: 8
+	}
+	println(int_str(value.a))
+	println(int_str(value.b))
+	println(int_str(heap.a))
+	println(int_str(heap.b))
+	println(int_str(default_calls))
+}
+', '5\n7\n5\n8\n2'},
 	], map[string]string{}, '-enable-globals')
 }
 
@@ -4186,8 +4433,6 @@ fn test_array_builtin_method_fallback_keeps_return_type() {
 	v3_bin := build_v3()
 	// Run in main to check the unqualified function name in the diagnostic.
 	run_bad(v3_bin, 'exact_array_first_method_checked_before_builtin', 'struct Num {}\n\nfn (a []Num) first() string {\n\treturn "bad"\n}\n\nfn take_int(x int) {}\n\nfn main() {\n\tmut nums := []Num{}\n\tnums << Num{}\n\ttake_int(nums.first())\n}\n', 'cannot use `string` as `int` in argument 1 to `take_int`')
-	fixed_expr_out := run_good_with_flags(v3_bin, 'fixed_array_pointers_evaluates_receiver_once', '-enable-globals', '__global calls int\n\nfn next() int {\n\tcalls = calls + 1\n\treturn 0\n}\n\nfn main() {\n\tmut rows := [1][2]int{}\n\trows[0][0] = 5\n\tptrs := unsafe { rows[next()].pointers() }\n\tunsafe {\n\t\tp0 := &int(ptrs[0])\n\t\t*p0 = 8\n\t}\n\tprintln(int_str(calls))\n\tprintln(int_str(rows[0][0]))\n}\n')
-	assert fixed_expr_out == '1\n8'
 }
 
 fn callback_values_and_generic_specializations_fixtures() []ReviewRuntimeCase {
@@ -6231,71 +6476,6 @@ fn main() {
 	assert out == '2'
 }
 
-fn test_selector_interface_upcast_caches_side_effectful_base() {
-	v3_bin := build_v3()
-	out := run_good_with_flags(v3_bin, 'selector_interface_upcast_caches_side_effectful_base', '-enable-globals', 'interface Base {
-	value() int
-}
-
-interface Child {
-	Base
-	extra() int
-}
-
-struct Item {
-	n int
-}
-
-struct Holder {
-	child Child
-}
-
-__global (
-	calls     int
-	idx_calls int
-)
-
-fn (i Item) value() int {
-	return i.n
-}
-
-fn (i Item) extra() int {
-	return i.n + 100
-}
-
-fn next_holder() Holder {
-	calls = calls + 1
-	return Holder{
-		child: Child(Item{
-			n: calls
-		})
-	}
-}
-
-fn next_index() int {
-	idx_calls = idx_calls + 1
-	return 0
-}
-
-fn take_base(b Base) int {
-	return b.value()
-}
-
-fn main() {
-	println(int_str(take_base(next_holder().child)))
-	println(int_str(calls))
-	holders := [Holder{
-		child: Child(Item{
-			n: 7
-		})
-	}]
-	println(int_str(take_base(holders[next_index()].child)))
-	println(int_str(idx_calls))
-}
-')
-	assert out == '1\n1\n7\n1'
-}
-
 fn test_non_generic_reflection_compile_error_waits_for_selected_branch() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'non_generic_reflection_selected_compile_error', "struct App {}
@@ -6312,146 +6492,6 @@ fn main() {
 	}
 }
 ", 'error: present method selected')
-}
-
-fn test_review_index_overload_regressions() {
-	v3_bin := build_v3()
-	overload_out := run_good_with_flags(v3_bin, 'review_index_overload_regressions', '-enable-globals', "__global (
-	hits int
-)
-
-fn next() int {
-	hits++
-	return 0
-}
-
-type Key = string
-type Label = string
-
-fn next_key() Key {
-	hits++
-	return Key('name')
-}
-
-struct Dict {
-mut:
-	values map[string]int
-}
-
-fn (d Dict) [] (key string) int {
-	return d.values[key]
-}
-
-fn (mut d Dict) []= (key string, value int) {
-	d.values[key] = value
-}
-
-struct AliasDict {
-mut:
-	values map[string]int
-}
-
-fn (d AliasDict) [] (key Key) int {
-	return d.values[string(key)]
-}
-
-fn (mut d AliasDict) []= (key string, value int) {
-	d.values[key] = value
-}
-
-struct TextDict {
-mut:
-	values map[string]Label
-}
-
-fn (d TextDict) [] (key string) Label {
-	return d.values[key]
-}
-
-fn (mut d TextDict) []= (key string, value Label) {
-	d.values[key] = value
-}
-
-struct Amount {
-	n int
-}
-
-fn (a Amount) + (b Amount) Amount {
-	return Amount{
-		n: a.n + b.n
-	}
-}
-
-struct AmountDict {
-mut:
-	values map[string]Amount
-}
-
-fn (d AmountDict) [] (key string) Amount {
-	return d.values[key]
-}
-
-fn (mut d AmountDict) []= (key string, value Amount) {
-	d.values[key] = value
-}
-
-struct Bag {
-mut:
-	values []int
-}
-
-fn (b Bag) [] (i int) int {
-	return b.values[i]
-}
-
-fn (mut b Bag) []= (i int, value int) {
-	b.values[i] = value
-}
-
-fn main() {
-	mut d := Dict{
-		values: {
-			'name': 7
-		}
-	}
-	println(d['name'].str())
-	d['name'] += 5
-	println(d.values['name'].str())
-	mut alias_d := AliasDict{
-		values: {
-			'name': 4
-		}
-	}
-	alias_d[next_key()] += 6
-	println(hits.str())
-	println(alias_d.values['name'].str())
-	mut text_d := TextDict{
-		values: {
-			'name': Label('a')
-		}
-	}
-	text_d['name'] += Label('x')
-	println(text_d.values['name'])
-	mut amount_d := AmountDict{
-		values: {
-			'sum': Amount{
-				n: 2
-			}
-		}
-	}
-	amount_d['sum'] += Amount{
-		n: 3
-	}
-	println(amount_d.values['sum'].n.str())
-	mut b := Bag{
-		values: [1]
-	}
-	b[next()] += 4
-	println(hits.str())
-	println(b.values[0].str())
-}
-")
-	assert overload_out == '7\n12\n1\n10\nax\n5\n2\n5'
 }
 
 fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
@@ -6479,40 +6519,6 @@ fn test_imported_call_rejections() {
 
 fn test_late_resolution_and_promoted_init_regressions() {
 	v3_bin := build_v3()
-	promoted_call_default_out := run_good_with_flags(v3_bin, 'promoted_embed_call_default', '-enable-globals', '__global calls int
-
-struct CallInner {
-	a int
-	b int
-}
-
-struct CallOuter {
-	CallInner = make_call_inner()
-}
-
-fn make_call_inner() CallInner {
-	calls++
-	return CallInner{
-		a: 5
-		b: 6
-	}
-}
-
-fn main() {
-	value := CallOuter{
-		b: 7
-	}
-	heap := &CallOuter{
-		b: 8
-	}
-	println(int_str(value.a))
-	println(int_str(value.b))
-	println(int_str(heap.a))
-	println(int_str(heap.b))
-	println(int_str(calls))
-}
-')
-	assert promoted_call_default_out == '5\n7\n5\n8\n2'
 	fixed_c_struct_eq_out := run_good_project(v3_bin, 'fixed_array_c_struct_equality', {
 		'v.mod':  "Module { name: 'fixed_array_c_struct_equality' }\n"
 		'shim.h': 'struct v3_lowercase_tag { int value; };\n'

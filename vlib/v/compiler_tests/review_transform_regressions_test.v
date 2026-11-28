@@ -1585,18 +1585,12 @@ fn main() {}
 	assert generated.contains('#include <sys/ptrace.h>'), generated
 }
 
-fn test_for_in_binding_shadows_module_const_during_method_lowering() {
+fn test_imported_names_and_module_aliases() {
 	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'for_in_binding_shadows_module_const', {
-		'main.v':        "import loops
-
-const v = 'global'
-
-fn main() {
-	println(loops.values())
-}
+	mut files := {
+		'v.mod':              "Module { name: 'imported_names_and_module_aliases' }
 "
-		'loops/loops.v': 'module loops
+		'loops/loops.v':      'module loops
 
 pub fn values() string {
 	values := [u16(15), 16]!
@@ -1607,8 +1601,93 @@ pub fn values() string {
 	return parts.join(",")
 }
 '
-	}, 'main.v')
-	assert out == 'f,10'
+		'deep/other/other.v': 'module other
+
+pub fn twice[T](value T) T {
+	return value * 2
+}
+'
+		'deep/lib/lib.v':     'module lib
+
+pub fn id[T](value T) T {
+	return value + 1
+}
+'
+		'items/item.v':       'module items
+
+@[heap]
+pub struct Item {
+pub:
+	value int
+}
+'
+		'foo/foo.v':          "module foo
+
+pub fn panic() string {
+	return 'module panic'
+}
+"
+		'canonical/module.v': 'module canonical
+
+pub fn answer() int {
+	return 42
+}
+'
+		'legacy/alias.v':     "@[alias: '@VMODROOT/canonical'] module legacy
+"
+	}
+	run_good_main_fixture_project(v3_bin, 'imported_names_and_module_aliases', [
+		TransformFixture{'for_in_binding_shadows_module_const', "import loops
+
+const v = 'global'
+
+fn main() {
+	println(loops.values())
+}
+", 'f,10'},
+		// Taking a generic function value still needs specialization.
+		TransformFixture{'qualified_generic_function_value_only', 'module main
+
+import deep.lib
+import deep.other as o
+
+fn main() {
+	callback := lib.id[int]
+	aliased := o.twice[i64]
+	println(callback(41))
+	println(aliased(21))
+}
+', '42\n42'},
+		TransformFixture{'heap_attr_imported_pointer_channel', 'module main
+
+import items
+
+fn main() {
+	ch := chan &items.Item{cap: 1}
+	ch <- &items.Item{
+		value: 42
+	}
+	item := <-ch
+	println(int_str(item.value))
+}
+', '42'},
+		TransformFixture{'module_qualified_panic_symbol', 'module main
+
+import foo
+
+fn main() {
+	println(foo.panic())
+}
+', 'module panic'},
+		TransformFixture{'moved_module_alias_identity', 'module main
+
+import legacy
+
+fn main() {
+	println(int_str(legacy.answer()))
+}
+', '42'},
+	], mut files)
 }
 
 fn gen_c_from_source(v3_bin string, name string, src string) string {
@@ -2755,19 +2834,6 @@ fn test_building_v_function_values_keep_plain_and_module_helpers() {
 	assert out == '42'
 }
 
-// A generic function value alone, with no generic call, still needs the
-// specialization pass.
-fn test_qualified_generic_function_value_without_generic_calls_is_specialized() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'qualified_generic_function_value_only', {
-		'v.mod':              "Module { name: 'qualified_generic_function_value_only' }\n"
-		'deep/lib/lib.v':     'module lib\n\npub fn id[T](value T) T {\n\treturn value + 1\n}\n'
-		'deep/other/other.v': 'module other\n\npub fn twice[T](value T) T {\n\treturn value * 2\n}\n'
-		'main.v':             'module main\n\nimport deep.lib\nimport deep.other as o\n\nfn main() {\n\tcallback := lib.id[int]\n\taliased := o.twice[i64]\n\tprintln(callback(41))\n\tprintln(aliased(21))\n}\n'
-	}, 'main.v')
-	assert out == '42\n42'
-}
-
 fn test_fixed_array_alias_is_not_requalified_in_importing_module() {
 	v3_bin := build_v3_review_transform()
 	generated := gen_c_from_source(v3_bin, 'fixed_array_alias_import_context', 'import gg\nimport sokol.gfx\n\nfn main() {\n\t_ := gg.Color{}\n\t_ := gfx.ImageData{}\n}\n')
@@ -3460,16 +3526,6 @@ fn main() {
 
 	cache_body := c_fn_body(c_source, 'map fixture_3__make_cache(void) {')
 	assert cache_body.contains('memdup'), cache_body
-}
-
-fn test_heap_attribute_does_not_promote_channel_with_imported_pointer_element() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'heap_attr_imported_pointer_channel', {
-		'v.mod':        "Module { name: 'heap_attr_imported_pointer_channel' }\n"
-		'items/item.v': 'module items\n\n@[heap]\npub struct Item {\npub:\n\tvalue int\n}\n'
-		'main.v':       'module main\n\nimport items\n\nfn main() {\n\tch := chan &items.Item{cap: 1}\n\tch <- &items.Item{\n\t\tvalue: 42\n\t}\n\titem := <-ch\n\tprintln(int_str(item.value))\n}\n'
-	}, 'main.v')
-	assert out == '42'
 }
 
 struct ClosureCleanupCase {
@@ -6052,11 +6108,14 @@ fn test_parallel_monomorphization_registers_worker_fixed_array_signatures() {
 	assert out == '40'
 }
 
-fn test_boxed_container_runtime_type_indexes_resolve_hash_collisions() {
+fn test_runtime_type_index_collisions() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'boxed_container_runtime_type_index_hash_collisions', 'interface Value {}
-
-struct Aaxtc {}
+	mut files := {
+		'value.v': 'interface Value {}
+'
+	}
+	run_good_main_fixture_project(v3_bin, 'runtime_type_index_collisions', [
+		TransformFixture{'boxed_container_runtime_type_index_hash_collisions', 'struct Aaxtc {}
 struct Abddb {}
 
 fn main() {
@@ -6064,15 +6123,8 @@ fn main() {
 	right := Value([Abddb{}])
 	println(left.type_idx() != right.type_idx())
 }
-')
-	assert out == 'true'
-}
-
-fn test_runtime_type_indexes_resolve_hash_collisions() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'runtime_type_index_hash_collisions', 'interface Value {}
-
-struct ULz {}
+', 'true'},
+		TransformFixture{'runtime_type_index_hash_collisions', 'struct ULz {}
 struct AAbA {}
 struct Uc {}
 struct ACRB {}
@@ -6087,15 +6139,8 @@ fn main() {
 	println(left.type_idx() != right.type_idx())
 	println(first.type_idx() != second.type_idx())
 }
-')
-	assert out == 'true\ntrue'
-}
-
-fn test_late_generic_runtime_type_indexes_resolve_hash_collisions() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'late_generic_runtime_type_index_hash_collisions', 'interface Value {}
-
-struct Dxw {}
+', 'true\ntrue'},
+		TransformFixture{'late_generic_runtime_type_index_hash_collisions', 'struct Dxw {}
 struct Kdd {}
 
 struct Box[T] {
@@ -6116,8 +6161,8 @@ fn main() {
 	})
 	println(left != right)
 }
-')
-	assert out == 'true'
+', 'true'},
+	], mut files)
 }
 
 fn test_hierarchical_import_runtime_inits_before_importer_init() {
@@ -6130,16 +6175,6 @@ fn test_hierarchical_import_runtime_inits_before_importer_init() {
 		'unrelated/other.v': 'module other\n\npub fn value() int {\n\treturn 0\n}\n'
 	}, 'main.v')
 	assert out == '41'
-}
-
-fn test_module_qualified_panic_keeps_module_symbol() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'module_qualified_panic_symbol', {
-		'v.mod':     "Module { name: 'module_qualified_panic_symbol' }\n"
-		'foo/foo.v': "module foo\n\npub fn panic() string {\n\treturn 'module panic'\n}\n"
-		'main.v':    'module main\n\nimport foo\n\nfn main() {\n\tprintln(foo.panic())\n}\n'
-	}, 'main.v')
-	assert out == 'module panic'
 }
 
 fn test_vmodroot_c_flag_preserves_project_path_with_spaces() {
@@ -6367,17 +6402,6 @@ fn test_parallel_json2_exact_callee_does_not_rebind_main_type_to_imported_homony
 	}, 'main.v')
 	assert c_source.contains('decode_struct_key_T_Discord(')
 	assert !c_source.contains('decode_struct_key_T_discord__Discord(')
-}
-
-fn test_moved_module_alias_uses_target_module_identity() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'moved_module_alias_identity', {
-		'v.mod':              "Module { name: 'moved_module_alias_identity' }\n"
-		'legacy/alias.v':     "@[alias: '@VMODROOT/canonical'] module legacy\n"
-		'canonical/module.v': 'module canonical\n\npub fn answer() int {\n\treturn 42\n}\n'
-		'main.v':             'module main\n\nimport legacy\n\nfn main() {\n\tprintln(int_str(legacy.answer()))\n}\n'
-	}, 'main.v')
-	assert out == '42'
 }
 
 struct ArrayMapDropCase {
