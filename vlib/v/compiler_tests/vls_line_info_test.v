@@ -1908,10 +1908,17 @@ fn test_a_method_named_like_an_array_one_declares_no_variable() {
 	src := not_array_methods_program
 	a := line_of(src, '\ta := 7')
 	it := line_of(src, '\tit := 3')
-	assert ask(dir, 'gd^', line_of(src, '\tprintln(s.sort(a))'), 'a', 0) == 'main.v:${a}:1'
-	assert ask(dir, 'gd^', line_of(src, '\tprintln(s.map(it))'), 'it', 0) == 'main.v:${it}:1'
+	sort_call := '\tprintln(s.sort(a))'
+	map_call := '\tprintln(s.map(it))'
+	named_method_answers := ask_answers(dir, [
+		word_question(sort_call, 'gd^', line_of(src, sort_call), 'a', 0),
+		word_question(map_call, 'gd^', line_of(src, map_call), 'it', 0),
+	])
+	assert named_method_answers == ['main.v:${a}:1', 'main.v:${it}:1']
 	// The methods of an array declare them, over an `[]int` and over the `[]T`
 	// of a generic body, and over a value there that nothing types.
+	mut questions := []string{}
+	mut positions := []string{}
 	for text, word in {
 		'\tsorted.sort(a < b)':            'a'
 		'\tprintln(nums.map(it * 2))':     'it'
@@ -1922,7 +1929,12 @@ fn test_a_method_named_like_an_array_one_declares_no_variable() {
 		method := if word == 'it' { text.all_after('.').all_before('(') } else { 'sort' }
 		// The 0-based column of the method's name, after its dot.
 		col := text.index('.${method}(') or { -1 } + 1
-		assert ask(dir, 'gd^', line, word, 0) == 'main.v:${line}:${col}', text
+		questions << word_question(text, 'gd^', line, word, 0)
+		positions << 'main.v:${line}:${col}'
+	}
+	answers := ask_answers(dir, questions)
+	for i, answer in answers {
+		assert answer == positions[i], questions[i]
 	}
 }
 
@@ -4196,12 +4208,6 @@ fn main() {
 }
 "
 
-// method_value asks a single question about method_values_program.
-fn method_value(code string, text string, word string, nth int) string {
-	return ask_at(program_dir('method_values', method_values_program),
-		method_value_question(code, text, word, nth))
-}
-
 fn method_value_question(code string, text string, word string, nth int) string {
 	return word_question(text, code, line_of(method_values_program, text), word, nth)
 }
@@ -4240,17 +4246,23 @@ fn test_a_method_named_without_a_call_is_the_one_its_call_is() {
 	// A method promoted from an embedded struct, `p.describe`, and the own method
 	// of an alias of that struct, `shown.describe`: without a call, the method
 	// that the call is, not the one of the aliased struct.
+	dir := program_dir('method_values', method_values_program)
 	for code in ['hv^', 'gd^'] {
-		promoted := method_value(code, '\tprintln(p.label() + p.describe() + b.label())',
-			'describe', 0)
-		shown := method_value(code, '\tprintln(plain_describe() + shown.describe() + shown_describe())',
-			'describe', 0)
+		answers := ask_answers(dir, [
+			method_value_question(code, '\tprintln(p.label() + p.describe() + b.label())', 'describe', 0),
+			method_value_question(code, '\tprintln(plain_describe() + shown.describe() + shown_describe())',
+				'describe', 0),
+			method_value_question(code, '\tplain_describe := p.describe', 'describe', 0),
+			method_value_question(code, '\tshown_describe := shown.describe', 'describe', 0),
+		])
+		promoted := answers[0]
+		shown := answers[1]
 		assert promoted != '' && shown != ''
 		if code == 'gd^' {
 			assert promoted != shown
 		}
-		assert method_value(code, '\tplain_describe := p.describe', 'describe', 0) == promoted
-		assert method_value(code, '\tshown_describe := shown.describe', 'describe', 0) == shown
+		assert answers[2] == promoted
+		assert answers[3] == shown
 	}
 }
 
