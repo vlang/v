@@ -53,6 +53,30 @@ fn test_attribute_narrowing_checks_every_expression_shape() {
 	assert unknown.output.contains('unknown field `missing` from attr'), unknown.output
 }
 
+fn test_nonrepeatable_attribute_identity_uses_the_imported_schema() {
+	root := os.join_path(os.vtmp_dir(), 'attribute_import_aliases_${os.getpid()}')
+	schema_dir := os.join_path(root, 'schema')
+	os.mkdir_all(schema_dir)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(schema_dir, 'schema.v'), 'module schema
+
+@[attribute]
+pub struct Once {}
+')!
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, 'import schema as left
+import schema as right
+
+@[left.Once; right.Once]
+fn main() {}
+')!
+	result := os.exec([@VEXE, '-check', path])
+	assert result.exit_code != 0, result.output
+	assert result.output.contains(':4:14: error: duplicate attribute `right.Once`'), result.output
+}
+
 fn test_attribute_narrowing_tracks_boolean_branches_and_field_types() {
 	result := check_attribute_narrowing_source('$for attr in target.attributes {
 		println(attr.str())

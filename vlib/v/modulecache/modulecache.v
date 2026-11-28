@@ -5699,18 +5699,50 @@ fn cached_declaration_attrs(a &flat.FlatAst) map[int]CachedDeclarationAttrs {
 }
 
 fn cached_declaration_attrs_text(data CachedDeclarationAttrs) string {
-	mut lines := []string{cap: data.attrs.len}
-	for i, raw_attr in data.attrs {
-		attr := cached_declaration_attr_source(raw_attr, if i < data.kinds.len {
-			data.kinds[i]
-		} else {
-			0
-		})
-		if attr.len > 0 {
-			lines << '@[${attr}]'
+	return cached_attribute_sources(data.attrs, data.kinds).map('@[${it}]').join('\n')
+}
+
+fn cached_attribute_sources(attrs []string, kinds []int) []string {
+	mut result := []string{cap: attrs.len}
+	mut i := 0
+	for i < attrs.len {
+		kind := if i < kinds.len { kinds[i] } else { 0 }
+		raw := attrs[i]
+		if kind & flat.attribute_kind_call != 0 {
+			base := raw.all_before(':').trim_space()
+			mut args := []string{}
+			if raw.contains(':') {
+				args << raw.all_after(':').trim_space()
+			}
+			end := flat.attribute_use_end(kinds, i)
+			for j in i + 1 .. end {
+				key := attrs[j].all_before(':').trim_space()[base.len + 1..]
+				value := attrs[j].all_after(':').trim_space()
+				args << if key.bytes().all(it.is_digit()) { value } else { '${key}: ${value}' }
+			}
+			result << '${base}(${args.join(', ')})'
+			i = end
+			continue
 		}
+		attr := cached_declaration_attr_source(raw, kind)
+		if attr.len > 0 {
+			result << attr
+		}
+		i++
 	}
-	return lines.join('\n')
+	return result
+}
+
+fn cached_field_attribute_sources(field &flat.Node, attrs []string) []string {
+	kinds_id := field.attribute_kinds_id()
+	if kinds_id == 0 || attrs.len == 0 {
+		return attrs
+	}
+	kinds := flat.source_type_name(kinds_id).split(',').map(it.int())
+	if !kinds.any(it & flat.attribute_kind_call != 0) {
+		return attrs
+	}
+	return cached_attribute_sources(attrs, kinds)
 }
 
 fn declaration_source_attrs_text(a &flat.FlatAst, node flat.Node, file_name string, mut source_cache map[string]string) string {
@@ -7658,7 +7690,8 @@ fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, sour
 			section = wanted
 		}
 		if field_params.len > 1 {
-			out.writeln('\t@[${field_params[1..].join('; ')}]')
+			attrs := cached_field_attribute_sources(field, field_params[1..])
+			out.writeln('\t@[${attrs.join('; ')}]')
 		}
 		mut line := '\t${field.value}'
 		if field.typ != 0 && !flags.contains('e') {
@@ -7817,7 +7850,7 @@ fn enum_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, source
 	out.writeln('${head} {')
 	for i in 0 .. node.children_count {
 		field := a.child_node(&node, i)
-		for attr in field.generic_params() {
+		for attr in cached_field_attribute_sources(field, field.generic_params()) {
 			out.writeln('\t@[${attr}]')
 		}
 		mut line := '\t${field.value}'

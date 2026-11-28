@@ -1,0 +1,28 @@
+vlib/v/checker/tests/attribute_use_repeatable_args_err.vv:7:46: error: duplicate field `param` in attribute `Flag`
+    5 | }
+    6 | // A duplicate argument is invalid inside one use.
+    7 | @[Flag(param: 'first', default_value: true); Flag(param: 'second', param: 'again', default_value: false)]
+      |                                              ~~~~
+    8 | fn duplicate_argument() {}
+    9 | // Each use is type checked independently.
+vlib/v/checker/tests/attribute_use_repeatable_args_err.vv:11:3: error: field `default_value` in attribute `Flag` expects a boolean, got `'false'`
+    9 | // Each use is type checked independently.
+   10 | @[Flag(param: 'first', default_value: true)]
+   11 | @[Flag(param: 'second', default_value: 'false')]
+      |   ~~~~
+   12 | fn wrong_type() {}
+   13 | // A field supplied by one use cannot satisfy another use.
+vlib/v/checker/tests/attribute_use_repeatable_args_err.vv:14:3: error: attribute `Flag` is missing field `default_value`
+   12 | fn wrong_type() {}
+   13 | // A field supplied by one use cannot satisfy another use.
+   14 | @[Flag(param: 'first'); Flag(default_value: false)]
+      |   ~~~~
+   15 | fn missing_arguments() {}
+   16 | fn main() {
+vlib/v/checker/tests/attribute_use_repeatable_args_err.vv:14:25: error: attribute `Flag` is missing field `param`
+   12 | fn wrong_type() {}
+   13 | // A field supplied by one use cannot satisfy another use.
+   14 | @[Flag(param: 'first'); Flag(default_value: false)]
+      |                         ~~~~
+   15 | fn missing_arguments() {}
+   16 | fn main() {

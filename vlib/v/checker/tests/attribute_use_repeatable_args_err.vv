@@ -1,0 +1,20 @@
+@[attribute: 'fn'; repeatable]
+struct Flag {
+	param string
+	default_value bool
+}
+// A duplicate argument is invalid inside one use.
+@[Flag(param: 'first', default_value: true); Flag(param: 'second', param: 'again', default_value: false)]
+fn duplicate_argument() {}
+// Each use is type checked independently.
+@[Flag(param: 'first', default_value: true)]
+@[Flag(param: 'second', default_value: 'false')]
+fn wrong_type() {}
+// A field supplied by one use cannot satisfy another use.
+@[Flag(param: 'first'); Flag(default_value: false)]
+fn missing_arguments() {}
+fn main() {
+	duplicate_argument()
+	wrong_type()
+	missing_arguments()
+}

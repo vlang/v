@@ -6,6 +6,12 @@ pub struct Route {
 	count int
 }
 
+@[attribute: 'fn'; repeatable]
+pub struct Flag {
+	param         string
+	default_value bool
+}
+
 // vfmt off
 pub struct Box[T] {
 	value T @[Route('module-field', count: 4)]

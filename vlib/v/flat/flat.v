@@ -21,6 +21,23 @@ pub const method_value_clone_receiver_marker_prefix = '__v3_method_value_clone_r
 pub const attribute_kind_mask = 7
 pub const attribute_kind_no_arg = 8
 pub const attribute_kind_raw_string = 16
+pub const attribute_kind_call = 32
+pub const attribute_kind_call_arg = 64
+
+// attribute_schema_name_candidate reports whether a name could name a schema struct.
+pub fn attribute_schema_name_candidate(name string) bool {
+	start := name.last_index_u8(`.`) + 1
+	return start < name.len && name[start].is_capital()
+}
+
+// attribute_use_end returns the exclusive end of one attribute use in the flattened pieces.
+pub fn attribute_use_end(kinds []int, start int) int {
+	mut end := start + 1
+	for end < kinds.len && kinds[end] >= 0 && kinds[end] & attribute_kind_call_arg != 0 {
+		end++
+	}
+	return end
+}
 
 const static_type_method_name_marker = '@static@'
 
