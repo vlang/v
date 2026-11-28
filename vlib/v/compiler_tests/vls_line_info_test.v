@@ -1618,10 +1618,6 @@ fn test_a_member_of_a_generic_value_is_the_member_of_its_type() {
 		// Over an array literal, whose elements the checker keeps no type for.
 		'\tprintln([3, 4].map(it + 1))',
 	])
-	assert function('hv^', '\tprintln([3, 4].map(it + 1))', 'it', 0) == hover_of('it int')
-	map_hover := function('hv^', '\tprintln(nums.map(it * 2))', 'map', 0)
-	assert map_hover.contains('fn map('), map_hover
-	assert function('hv^', '\tprintln(xs.map(count))', 'map', 0) == map_hover
 	assert_same_array_method_declaration('filter', [
 		'\tprintln(nums.filter(it > 1))',
 		'\tprintln(xs.filter(it.name.len > 1))',
@@ -1630,10 +1626,22 @@ fn test_a_member_of_a_generic_value_is_the_member_of_its_type() {
 		'\tsorted.sort(a < b)',
 		'\txs.sort(a.name < b.name)',
 	])
-	// A method of a generic struct, called on a `Box[T]`.
+	box_call := '\treturn b.label()'
+	answers := ask_answers(os.join_path(work_dir, 'functions'), [
+		function_hover_question('\tprintln([3, 4].map(it + 1))', 'it'),
+		function_hover_question('\tprintln(nums.map(it * 2))', 'map'),
+		function_hover_question('\tprintln(xs.map(count))', 'map'),
+		// A method of a generic struct, called on a `Box[T]`.
+		word_question(box_call, 'gd^', functions_line(box_call), 'label', 0),
+		function_hover_question(box_call, 'label'),
+	])
+	assert answers[0] == hover_of('it int')
+	map_hover := answers[1]
+	assert map_hover.contains('fn map('), map_hover
+	assert answers[2] == map_hover
 	label := functions_line('fn (b Box[T]) label() string {')
-	assert function('gd^', '\treturn b.label()', 'label', 0) == 'main.v:${label}:14'
-	assert function('hv^', '\treturn b.label()', 'label', 0) == hover_of('fn label() string')
+	assert answers[3] == 'main.v:${label}:14'
+	assert answers[4] == hover_of('fn label() string')
 }
 
 fn function_hover_question(text string, word string) string {
@@ -1680,9 +1688,7 @@ fn test_a_chain_of_array_methods_in_a_generic_body_keeps_its_elements() {
 	// In a body without constraints, which the checker does not type:
 	// `xs.filter()` gives a `[]T`, whose `map` is that of every array, and whose
 	// elements are the `it` of that `map`.
-	dir := os.join_path(work_dir, 'chains')
-	os.mkdir_all(dir) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'module main
+	source := 'module main
 
 fn plain[T](xs []T) int {
 	kept := xs.filter(true).map(it)
@@ -1695,13 +1701,17 @@ fn main() {
 	println(nums.map(it * 2))
 	println(plain(nums))
 }
-') or {
-		panic(err)
-	}
-	map_decl := ask(dir, 'gd^', 11, 'map', 0)
+'
+	lines := source.split('\n')
+	answers := ask_answers(program_dir('chains', source), [
+		word_question(lines[10], 'gd^', 11, 'map', 0),
+		word_question(lines[3], 'gd^', 4, 'map', 0),
+		word_question(lines[3], 'hv^', 4, 'it', 0),
+	])
+	map_decl := answers[0]
 	assert decl_in_builtin_array(map_decl), map_decl
-	assert ask(dir, 'gd^', 4, 'map', 0) == map_decl
-	assert ask(dir, 'hv^', 4, 'it', 0) == hover_of('it T')
+	assert answers[1] == map_decl
+	assert answers[2] == hover_of('it T')
 }
 
 fn test_a_local_of_a_generic_body_has_the_type_of_its_value() {
