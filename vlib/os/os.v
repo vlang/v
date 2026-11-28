@@ -1373,6 +1373,24 @@ pub fn vtmp_dir() string {
 		return vtmp
 	}
 	uid := getuid()
+	mut xdg_cache := getenv('XDG_CACHE_HOME')
+	if xdg_cache == '' {
+		if uid == 0 {
+			// root's HOME is /root; use the system cache instead
+			xdg_cache = '/var/cache'
+		} else {
+			home := home_dir()
+			if home != '' && os.is_dir(home) {
+				xdg_cache = join_path_single(home, '.cache')
+			}
+		}
+	}
+	if xdg_cache != '' {
+		vtmp = join_path_single(join_path_single(xdg_cache, 'v'), 'tmp')
+		create_folder_when_it_does_not_exist(vtmp)
+		setenv('VTMP', vtmp, true)
+		return vtmp
+	}
 	vtmp = join_path_single(temp_dir(), 'v_${uid}')
 	create_folder_when_it_does_not_exist(vtmp)
 	setenv('VTMP', vtmp, true)
@@ -1380,8 +1398,12 @@ pub fn vtmp_dir() string {
 }
 
 fn default_vmodules_path() string {
+	if getuid() == 0 {
+		// root's HOME is /root; keep modules out of it
+		return '/var/lib/v/vmodules'
+	}
 	hdir := home_dir()
-	if hdir != '' {
+	if hdir != '' && os.is_dir(hdir) {
 		return join_path_single(hdir, '.vmodules')
 	}
 	// In some hermetic CI/sandbox environments HOME/USERPROFILE is intentionally
