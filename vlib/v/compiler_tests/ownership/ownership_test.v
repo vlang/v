@@ -2081,51 +2081,6 @@ ${setup}
 	}
 }
 
-fn test_ownership_aggregate_borrows_block_overlapping_reassignment() {
-	v3_bin := ownership_compiler
-	ok_scoped_owned_field := run_ownership_check(v3_bin, 'scoped_owned_field_removed', '
-struct Holder {
-	value string
-}
-
-fn main() {
-	{
-		s := "old".to_owned()
-		h := Holder{value: s}
-		t := h.value
-		_ = t
-	}
-	h := Holder{value: ""}
-	t := h.value
-	println(h.value)
-	_ = t
-}
-')
-	assert ok_scoped_owned_field.exit_code == 0, ok_scoped_owned_field.output
-}
-
-fn test_ownership_unsafe_expression_does_not_shift_scope_drops() {
-	v3_bin := ownership_compiler
-	ok := run_ownership_check(v3_bin, 'unsafe_expression_scope_drop', '
-fn use_owned(flag bool, pointer voidptr) {
-	if pointer == unsafe { nil } {
-		return
-	}
-	if flag {
-		value := "owned".to_owned()
-		println(value)
-	} else {
-		println("not owned")
-	}
-}
-
-fn main() {
-	use_owned(true, voidptr(1))
-}
-')
-	assert ok.exit_code == 0, ok.output
-}
-
 fn test_ownership_defer_in_unsafe_block_stays_unsafe_at_scope_exits() {
 	v3_bin := ownership_compiler
 	ok := run_ownership_check(v3_bin, 'defer_in_unsafe_block', '
@@ -2502,51 +2457,6 @@ fn main() {
 	assert '2' in dropped_ids, distinct_field_run.output
 	assert '3' in dropped_ids, distinct_field_run.output
 
-	ok_sibling := run_ownership_check(v3_bin, 'branch_sibling_isolation', "
-fn main() {
-	cond := true
-	s := 'hello'.to_owned()
-	if cond {
-		t := s
-		println(t)
-	} else {
-		println(s)
-	}
-}
-")
-	assert ok_sibling.exit_code == 0, ok_sibling.output
-
-	ok_branch_local_borrow := run_ownership_check(v3_bin, 'branch_local_borrow_released', "
-fn main() {
-	cond := true
-	s := 'hello'.to_owned()
-	if cond {
-		r := &s
-		_ = r
-	}
-	u := s
-	println(u)
-}
-")
-	assert ok_branch_local_borrow.exit_code == 0, ok_branch_local_borrow.output
-
-	ok_match_return := run_ownership_check(v3_bin, 'match_return_branch_isolation', "
-fn main() {
-	x := 0
-	s := 'hello'.to_owned()
-	match x {
-		0 {
-			t := s
-			println(t)
-			return
-		}
-		else {}
-	}
-	println(s)
-}
-")
-	assert ok_match_return.exit_code == 0, ok_match_return.output
-
 	fail_loop_post_body_local := run_ownership_check(v3_bin, 'loop_post_body_local_scope', '
 fn main() {
 	mut cond := true
@@ -2559,42 +2469,6 @@ fn main() {
 ')
 	assert fail_loop_post_body_local.exit_code != 0
 	assert fail_loop_post_body_local.output.contains('undefined variable `j`'), fail_loop_post_body_local.output
-
-	ok_labeled_break := run_ownership_check(v3_bin, 'labeled_break_targets_outer_loop', "
-fn main() {
-	mut s := 'hello'.to_owned()
-	outer:
-	for {
-		for {
-			break outer
-		}
-		t := s
-		_ = t
-	}
-	u := s
-	_ = u
-}
-")
-	assert ok_labeled_break.exit_code == 0, ok_labeled_break.output
-
-	ok_labeled_continue := run_ownership_check(v3_bin, 'labeled_continue_targets_outer_loop', "
-fn main() {
-	mut i := 0
-	mut s := 'hello'.to_owned()
-	outer:
-	for i < 1 {
-		i++
-		for {
-			continue outer
-		}
-		t := s
-		_ = t
-	}
-	u := s
-	_ = u
-}
-")
-	assert ok_labeled_continue.exit_code == 0, ok_labeled_continue.output
 
 	fail_branch_borrow := run_ownership_check(v3_bin, 'branch_borrow_merge', "
 fn main() {
@@ -2612,69 +2486,6 @@ fn main() {
 ")
 	assert fail_branch_borrow.exit_code != 0
 	assert fail_branch_borrow.output.contains('cannot move `s` because it is borrowed by `r`'), fail_branch_borrow.output
-
-	ok_branch_plain_assign := run_ownership_check(v3_bin, 'branch_plain_assignment_clears_owned', "
-fn main() {
-	cond := true
-	mut s := 'hello'.to_owned()
-	if cond {
-		s = ''
-	} else {
-		s = ''
-	}
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert ok_branch_plain_assign.exit_code == 0, ok_branch_plain_assign.output
-
-	ok_exhaustive_match_plain_assign := run_ownership_check(v3_bin, 'exhaustive_match_plain_assignment_clears_owned', "
-enum Pick {
-	a
-	b
-}
-
-fn main() {
-	p := Pick.a
-	mut s := 'hello'.to_owned()
-	match p {
-		.a {
-			s = ''
-		}
-		.b {
-			s = ''
-		}
-	}
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert ok_exhaustive_match_plain_assign.exit_code == 0, ok_exhaustive_match_plain_assign.output
-
-	ok_exhaustive_sum_match_plain_assign := run_ownership_check(v3_bin, 'exhaustive_sum_match_plain_assignment_clears_owned', "
-struct A {}
-struct B {}
-type Choice = A | B
-
-fn main() {
-	c := Choice(A{})
-	mut s := 'hello'.to_owned()
-	match c {
-		A {
-			s = ''
-		}
-		B {
-			s = ''
-		}
-	}
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert ok_exhaustive_sum_match_plain_assign.exit_code == 0, ok_exhaustive_sum_match_plain_assign.output
 }
 
 fn test_ownership_conditional_move_rejections() {
@@ -3827,5 +3638,173 @@ fn main() {
 	state.reset()
 }
 '},
+	])
+}
+
+fn test_ownership_accepts_branch_and_scope_programs() {
+	check_ownership_module_acceptances('branch_and_scope_acceptances', [
+		OwnershipModuleCase{'scoped_owned_field_removed', '
+struct Holder {
+	value string
+}
+
+fn main() {
+	{
+		s := "old".to_owned()
+		h := Holder{value: s}
+		t := h.value
+		_ = t
+	}
+	h := Holder{value: ""}
+	t := h.value
+	println(h.value)
+	_ = t
+}
+'},
+		OwnershipModuleCase{'unsafe_expression_scope_drop', '
+fn use_owned(flag bool, pointer voidptr) {
+	if pointer == unsafe { nil } {
+		return
+	}
+	if flag {
+		value := "owned".to_owned()
+		println(value)
+	} else {
+		println("not owned")
+	}
+}
+
+fn main() {
+	use_owned(true, voidptr(1))
+}
+'},
+		OwnershipModuleCase{'branch_sibling_isolation', "
+fn main() {
+	cond := true
+	s := 'hello'.to_owned()
+	if cond {
+		t := s
+		println(t)
+	} else {
+		println(s)
+	}
+}
+"},
+		OwnershipModuleCase{'branch_local_borrow_released', "
+fn main() {
+	cond := true
+	s := 'hello'.to_owned()
+	if cond {
+		r := &s
+		_ = r
+	}
+	u := s
+	println(u)
+}
+"},
+		OwnershipModuleCase{'match_return_branch_isolation', "
+fn main() {
+	x := 0
+	s := 'hello'.to_owned()
+	match x {
+		0 {
+			t := s
+			println(t)
+			return
+		}
+		else {}
+	}
+	println(s)
+}
+"},
+		OwnershipModuleCase{'labeled_break_targets_outer_loop', "
+fn main() {
+	mut s := 'hello'.to_owned()
+	outer:
+	for {
+		for {
+			break outer
+		}
+		t := s
+		_ = t
+	}
+	u := s
+	_ = u
+}
+"},
+		OwnershipModuleCase{'labeled_continue_targets_outer_loop', "
+fn main() {
+	mut i := 0
+	mut s := 'hello'.to_owned()
+	outer:
+	for i < 1 {
+		i++
+		for {
+			continue outer
+		}
+		t := s
+		_ = t
+	}
+	u := s
+	_ = u
+}
+"},
+		OwnershipModuleCase{'branch_plain_assignment_clears_owned', "
+fn main() {
+	cond := true
+	mut s := 'hello'.to_owned()
+	if cond {
+		s = ''
+	} else {
+		s = ''
+	}
+	t := s
+	println(s)
+	_ = t
+}
+"},
+		OwnershipModuleCase{'exhaustive_match_plain_assignment_clears_owned', "
+enum Pick {
+	a
+	b
+}
+
+fn main() {
+	p := Pick.a
+	mut s := 'hello'.to_owned()
+	match p {
+		.a {
+			s = ''
+		}
+		.b {
+			s = ''
+		}
+	}
+	t := s
+	println(s)
+	_ = t
+}
+"},
+		OwnershipModuleCase{'exhaustive_sum_match_plain_assignment_clears_owned', "
+struct A {}
+struct B {}
+type Choice = A | B
+
+fn main() {
+	c := Choice(A{})
+	mut s := 'hello'.to_owned()
+	match c {
+		A {
+			s = ''
+		}
+		B {
+			s = ''
+		}
+	}
+	t := s
+	println(s)
+	_ = t
+}
+"},
 	])
 }
