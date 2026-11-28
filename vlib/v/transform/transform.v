@@ -27806,8 +27806,8 @@ fn (mut t Transformer) transform_or_expr(id flat.NodeId, node flat.Node) flat.No
 	if sql_aggregate := t.transform_sql_aggregate_or_expr(id, node) {
 		return sql_aggregate
 	}
-	if t.is_enum_from_string_or_expr(node) {
-		return t.transform_enum_from_string_or_expr(id, node)
+	if t.is_enum_from_or_expr(node) {
+		return t.transform_enum_from_or_expr(id, node)
 	}
 	if t.is_array_index_or_expr(node) {
 		return t.transform_array_index_or_expr(id, node)

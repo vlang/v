@@ -3676,6 +3676,8 @@ fn (t &Transformer) comptime_enum_members(base_type_id u32) []EnumValueMeta {
 // treated like the C backend: normal enums use the integer directly; `[flag]` enums use it as the
 // bit index and materialize `1 << index`.
 fn (t &Transformer) enum_decl_value_metas(enum_name_id u32) []EnumValueMeta {
+	// A checked bare name identifies a main or builtin declaration.
+	checked_enum := !isnil(t.tc) && enum_name_id in t.tc.enum_names
 	checked_values := if isnil(t.tc) {
 		map[string]i64{}
 	} else {
@@ -3703,7 +3705,7 @@ fn (t &Transformer) enum_decl_value_metas(enum_name_id u32) []EnumValueMeta {
 		} else {
 			node.value
 		}
-		if enum_name != node.value && enum_name != qualified {
+		if enum_name != qualified && (checked_enum || enum_name != node.value) {
 			continue
 		}
 		qualified_id := flat.source_type_id(qualified)

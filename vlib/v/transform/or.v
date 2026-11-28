@@ -38,16 +38,17 @@ struct NestedOptionalPart {
 	changed bool
 }
 
-// EnumFromStringInfo stores enum from string info metadata used by transform.
-struct EnumFromStringInfo {
-	enum_type    u32
-	fields       []string
-	arg_id       flat.NodeId
-	accept_empty bool
-	is_result    bool
+// EnumFromInfo describes a builtin enum conversion from an integer or string.
+struct EnumFromInfo {
+	enum_type     u32
+	fields        []string
+	arg_id        flat.NodeId
+	integer_input bool
+	flag_enum     bool
+	is_result     bool
 }
 
-fn (t &Transformer) enum_from_string_members(info EnumFromStringInfo) []EnumValueMeta {
+fn (t &Transformer) enum_from_members(info EnumFromInfo) []EnumValueMeta {
 	metas := t.comptime_enum_members(info.enum_type)
 	if metas.len > 0 {
 		return metas
@@ -62,7 +63,7 @@ fn (t &Transformer) enum_from_string_members(info EnumFromStringInfo) []EnumValu
 	return fallback
 }
 
-fn (mut t Transformer) enum_from_string_member_value(info EnumFromStringInfo, member EnumValueMeta) flat.NodeId {
+fn (mut t Transformer) enum_from_member_value(info EnumFromInfo, member EnumValueMeta) flat.NodeId {
 	if member.value_from_c || (t.is_flag_enum_type(info.enum_type) && t.flag_enum_has_backing_type(info.enum_type)) {
 		return t.a.add_node(flat.Node{
 			kind:  .enum_val
@@ -690,8 +691,8 @@ fn (t &Transformer) or_body_is_none(body_id flat.NodeId) bool {
 	return stmt.kind == .none_expr
 }
 
-// enum_from_string_info converts enum from string info data for transform.
-fn (mut t Transformer) enum_from_string_info(expr_id flat.NodeId) ?EnumFromStringInfo {
+// enum_from_info resolves builtin enum conversions while preserving user methods.
+fn (mut t Transformer) enum_from_info(expr_id flat.NodeId) ?EnumFromInfo {
 	if int(expr_id) < 0 {
 		return none
 	}
@@ -705,11 +706,17 @@ fn (mut t Transformer) enum_from_string_info(expr_id flat.NodeId) ?EnumFromStrin
 		|| fn_node.children_count == 0 {
 		return none
 	}
-	if t.enum_from_string_call_uses_user_method(expr_id) {
+	if t.enum_from_call_uses_user_method(expr_id) {
 		return none
 	}
-	enum_id := t.a.child(&fn_node, 0)
-	enum_type_source_id := t.enum_type_from_node(enum_id) or { return none }
+	// The checker's result payload retains the enum's declaring module.
+	checked_type := t.raw_checker_node_type(expr_id)
+	checked_enum := t.optional_base_type(checked_type)
+	enum_type_source_id := if checked_enum != checked_type && checked_enum in t.enum_types {
+		checked_enum
+	} else {
+		t.enum_type_from_node(t.a.child(&fn_node, 0)) or { return none }
+	}
 	arg_id := t.a.child(&expr, 1)
 	arg_node := t.a.nodes[int(arg_id)]
 	mut arg_type := if arg_node.kind in [.string_literal, .string_interp] {
@@ -720,23 +727,26 @@ fn (mut t Transformer) enum_from_string_info(expr_id flat.NodeId) ?EnumFromStrin
 	if t.validating_generic_spec && arg_type in [u32(0), flat.source_type_unknown] {
 		arg_type = t.trim_all_pointer_type(t.normalize_type_alias(t.specialized_expr_type_name(arg_id)))
 	}
-	if fn_node.value == 'from' && arg_type != flat.source_type_string {
+	integer_input := fn_node.value == 'from' && (t.is_integer_type_name(arg_type)
+		|| arg_node.kind == .int_literal)
+	if fn_node.value == 'from' && arg_type != flat.source_type_string && !integer_input {
 		return none
 	}
 	fields := t.enum_types[enum_type_source_id] or { return none }
 	if fields.len == 0 {
 		return none
 	}
-	return EnumFromStringInfo{
-		enum_type:    enum_type_source_id
-		fields:       fields.clone()
-		arg_id:       arg_id
-		accept_empty: fn_node.value == 'from' && t.is_flag_enum_type(enum_type_source_id)
-		is_result:    fn_node.value == 'from'
+	return EnumFromInfo{
+		enum_type:     enum_type_source_id
+		fields:        fields.clone()
+		arg_id:        arg_id
+		integer_input: integer_input
+		flag_enum:     fn_node.value == 'from' && t.is_flag_enum_type(enum_type_source_id)
+		is_result:     fn_node.value == 'from'
 	}
 }
 
-fn (t &Transformer) enum_from_string_call_uses_user_method(expr_id flat.NodeId) bool {
+fn (t &Transformer) enum_from_call_uses_user_method(expr_id flat.NodeId) bool {
 	if isnil(t.tc) {
 		return false
 	}
@@ -824,35 +834,40 @@ fn (t &Transformer) enum_alias_target(name_id u32) ?u32 {
 	return none
 }
 
-// is_enum_from_string_or_expr reports whether is enum from string or expr applies in transform.
-fn (mut t Transformer) is_enum_from_string_or_expr(node flat.Node) bool {
+// is_enum_from_or_expr reports whether is enum from string or expr applies in transform.
+fn (mut t Transformer) is_enum_from_or_expr(node flat.Node) bool {
 	if node.kind != .or_expr || node.children_count < 2 {
 		return false
 	}
-	_ := t.enum_from_string_info(t.a.child(&node, 0)) or { return false }
+	_ := t.enum_from_info(t.a.child(&node, 0)) or { return false }
 	return true
 }
 
-// transform_enum_from_string_or_expr supports transform_enum_from_string_or_expr handling.
-fn (mut t Transformer) transform_enum_from_string_or_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+// transform_enum_from_or_expr supports transform_enum_from_or_expr handling.
+fn (mut t Transformer) transform_enum_from_or_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count < 2 {
 		return id
 	}
 	expr_id := t.a.child(&node, 0)
 	body_id := t.a.child(&node, 1)
-	info := t.enum_from_string_info(expr_id) or { return id }
-	members := t.enum_from_string_members(info)
+	info := t.enum_from_info(expr_id) or { return id }
+	members := t.enum_from_members(info)
 	if members.len == 0 {
 		return id
 	}
-	str_name := t.new_temp('enum_str')
+	arg_name := t.new_temp('enum_input')
 	val_name := t.new_temp('enum_val')
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	arg_expr := t.transform_expr(info.arg_id)
+	arg_expr := t.transform_value_operand(info.arg_id)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
-	prelude << t.make_decl_assign_typed(str_name, arg_expr, flat.source_type_string)
+	if info.integer_input {
+		typ := flat.source_type_u64
+		prelude << t.make_decl_assign_typed(arg_name, t.make_cast(typ, arg_expr, typ), typ)
+	} else {
+		prelude << t.make_decl_assign_typed(arg_name, arg_expr, flat.source_type_string)
+	}
 	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(info.enum_type),
 		info.enum_type)
 
@@ -861,35 +876,23 @@ fn (mut t Transformer) transform_enum_from_string_or_expr(id flat.NodeId, node f
 	} else {
 		flat.empty_node
 	}
-	mut else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name,
-		info.enum_type, node.value, failure))
-	for i := members.len - 1; i >= 0; i-- {
-		cond := t.make_call_typed('string__eq', [t.make_ident(str_name),
-			t.make_string_literal(members[i].name)], flat.source_type_bool)
-		assign := t.make_assign(t.make_ident(val_name), t.enum_from_string_member_value(info,
-			members[i]))
-		then_block := t.make_block([assign])
-		else_block = t.make_if(cond, then_block, else_block)
-	}
-	if info.accept_empty {
-		cond := t.make_call_typed('string__eq', [t.make_ident(str_name), t.make_string_literal('')], flat.source_type_bool)
-		else_block = t.make_if(cond, t.make_block([]flat.NodeId{}), else_block)
-	}
+	else_block := t.make_or_else_block(node.value, t.lower_or_body_to_stmts_with_err_expr(body_id, val_name, info.enum_type, node.value, failure))
+	conversion := t.enum_from_conversion(info, members, arg_name, val_name, '', else_block)
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
 		t.pending_stmts << stmt
 	}
-	t.pending_stmts << else_block
+	t.pending_stmts << conversion
 	return t.make_ident(val_name)
 }
 
-fn (mut t Transformer) try_lower_enum_from_string_call(call_id flat.NodeId, _node flat.Node) ?flat.NodeId {
-	info := t.enum_from_string_info(call_id) or { return none }
-	members := t.enum_from_string_members(info)
+fn (mut t Transformer) try_lower_enum_from_call(call_id flat.NodeId, _node flat.Node) ?flat.NodeId {
+	info := t.enum_from_info(call_id) or { return none }
+	members := t.enum_from_members(info)
 	if members.len == 0 {
 		return none
 	}
-	str_name := t.new_temp('enum_str')
+	arg_name := t.new_temp('enum_input')
 	val_name := t.new_temp('enum_val')
 	ok_name := t.new_temp('enum_ok')
 	optional_type := (if info.is_result {
@@ -899,34 +902,26 @@ fn (mut t Transformer) try_lower_enum_from_string_call(call_id flat.NodeId, _nod
 	})
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	arg_expr := t.transform_expr(info.arg_id)
+	arg_expr := t.transform_value_operand(info.arg_id)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
-	prelude << t.make_decl_assign_typed(str_name, arg_expr, flat.source_type_string)
+	if info.integer_input {
+		typ := flat.source_type_u64
+		prelude << t.make_decl_assign_typed(arg_name, t.make_cast(typ, arg_expr, typ), typ)
+	} else {
+		prelude << t.make_decl_assign_typed(arg_name, arg_expr, flat.source_type_string)
+	}
 	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(info.enum_type),
 		info.enum_type)
 	prelude << t.make_decl_assign_typed(ok_name, t.make_bool_literal(false), flat.source_type_bool)
 
-	mut else_block := t.make_block([]flat.NodeId{})
-	for i := members.len - 1; i >= 0; i-- {
-		cond := t.make_call_typed('string__eq', [t.make_ident(str_name),
-			t.make_string_literal(members[i].name)], flat.source_type_bool)
-		assign_val := t.make_assign(t.make_ident(val_name), t.enum_from_string_member_value(info,
-			members[i]))
-		assign_ok := t.make_assign(t.make_ident(ok_name), t.make_bool_literal(true))
-		then_block := t.make_block([assign_val, assign_ok])
-		else_block = t.make_if(cond, then_block, else_block)
-	}
-	if info.accept_empty {
-		cond := t.make_call_typed('string__eq', [t.make_ident(str_name), t.make_string_literal('')], flat.source_type_bool)
-		assign_ok := t.make_assign(t.make_ident(ok_name), t.make_bool_literal(true))
-		else_block = t.make_if(cond, t.make_block([assign_ok]), else_block)
-	}
+	else_block := t.make_block_skip_scope_drops([]flat.NodeId{})
+	conversion := t.enum_from_conversion(info, members, arg_name, val_name, ok_name, else_block)
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
 		t.pending_stmts << stmt
 	}
-	t.pending_stmts << else_block
+	t.pending_stmts << conversion
 
 	if info.is_result {
 		result_name := t.new_temp('enum_result')
@@ -936,8 +931,8 @@ fn (mut t Transformer) try_lower_enum_from_string_call(call_id flat.NodeId, _nod
 		err_expr := t.make_call_typed('error', [t.make_string_literal('invalid value')], flat.source_type_id('IError'))
 		failure := t.make_optional_none_with_err(optional_type, err_expr)
 		t.pending_stmts << t.make_if(t.make_ident(ok_name),
-			t.make_block([t.make_assign(t.make_ident(result_name), success)]),
-			t.make_block([t.make_assign(t.make_ident(result_name), failure)]))
+			t.make_block_skip_scope_drops([t.make_assign(t.make_ident(result_name), success)]),
+			t.make_block_skip_scope_drops([t.make_assign(t.make_ident(result_name), failure)]))
 		result := t.make_ident(result_name)
 		t.set_node_typ(int(result), optional_type)
 		return result
@@ -954,6 +949,48 @@ fn (mut t Transformer) try_lower_enum_from_string_call(call_id flat.NodeId, _nod
 		source_value:   optional_type
 		typ:            optional_type
 	})
+}
+
+fn (mut t Transformer) enum_from_conversion(info EnumFromInfo, members []EnumValueMeta, arg_name string, val_name string, ok_name string, fallback flat.NodeId) flat.NodeId {
+	mut conversion := fallback
+	mut accepted := []flat.NodeId{cap: 2}
+	if ok_name.len > 0 {
+		accepted << t.make_assign(t.make_ident(ok_name), t.make_bool_literal(true))
+	}
+	if info.integer_input && info.flag_enum {
+		typ := flat.source_type_u64
+		mut mask := t.make_int_literal_typed('0', typ)
+		for member in members {
+			value := t.enum_from_member_value(info, member)
+			mask = t.make_infix(.pipe, mask, t.make_cast(typ, value, typ))
+			t.set_node_typ(int(mask), typ)
+		}
+		// Test the full input width before narrowing it to the enum's backing type.
+		unknown := t.make_infix(.amp, t.make_ident(arg_name), t.make_prefix(.bit_not, mask))
+		t.set_node_typ(int(unknown), typ)
+		cond := t.make_infix(.eq, unknown, t.make_int_literal_typed('0', typ))
+		accepted << t.make_assign(t.make_ident(val_name), t.make_cast(info.enum_type,
+			t.make_ident(arg_name), info.enum_type))
+		return t.make_if(cond, t.make_block_skip_scope_drops(accepted), fallback)
+	}
+	for i := members.len - 1; i >= 0; i-- {
+		value := t.enum_from_member_value(info, members[i])
+		cond := if info.integer_input {
+			typ := flat.source_type_u64
+			t.make_infix(.eq, t.make_ident(arg_name), t.make_cast(typ, value, typ))
+		} else {
+			t.make_call_typed('string__eq', [t.make_ident(arg_name),
+				t.make_string_literal(members[i].name)], flat.source_type_bool)
+		}
+		mut success := accepted.clone()
+		success << t.make_assign(t.make_ident(val_name), value)
+		conversion = t.make_if(cond, t.make_block_skip_scope_drops(success), conversion)
+	}
+	if info.flag_enum {
+		cond := t.make_call_typed('string__eq', [t.make_ident(arg_name), t.make_string_literal('')], flat.source_type_bool)
+		conversion = t.make_if(cond, t.make_block_skip_scope_drops(accepted), conversion)
+	}
+	return conversion
 }
 
 // or_expr_types supports or expr types handling for Transformer.
@@ -2841,6 +2878,6 @@ fn (value &ChannelReceiveInfo) value_type_text() string {
 
 // enum_type_text resolves the indexed source type spelling.
 @[inline]
-fn (value &EnumFromStringInfo) enum_type_text() string {
+fn (value &EnumFromInfo) enum_type_text() string {
 	return flat.source_type_name(value.enum_type)
 }
