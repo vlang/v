@@ -1734,15 +1734,13 @@ struct Marker {}
 fn main() {}
 
 // Marker')
-	for dir, line in {
-		before_newline: 10
-		at_end:         7
-	} {
-		assert ask_at(dir, '${line}:gd^9') == '', dir
-		assert ask_at(dir, '${line}:hv^9') == '', dir
-	}
-	assert ask_at(before_newline, '6:gd^9') == 'main.v:3:7'
-	assert ask_at(before_newline, '6:hv^9') == hover_of('struct Marker')
+	assert ask_answers(before_newline, ['10:gd^9', '10:hv^9', '6:gd^9', '6:hv^9']) == [
+		'',
+		'',
+		'main.v:3:7',
+		hover_of('struct Marker'),
+	]
+	assert ask_answers(at_end, ['7:gd^9', '7:hv^9']) == ['', '']
 }
 
 // not_array_methods_program calls methods of a struct named like the array
@@ -3037,19 +3035,6 @@ fn main() {
 }
 "
 
-// narrowed asks about the `nth` `word` of the line of narrowing_program that
-// reads `text`.
-fn narrowed(code string, text string, word string, nth int) string {
-	dir := os.join_path(work_dir, 'narrowing')
-	if !os.exists(dir) {
-		os.mkdir_all(dir) or { panic(err) }
-		os.write_file(os.join_path(dir, 'main.v'), narrowing_program) or { panic(err) }
-	}
-	line := narrowing_program.split('\n').index(text) + 1
-	assert line > 0, '`${text}` is not a line of narrowing_program'
-	return ask(dir, code, line, word, nth)
-}
-
 fn test_a_value_of_a_type_parameter_shows_what_the_type_parameter_is_there() {
 	number3 := 'T: int | i64 | f64'
 	named := 'T: implements main.Named'
@@ -3119,14 +3104,24 @@ fn test_a_type_parameter_shows_its_constraint_and_what_it_is_there() {
 }
 
 fn test_a_value_in_the_condition_of_a_compile_time_if_is_a_value_there() {
+	t_check := '\t\t\$if t is f64 {'
+	y_check := '\t\$if y is User {'
+	x_check := '\t\$if x is f64 {'
+	comment := '\t// the value of t'
+	answers := ask_answers(program_dir('narrowing', narrowing_program), [
+		word_question(t_check, 'hv^', line_of(narrowing_program, t_check), 't', 0),
+		word_question(y_check, 'hv^', line_of(narrowing_program, y_check), 'y', 0),
+		word_question(x_check, 'hv^', line_of(narrowing_program, x_check), 'x', 0),
+		word_question(comment, 'hv^', line_of(narrowing_program, comment), 't', 0),
+	])
 	// The condition keeps `t` as text: it is the parameter, with what the `$if`s
 	// around it leave of `T`, not yet what this one decides.
-	assert narrowed('hv^', '\t\t\$if t is f64 {', 't', 0) == hover_of('t T\\nT: i64 | f64')
+	assert answers[0] == hover_of('t T\\nT: i64 | f64')
 	// A local that holds a `T`, and a parameter with no `$if` around it.
-	assert narrowed('hv^', '\t\$if y is User {', 'y', 0) == hover_of('y T\\nT: implements main.Named')
-	assert narrowed('hv^', '\t\$if x is f64 {', 'x', 0) == hover_of('x T\\nT: int | i64 | f64')
+	assert answers[1] == hover_of('y T\\nT: implements main.Named')
+	assert answers[2] == hover_of('x T\\nT: int | i64 | f64')
 	// The same word in a comment is no value.
-	assert narrowed('hv^', '\t// the value of t', 't', 0) == ''
+	assert answers[3] == ''
 }
 
 fn test_a_type_parameter_is_declared_in_the_list_of_its_declaration() {
