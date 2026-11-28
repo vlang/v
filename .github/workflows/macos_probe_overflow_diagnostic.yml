@@ -84,3 +84,83 @@ jobs:
           path: |
             ${{ runner.temp }}/probe-replay/
             ${{ runner.temp }}/canary.log
+
+  instrumented:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [debug, asan]
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      VFLAGS: -cc clang
+      VJOBS: '3'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: cd3df54950546c39c6457897a87bc942375184e9
+          persist-credentials: false
+      - name: Prepare original optimized compiler
+        uses: ./.github/actions/setup-v
+        with:
+          use-prebuilt: 'false'
+      - name: Add diagnostic-only probe state to pinned source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object vlib/builtin/map.v)" = 9db7e320b203962db742ea8e2a5a107a12eb56f2
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('vlib/builtin/map.v')
+          src = path.read_text()
+          old = "\tprobe_count := (meta >> hashbits) - 1\n\tm.ensure_extra_metas(probe_count)"
+          new = "\tprobe_count := (meta >> hashbits) - 1\n\tif probe_count >= 128 {\n\t\teprintln('PROBE_STATE map_ptr=${uint(m)} len=${m.len} dense_len=${m.key_values.len} dense_cap=${m.key_values.cap} even_index=${m.even_index} extra=${m.extra_metas} shift=${m.shift} cached=${m.cached_hashbits} key_bytes=${m.key_bytes} value_bytes=${m.value_bytes} start_index=${_index} start_meta=${_metas} start_kvi=${kvi} end_index=${index} end_meta=${meta} end_kvi=${kv_index} count=${probe_count}')\n\t}\n\tm.ensure_extra_metas(probe_count)"
+          assert src.count(old) == 1
+          path.write_text(src.replace(old, new, 1))
+          PY
+          git diff --check
+          ./v fmt -w vlib/builtin/map.v
+          git diff -- vlib/builtin/map.v
+      - name: Build instrumented compiler and replay original strict command
+        shell: bash
+        env:
+          MODE: ${{ matrix.mode }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/probe-instrumented"
+          mkdir -p "$out"
+          flags=(-cg)
+          if [ "$MODE" = asan ]; then
+            flags+=(-cflags -fsanitize=address -cflags -fno-omit-frame-pointer)
+          fi
+          ./v "${flags[@]}" -o vprobe cmd/v > "$out/build.log" 2>&1 || { cat "$out/build.log"; exit 1; }
+          cat "$out/build.log"
+          ./vprobe version
+          git diff -- vlib/builtin/map.v > "$out/instrumentation.diff"
+          git restore -- vlib/builtin/map.v
+          test "$(git hash-object vlib/builtin/map.v)" = 9db7e320b203962db742ea8e2a5a107a12eb56f2
+          shasum -a 256 v vprobe | tee "$out/binaries.sha256"
+          mv v v.original
+          mv vprobe v
+          failed=0
+          for iteration in 1 2 3 4 5; do
+            rm -f vstrict1
+            log="$out/$iteration.log"
+            rc=0
+            ./v -cg -cstrict -o vstrict1 cmd/v > "$log" 2>&1 || rc=$?
+            printf 'iteration=%s mode=%s status=%s\n' "$iteration" "$MODE" "$rc" | tee -a "$out/status.txt"
+            cat "$log"
+            if [ "$rc" -eq 0 ]; then
+              test -x vstrict1
+              ./vstrict1 version
+            else
+              failed=1
+            fi
+          done
+          exit "$failed"
+      - name: Preserve instrumented output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-probe-instrumented-${{ matrix.mode }}
+          path: ${{ runner.temp }}/probe-instrumented/
