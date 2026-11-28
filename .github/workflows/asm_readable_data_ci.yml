@@ -36,7 +36,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Start OpenBSD VM
-        uses: cross-platform-actions/action@82668f1fbd89d9c99487604f822cbf6716f124d3
+        uses: cross-platform-actions/action@30cde56b87a128507bebea9531205087890ee360
         with:
           operating_system: openbsd
           version: '7.8'
