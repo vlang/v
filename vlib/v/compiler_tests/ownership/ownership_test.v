@@ -712,98 +712,6 @@ fn main() {
 ")
 	assert ok.exit_code == 0, ok.output
 
-	fail_zero_loop_preserves_owned := run_ownership_check(v3_bin, 'zero_loop_preserves_owned', "
-fn main() {
-	mut s := 'hello'.to_owned()
-	for false {
-		s = 'literal'
-	}
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert fail_zero_loop_preserves_owned.exit_code != 0
-	assert fail_zero_loop_preserves_owned.output.contains('use of moved value: `s`'), fail_zero_loop_preserves_owned.output
-
-	fail_c_loop_post_after_body := run_ownership_check(v3_bin, 'c_loop_post_after_body', "
-fn main() {
-	mut s := 'hello'.to_owned()
-	for i := 0; i < 1; s = 'literal' {
-		t := s
-		println(s)
-		_ = t
-		break
-	}
-}
-")
-	assert fail_c_loop_post_after_body.exit_code != 0
-	assert fail_c_loop_post_after_body.output.contains('use of moved value: `s`'), fail_c_loop_post_after_body.output
-
-	fail_empty_for_in_preserves_owned := run_ownership_check(v3_bin, 'empty_for_in_preserves_owned', "
-fn main() {
-	mut s := 'hello'.to_owned()
-	for _ in []int{} {
-		s = 'literal'
-	}
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert fail_empty_for_in_preserves_owned.exit_code != 0
-	assert fail_empty_for_in_preserves_owned.output.contains('use of moved value: `s`'), fail_empty_for_in_preserves_owned.output
-
-	fail_compound_preserves_owned := run_ownership_check(v3_bin, 'compound_assign_preserves_owned', "
-fn main() {
-	mut s := 'hello'.to_owned()
-	s += ' world'
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert fail_compound_preserves_owned.exit_code != 0
-	assert fail_compound_preserves_owned.output.contains('use of moved value: `s`'), fail_compound_preserves_owned.output
-
-	fail_compound_checks_moved_lhs := run_ownership_check(v3_bin, 'compound_assign_checks_moved_lhs', "
-fn main() {
-	mut s := 'hello'.to_owned()
-	t := s
-	s += ' world'
-	_ = t
-}
-")
-	assert fail_compound_checks_moved_lhs.exit_code != 0
-	assert fail_compound_checks_moved_lhs.output.contains('use of moved value: `s`'), fail_compound_checks_moved_lhs.output
-
-	fail_defer_assign_does_not_clear_early := run_ownership_check(v3_bin, 'defer_assign_does_not_clear_early', "
-fn main() {
-	mut s := 'hello'.to_owned()
-	defer {
-		s = 'literal'
-	}
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert fail_defer_assign_does_not_clear_early.exit_code != 0
-	assert fail_defer_assign_does_not_clear_early.output.contains('use of moved value: `s`'), fail_defer_assign_does_not_clear_early.output
-
-	fail_defer_read_sees_exit_state := run_ownership_check(v3_bin, 'defer_read_sees_exit_state', "
-fn main() {
-	s := 'hello'.to_owned()
-	defer {
-		println(s)
-	}
-	t := s
-	_ = t
-}
-")
-	assert fail_defer_read_sees_exit_state.exit_code != 0
-	assert fail_defer_read_sees_exit_state.output.contains('use of moved value: `s`'), fail_defer_read_sees_exit_state.output
-
 	ok_defer_read_after_reassign_at_exit := run_ownership_check(v3_bin, 'defer_read_after_reassign_at_exit', "
 fn main() {
 	mut s := 'hello'.to_owned()
@@ -816,24 +724,6 @@ fn main() {
 }
 ")
 	assert ok_defer_read_after_reassign_at_exit.exit_code == 0, ok_defer_read_after_reassign_at_exit.output
-
-	fail_defer_read_on_return_path := run_ownership_check(v3_bin, 'defer_read_on_return_path', "
-fn main() {
-	cond := true
-	mut s := 'hello'.to_owned()
-	defer {
-		println(s)
-	}
-	if cond {
-		t := s
-		_ = t
-		return
-	}
-	s = 'literal'
-}
-")
-	assert fail_defer_read_on_return_path.exit_code != 0
-	assert fail_defer_read_on_return_path.output.contains('use of moved value: `s`'), fail_defer_read_on_return_path.output
 
 	fail_defer_after_return_move := run_ownership_check(v3_bin, 'defer_after_return_move', "
 fn take(s string) {
@@ -870,22 +760,6 @@ fn main() {
 }
 ")
 	assert ok_function_defer_return_branch.exit_code == 0, ok_function_defer_return_branch.output
-
-	fail_function_defer_continuing_branch := run_ownership_check(v3_bin, 'function_defer_continuing_branch_is_merged', "
-fn main() {
-	cond := true
-	s := 'hello'.to_owned()
-	if cond {
-		defer(fn) {
-			println(s)
-		}
-	}
-	t := s
-	_ = t
-}
-")
-	assert fail_function_defer_continuing_branch.exit_code != 0
-	assert fail_function_defer_continuing_branch.output.contains('use of moved value: `s`'), fail_function_defer_continuing_branch.output
 
 	ok_function_defer_loop_return := run_ownership_check(v3_bin, 'function_defer_loop_return_does_not_leak', "
 fn main() {
@@ -930,26 +804,6 @@ fn main() {
 ")
 	assert fail_move_then_borrow.exit_code != 0
 	assert fail_move_then_borrow.output.contains('use of moved value: `s`'), fail_move_then_borrow.output
-
-	fail_blank_assign := run_ownership_check(v3_bin, 'blank_assign_consumes_owned', "
-fn main() {
-	s := 'hello'.to_owned()
-	_ = s
-	println(s)
-}
-")
-	assert fail_blank_assign.exit_code != 0
-	assert fail_blank_assign.output.contains('use of moved value: `s`'), fail_blank_assign.output
-
-	fail_blank_decl := run_ownership_check(v3_bin, 'blank_decl_consumes_owned', "
-fn main() {
-	s := 'hello'.to_owned()
-	_ := s
-	println(s)
-}
-")
-	assert fail_blank_decl.exit_code != 0
-	assert fail_blank_decl.output.contains('use of moved value: `s`'), fail_blank_decl.output
 
 	fail_conditional_blank_sink := run_ownership_check(v3_bin, 'conditional_blank_sink_move', "
 fn main() {
@@ -1037,6 +891,102 @@ fn main() {
 ')
 	assert fail_channel_aggregate_send.exit_code != 0
 	assert fail_channel_aggregate_send.output.contains('use of moved value: `h`'), fail_channel_aggregate_send.output
+}
+
+fn test_ownership_loop_defer_and_assignment_move_rejections() {
+	check_ownership_move_rejections('loop_defer_and_assignment_moves', [
+		OwnershipMoveRejection{'zero_loop_preserves_owned', "
+	mut s := 'hello'.to_owned()
+	for false {
+		s = 'literal'
+	}
+	t := s
+	println(s)
+	_ = t
+", 'println(s)', 's'},
+		OwnershipMoveRejection{'c_loop_post_after_body', "
+	mut s := 'hello'.to_owned()
+	for i := 0; i < 1; s = 'literal' {
+		t := s
+		println(s)
+		_ = t
+		break
+	}
+", 'println(s)', 's'},
+		OwnershipMoveRejection{'empty_for_in_preserves_owned', "
+	mut s := 'hello'.to_owned()
+	for _ in []int{} {
+		s = 'literal'
+	}
+	t := s
+	println(s)
+	_ = t
+", 'println(s)', 's'},
+		OwnershipMoveRejection{'compound_assign_preserves_owned', "
+	mut s := 'hello'.to_owned()
+	s += ' world'
+	t := s
+	println(s)
+	_ = t
+", 'println(s)', 's'},
+		OwnershipMoveRejection{'compound_assign_checks_moved_lhs', "
+	mut s := 'hello'.to_owned()
+	t := s
+	s += ' world'
+	_ = t
+", "s += ' world'", 's'},
+		OwnershipMoveRejection{'defer_assign_does_not_clear_early', "
+	mut s := 'hello'.to_owned()
+	defer {
+		s = 'literal'
+	}
+	t := s
+	println(s)
+	_ = t
+", 'println(s)', 's'},
+		OwnershipMoveRejection{'defer_read_sees_exit_state', "
+	s := 'hello'.to_owned()
+	defer {
+		println(s)
+	}
+	t := s
+	_ = t
+", 'println(s)', 's'},
+		OwnershipMoveRejection{'defer_read_on_return_path', "
+	cond := true
+	mut s := 'hello'.to_owned()
+	defer {
+		println(s)
+	}
+	if cond {
+		t := s
+		_ = t
+		return
+	}
+	s = 'literal'
+", 'println(s)', 's'},
+		OwnershipMoveRejection{'function_defer_continuing_branch_is_merged', "
+	cond := true
+	s := 'hello'.to_owned()
+	if cond {
+		defer(fn) {
+			println(s)
+		}
+	}
+	t := s
+	_ = t
+", 'println(s)', 's'},
+		OwnershipMoveRejection{'blank_assign_consumes_owned', "
+	s := 'hello'.to_owned()
+	_ = s
+	println(s)
+", 'println(s)', 's'},
+		OwnershipMoveRejection{'blank_decl_consumes_owned', "
+	s := 'hello'.to_owned()
+	_ := s
+	println(s)
+", 'println(s)', 's'},
+	])
 }
 
 fn test_ownership_fn_literal_uses_isolated_frame() {
@@ -2714,7 +2664,7 @@ fn main() {
 	assert fail_map_dynamic_index_read.output.contains('use of moved value: `m[k]`'), fail_map_dynamic_index_read.output
 }
 
-struct ArrayStorageRejection {
+struct OwnershipMoveRejection {
 	name        string
 	body        string
 	read        string
@@ -2723,7 +2673,7 @@ struct ArrayStorageRejection {
 
 fn test_ownership_array_storage_rejects_reads_after_moves() {
 	cases := [
-		ArrayStorageRejection{'array_dynamic_index_then_literal_read', '
+		OwnershipMoveRejection{'array_dynamic_index_then_literal_read', '
 	s := "item".to_owned()
 	arr := [s]
 	i := 0
@@ -2732,7 +2682,7 @@ fn test_ownership_array_storage_rejects_reads_after_moves() {
 	_ = t
 	_ = u
 ', 'u := arr[0]', 'arr[0]'},
-		ArrayStorageRejection{'array_append_then_duplicate_read', '
+		OwnershipMoveRejection{'array_append_then_duplicate_read', '
 	mut arr := []string{}
 	s := "item".to_owned()
 	arr << s
@@ -2740,7 +2690,7 @@ fn test_ownership_array_storage_rejects_reads_after_moves() {
 	println(arr[0])
 	_ = t
 ', 'println(arr[0])', 'arr[0]'},
-		ArrayStorageRejection{'array_append_array_then_duplicate_read', '
+		OwnershipMoveRejection{'array_append_array_then_duplicate_read', '
 	mut dst := []string{}
 	s := "item".to_owned()
 	src := [s]
@@ -2749,7 +2699,7 @@ fn test_ownership_array_storage_rejects_reads_after_moves() {
 	println(dst[0])
 	_ = t
 ', 'println(dst[0])', 'dst[0]'},
-		ArrayStorageRejection{'array_append_len_init_then_duplicate_read', '
+		OwnershipMoveRejection{'array_append_len_init_then_duplicate_read', '
 	mut arr := []string{len: 1}
 	s := "item".to_owned()
 	arr << s
@@ -2757,7 +2707,7 @@ fn test_ownership_array_storage_rejects_reads_after_moves() {
 	println(arr[1])
 	_ = t
 ', 'println(arr[1])', 'arr[1]'},
-		ArrayStorageRejection{'array_append_unknown_len_then_duplicate_read', '
+		OwnershipMoveRejection{'array_append_unknown_len_then_duplicate_read', '
 	n := 1
 	mut arr := []string{len: n}
 	s := "item".to_owned()
@@ -2766,7 +2716,7 @@ fn test_ownership_array_storage_rejects_reads_after_moves() {
 	println(arr[1])
 	_ = t
 ', 'println(arr[1])', 'arr[*]'},
-		ArrayStorageRejection{'array_pop_left_shifted_owned_read', '
+		OwnershipMoveRejection{'array_pop_left_shifted_owned_read', '
 	a := "old".to_owned()
 	b := "new".to_owned()
 	mut arr := [a, b]
@@ -2776,7 +2726,7 @@ fn test_ownership_array_storage_rejects_reads_after_moves() {
 	println(x)
 	_ = y
 ', 'println(x)', 'x'},
-		ArrayStorageRejection{'array_insert_then_duplicate_read', '
+		OwnershipMoveRejection{'array_insert_then_duplicate_read', '
 	mut arr := []string{}
 	s := "item".to_owned()
 	arr.insert(0, s)
@@ -2785,7 +2735,7 @@ fn test_ownership_array_storage_rejects_reads_after_moves() {
 	println(x)
 	_ = y
 ', 'println(x)', 'x'},
-		ArrayStorageRejection{'array_insert_shifted_owned_read', '
+		OwnershipMoveRejection{'array_insert_shifted_owned_read', '
 	a := "old".to_owned()
 	mut arr := [a]
 	b := "new".to_owned()
@@ -2795,7 +2745,7 @@ fn test_ownership_array_storage_rejects_reads_after_moves() {
 	println(x)
 	_ = y
 ', 'println(x)', 'x'},
-		ArrayStorageRejection{'array_prepend_then_duplicate_read', '
+		OwnershipMoveRejection{'array_prepend_then_duplicate_read', '
 	mut arr := []string{}
 	s := "item".to_owned()
 	arr.prepend(s)
@@ -2804,7 +2754,7 @@ fn test_ownership_array_storage_rejects_reads_after_moves() {
 	println(x)
 	_ = y
 ', 'println(x)', 'x'},
-		ArrayStorageRejection{'array_prepend_shifted_owned_read', '
+		OwnershipMoveRejection{'array_prepend_shifted_owned_read', '
 	a := "old".to_owned()
 	mut arr := [a]
 	b := "new".to_owned()
@@ -2814,7 +2764,7 @@ fn test_ownership_array_storage_rejects_reads_after_moves() {
 	println(x)
 	_ = y
 ', 'println(x)', 'x'},
-		ArrayStorageRejection{'array_prepend_self_owned_read', '
+		OwnershipMoveRejection{'array_prepend_self_owned_read', '
 	a := "old".to_owned()
 	mut arr := [a]
 	arr.prepend(arr[0])
@@ -2824,18 +2774,23 @@ fn test_ownership_array_storage_rejects_reads_after_moves() {
 	_ = y
 ', 'println(x)', 'x'},
 	]
+	check_ownership_move_rejections('array_storage_rejections', cases)
+}
+
+fn check_ownership_move_rejections(name string, cases []OwnershipMoveRejection) {
 	mut source := ''
 	mut calls := []string{cap: cases.len}
 	mut rejected_lines := []int{cap: cases.len}
 	for case in cases {
 		source += 'fn ${case.name}() {'
-		read := case.body.index('\n\t${case.read}\n') or { panic(case.name) }
-		rejected_lines << source.count('\n') + case.body[..read].count('\n') + 2
+		read_line := case.body.split_into_lines().map(it.trim_space()).index(case.read)
+		assert read_line > 0, '${case.name}: missing read `${case.read}`'
+		rejected_lines << source.count('\n') + read_line + 1
 		source += case.body + '}\n\n'
 		calls << '\t${case.name}()'
 	}
 	source += 'fn main() {\n${calls.join('\n')}\n}\n'
-	result := run_ownership_check(ownership_compiler, 'array_storage_rejections', source)
+	result := run_ownership_check(ownership_compiler, name, source)
 	assert result.exit_code != 0, result.output
 	diagnostics := result.output.split_into_lines().filter(it.contains(': error: use of moved value: '))
 	for i, case in cases {
