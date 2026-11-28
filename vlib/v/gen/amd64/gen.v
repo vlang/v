@@ -1873,13 +1873,8 @@ fn (mut g Gen) gen_integer_shift(op ssa.OpCode, lhs_id int, rhs_id int, result_i
 	jmp_disp := g.elf.text_data.len
 	g.emit_u32(0)
 	oversized := g.elf.text_data.len
-	if op == .ashr {
-		g.load_val_to_reg(0, lhs_id)
-		asm_cqo(mut g)
-		asm_mov_rax_rdx(mut g)
-	} else {
-		asm_xor_eax_eax(mut g)
-	}
+	// V shifts by the operand width or more yield zero for every shift op.
+	asm_xor_eax_eax(mut g)
 	done := g.elf.text_data.len
 	g.write_u32(jae_disp, u32(oversized - (jae_disp + 4)))
 	g.write_u32(jmp_disp, u32(done - (jmp_disp + 4)))
