@@ -388,7 +388,10 @@ fn fastc_pkgconfig_flags(raw string) ![]string {
 	if args.len == 0 {
 		return error('fastc parser requires a package name after `#pkgconfig`')
 	}
-	result := cmdexec.run('pkg-config', args)
+	// Native directive resolution can run after FastC has reserved a large
+	// source graph. Use the lightweight POSIX spawn path instead of forking
+	// the compiler's address space just to query package flags.
+	result := os.exec(['pkg-config', ...args])
 	if result.exit_code != 0 {
 		return error('fastc parser cannot resolve `#pkgconfig ${raw}`: ${result.output.trim_space()}')
 	}

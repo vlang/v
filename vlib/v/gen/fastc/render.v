@@ -532,6 +532,13 @@ fn (g &Parser) render_embedded_map_reads(tokens []FastcExpressionToken) ?FastcRe
 		return none
 	}
 	source := g.render_raw_expression_tokens(rewritten) or { return none }
+	if rewritten[0].tok == .lpar && rewritten.last().tok == .rpar {
+		// A parenthesized method receiver can contain the map values that
+		// were just typed. Render the enclosing call before falling back to C.
+		if method := g.render_method_call_expression(rewritten, source) {
+			return method
+		}
+	}
 	return FastcRenderedExpression{
 		source: source
 		typ:    (g.infer_expression_type(tokens) or { u32(0) })
@@ -5856,6 +5863,8 @@ fn (g &Parser) render_map_lookup_option_expression(tokens []FastcExpressionToken
 		needs_receiver_temp = true
 	} else if member := g.render_member_receiver(base_tokens) {
 		map_source = member
+		// A map field on a call result (`sheet().keyframes[name]`) is an rvalue.
+		needs_receiver_temp = base_tokens.any(it.tok == .lpar)
 	} else if call := g.render_missing_call_arguments(base_tokens) {
 		// A map produced by a call (`os.environ()[k]`) is an rvalue, so `&` needs a temp.
 		map_source = call.source
@@ -6737,6 +6746,11 @@ fn (g &Parser) render_method_receiver_expression(tokens []FastcExpressionToken) 
 		if call := g.render_missing_call_arguments(tokens) { return call }
 	}
 	receiver_type := g.infer_expression_type(tokens) or { return none }
+	if fastc_trim_pointer_type(g.underlying_alias_type(receiver_type)) == flat.source_type_string {
+		if concatenation := g.render_composed_string_concatenation(tokens) {
+			return concatenation
+		}
+	}
 	if tokens.len == 1 && tokens[0].has_source() {
 		// A pre-rendered synthetic receiver (e.g. an `or {}`-unwrap `({ ... })` used as
 		// `expr or { ... }.method()`) carries its full rendered form as its `source`;

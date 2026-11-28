@@ -113,3 +113,52 @@ fn main() {
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
 }
+
+fn test_fastc_infers_generic_calls_inside_arguments_from_optional_payloads() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_nested_option_argument_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), r'module main
+
+struct Leaf {
+	label string
+}
+
+struct Record {
+	leaf ?Leaf
+}
+
+fn unwrap[T](value ?T) T {
+	return value or { T{} }
+}
+
+fn describe[T](value T) string {
+	$if T is Leaf {
+		return value.label
+	} $else {
+		return "wrong type"
+	}
+}
+
+fn main() {
+	leaf := Leaf{label: "leaf"}
+	value := ?Leaf(leaf)
+	record := Record{leaf: leaf}
+	assert describe(unwrap(value)) == "leaf"
+	assert describe(unwrap(record.leaf)) == "leaf"
+}
+') or { panic(err) }
+	program := os.join_path(root, 'program')
+	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-d', 'fastc_real_builtin',
+		'-nocache', '-gc', 'none', '-o', program, root], @VEXEROOT, {
+		'VEXE':    @VEXE
+		'VFLAGS':  ''
+		'VOSARGS': ''
+	})
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+}

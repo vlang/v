@@ -877,8 +877,10 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 							&& g.generic_type_source_uses_parameter(source.return_type_source, source.type_param) {
 							arguments := fastc_call_arguments(tokens, call_open_index, close) or { [][]FastcExpressionToken{} }
 							if parameter < arguments.len {
-								actual := g.infer_expression_type(arguments[parameter]) or { u32(0) }
-								concrete := fastc_infer_generic_type_from_parameter(signature.parameter_types.ids[parameter], fastc_normalize_inferred_type(actual))
+								argument := arguments[parameter]
+								inferred := g.infer_expression_type(argument) or { u32(0) }
+								actual := g.generic_argument_type_for_expression(argument, inferred)
+								concrete := fastc_infer_generic_type_from_parameter(signature.parameter_types.ids[parameter], actual)
 								if concrete != 0 {
 									return fastc_specialized_generic_result_type(signature.return_type, concrete)
 								}

@@ -10856,9 +10856,11 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	}
-	// Freestanding programs have no libc collector. Native builds also omit it.
+	// Compiler bootstraps use the arena. A hosted C self-build can explicitly
+	// opt out of the arena and select Boehm for large imported graphs.
+	compiler_without_gc := building_v && !v3_compiler_requests_boehm(backend, gc_mode, no_prealloc)
 	disable_gc := 'freestanding' in user_defines
-		|| v3_gc_is_disabled(building_v, cross_output, target_os, target_arch, backend, gc_mode)
+		|| v3_gc_is_disabled(compiler_without_gc, cross_output, target_os, target_arch, backend, gc_mode)
 	apply_v3_gc_mode(gc_mode, disable_gc, mut user_defines, mut compile_values) or {
 		eprintln(err.msg())
 		exit(1)

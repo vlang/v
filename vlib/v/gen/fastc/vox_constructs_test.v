@@ -685,3 +685,46 @@ fn main() {
 }
 ')
 }
+
+fn test_fastc_map_field_and_string_concat_on_value_receivers() ! {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_value_receivers_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'fastc_value_receivers' }")!
+	os.write_file(os.join_path(root, 'main.v'), r"module main
+
+struct Sheet {
+	keyframes map[string]int
+}
+
+fn global_sheet() Sheet {
+	return Sheet{keyframes: {'effect': 42}}
+}
+
+fn find_keyframe(name string) ?int {
+	if value := global_sheet().keyframes[name] {
+		return value
+	}
+	return none
+}
+
+fn shader_snippet(snippets map[string]string, suffix int) string {
+	text := (snippets['tile'] + snippets['color_${suffix}']).replace('_temp', '_result')
+	return 'begin ' + text
+}
+
+fn main() {
+	assert find_keyframe('effect')? == 42
+	assert find_keyframe('missing') == none
+	assert shader_snippet({'tile': '_temp=', 'color_2': '_temp;'}, 2) == 'begin _result=_result;'
+}
+")!
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-cc', 'clang', '-memory-limit', '10G', '-nocache', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	result := cmdexec.run(program, [])
+	assert result.exit_code == 0, result.output
+}
