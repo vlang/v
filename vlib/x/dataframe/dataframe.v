@@ -420,6 +420,7 @@ pub fn (s Series) max() !f64 {
 }
 
 // median returns the numeric median of the Series.
+// The midpoint of two finite middle values stays finite even if their sum overflows.
 pub fn (s Series) median() !f64 {
 	mut values := s.f64s()!
 	if values.len == 0 {
@@ -581,5 +582,11 @@ fn median_f64(sorted_values []f64) f64 {
 	if sorted_values.len % 2 == 1 {
 		return sorted_values[mid]
 	}
-	return (sorted_values[mid - 1] + sorted_values[mid]) / 2.0
+	left := sorted_values[mid - 1]
+	right := sorted_values[mid]
+	sum := left + right
+	if math.is_inf(sum, 0) {
+		return left / 2.0 + right / 2.0
+	}
+	return sum / 2.0
 }

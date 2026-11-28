@@ -28,6 +28,27 @@ fn test_from_csv_and_numeric_series() {
 	assert math.alike(summary.mean, 3.3333333333333335)
 }
 
+fn test_series_median_handles_overflowing_sums() {
+	for value in [math.max_f64, -math.max_f64] {
+		cell := value.str()
+		series := dataframe.Series{
+			name:   'value'
+			values: [cell, cell]
+		}
+		assert series.median()! == value
+		summary := series.describe()!
+		assert summary.median == value
+	}
+}
+
+fn test_series_median_preserves_subnormal_values() {
+	series := dataframe.Series{
+		name:   'value'
+		values: ['5e-324', '5e-324']
+	}
+	assert series.median()! == math.smallest_non_zero_f64
+}
+
 fn test_select_filter_sort_and_value_counts() {
 	df := dataframe.from_csv(prices_csv, dataframe.CsvConfig{})!
 	aapl := df.filter(fn (row dataframe.Row) bool {
