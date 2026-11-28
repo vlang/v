@@ -48,8 +48,15 @@ fn main() {
 	equality := generated.all_after_last('bool compare_maps(').all_after('{').all_before('\n}')
 	assert equality.contains('map__exists'), equality
 	assert !equality.contains('string__clone'), equality
+	assert !equality.contains('string__free'), equality
 	iteration := generated.all_after_last('string first_key(').all_after('{').all_before('\n}')
 	assert iteration.contains('string__clone(map_eq_key_0)'), iteration
+	assert !iteration.contains('string__free(&map_eq_key_0)'), iteration
 	custom := generated.all_after_last('bool compare_entries(').all_after('{').all_before('\n}')
 	assert custom.contains('string__clone'), custom
+	assert custom.contains('string__free'), custom
+	clone_pos := custom.index('string__clone') or { -1 }
+	lookup_pos := custom.last_index('map__exists') or { -1 }
+	free_pos := custom.last_index('string__free') or { -1 }
+	assert clone_pos >= 0 && clone_pos < lookup_pos && lookup_pos < free_pos, custom
 }

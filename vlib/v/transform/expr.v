@@ -4202,6 +4202,11 @@ fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, r
 	if (clean_value_type_source_id == flat.source_type_string || !t.type_needs_semantic_eq(value_type))
 		&& !(t.membership_type_is_pointer(value_type) && t.is_sum_type_name(clean_value_type_source_id)) {
 		flags |= flat.node_flag_borrowed_map_key
+	} else {
+		flags |= flat.node_flag_owned_map_equality_key
+		if t.map_key_storage_type(key_type_source_id) == flat.source_type_string {
+			t.mark_fn_used('string.free')
+		}
 	}
 	t.pending_stmts << t.a.add_node(flat.Node{
 		kind:           .for_in_stmt

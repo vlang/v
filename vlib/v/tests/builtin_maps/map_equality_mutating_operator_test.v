@@ -1,9 +1,4 @@
-// vtest build: !sanitize-address-gcc && !sanitize-address-clang
 // vtest vflags: -gc none -enable-globals
-// `-gc none` (without `-autofree`) frees nothing implicitly: the dropped maps, keys and
-// buffers below, the key copies of the equality loop, and old array storage all leak, so
-// LeakSanitizer fails the test. The `sanitize-address-clang-without-gc` job still runs it
-// under ASan with leak detection off, which catches a use-after-free of the map key.
 
 struct MapEqualityMutation {
 	value int
@@ -31,19 +26,41 @@ fn (left MapEqualityMutation) == (right MapEqualityMutation) bool {
 }
 
 fn test_map_equality_keeps_keys_alive_across_mutating_value_operators() {
+	// The global initializer creates empty maps before the first assignment.
+	unsafe {
+		equality_left.free()
+		equality_right.free()
+	}
 	for delete_right in [false, true] {
 		equality_key = 'map-equality-dynamic-key-${17}'
 		equality_delete_right = delete_right
-		equality_buffers = [][]u8{}
+		// Reserve the owner of the buffers; each of the 128 inner allocations
+		// still competes for the freed key's allocation.
+		equality_buffers = [][]u8{cap: 128}
+		left_value := [MapEqualityMutation{17}]
+		right_value := [MapEqualityMutation{17}]
 		equality_left = {
-			equality_key: [MapEqualityMutation{17}]
+			equality_key: unsafe { left_value }
 		}
 		equality_right = {
-			equality_key: [MapEqualityMutation{17}]
+			equality_key: unsafe { right_value }
 		}
 		assert (equality_left == equality_right) == !delete_right
 		assert equality_buffers.len == 128
 		assert equality_left.len == if delete_right { 1 } else { 0 }
 		assert equality_right.len == if delete_right { 0 } else { 1 }
+		// Keep independent owners for both arrays, including the deleted map
+		// value, and release them only after all equality checks.
+		unsafe {
+			for i in 0 .. equality_buffers.len {
+				equality_buffers[i].free()
+			}
+			equality_buffers.free()
+			equality_left.free()
+			equality_right.free()
+			left_value.free()
+			right_value.free()
+			equality_key.free()
+		}
 	}
 }

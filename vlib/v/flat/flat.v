@@ -407,6 +407,10 @@ pub const node_flag_retained_reference = u8(8)
 // node_flag_mut_builtin_pointer_param marks a source `mut p voidptr`/`byteptr`/`charptr`
 // parameter before the parser folds its mutable caller slot into the type text.
 pub const node_flag_mut_builtin_pointer_param = u8(16)
+// node_flag_owned_map_equality_key marks a synthetic for-in whose cloned key
+// cannot escape and must be freed after the equality body. The bit is shared
+// with the parameter-only flag above.
+pub const node_flag_owned_map_equality_key = u8(16)
 // node_flag_literal_interpolation_text marks a string literal whose source token
 // contained `${...}` as literal text (for example, `\${name}` or a raw string).
 pub const node_flag_literal_interpolation_text = u8(32)
@@ -557,6 +561,12 @@ pub fn (n &Node) skip_ownership_drops() bool {
 @[inline]
 pub fn (n &Node) borrows_map_key() bool {
 	return n.kind == .for_in_stmt && (n.flags & node_flag_borrowed_map_key) != 0
+}
+
+// owns_map_equality_key reports whether a synthetic map loop owns its key copy.
+@[inline]
+pub fn (n &Node) owns_map_equality_key() bool {
+	return n.kind == .for_in_stmt && (n.flags & node_flag_owned_map_equality_key) != 0
 }
 
 // set_skip_ownership_drops updates the skip-ownership-drops flag.
