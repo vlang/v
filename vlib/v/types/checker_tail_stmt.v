@@ -16816,6 +16816,12 @@ pub fn (tc &TypeChecker) alias_method_value_receiver(id flat.NodeId) ?u32 {
 	if key_short_id != alias_short_id {
 		return none
 	}
+	// The aliased struct can share that segment (`type Ctx = inner.Ctx`); its own
+	// method is not the alias' one, and binding the alias makes C copy the receiver.
+	base_name := resolve_type_name_for_method(*alias.base_type)
+	if base_name != 0 && key.all_before_last('.') == flat.source_type_name(base_name) {
+		return none
+	}
 	return alias.source_type_id()
 }
 
