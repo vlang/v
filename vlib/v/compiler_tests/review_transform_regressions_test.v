@@ -5518,30 +5518,80 @@ fn main() {
 	assert out == '9'
 }
 
-fn test_imported_result_array_return_or_preserves_success_value() {
+fn test_result_return_payloads() {
 	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'imported_result_array_return_or', {
-		'v.mod':     "Module { name: 'imported_result_array_return_or' }\n"
-		'main.v':    "module main\n\nimport pat\n\nfn main() {\n\tlines := pat.from_path()!\n\tassert lines == ['ok']\n\tprintln(lines[0])\n}\n"
+	mut files := {
 		'pat/pat.v': "module pat\n\nfn source() ![]string {\n\treturn ['ok']\n}\n\npub fn from_path() ![]string {\n\treturn source() or {\n\t\treturn error(err.msg())\n\t}\n}\n"
-	}, 'main.v')
-	assert out == 'ok'
+		'kind.v':    'enum Kind {\n\tleft\n\tright\n}\n'
+		'm/m.v':     'module m\n\npub struct Match {\npub:\n\tn int\n}\n\npub struct Inner {\npub:\n\tn int\n}\n\npub fn (inner Inner) pair(label string) !(Match, []string) {\n\treturn Match{\n\t\tn: inner.n\n\t}, [label]\n}\n'
+	}
+	run_good_main_fixture_project(v3_bin, 'result_return_payloads', [
+		TransformFixture{'imported_result_array_return_or', "module main
+
+import pat
+
+fn main() {
+	lines := pat.from_path() or { panic(err.msg()) }
+	assert lines == ['ok']
+	println(lines[0])
+}
+", 'ok'},
+		TransformFixture{'result_multi_return_match_branch_unwrap', "fn left_pair() !(int, string) {
+	return 1, 'left'
 }
 
-fn test_result_multi_return_match_branch_unwraps_payload_type() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'result_multi_return_match_branch_unwrap', "enum Kind {\n\tleft\n\tright\n}\n\nfn left_pair() !(int, string) {\n\treturn 1, 'left'\n}\n\nfn right_pair() !(int, string) {\n\treturn 2, 'right'\n}\n\nfn choose(kind Kind) !(int, string) {\n\treturn match kind {\n\t\t.left {\n\t\t\tleft_pair()!\n\t\t}\n\t\t.right {\n\t\t\tright_pair()!\n\t\t}\n\t}\n}\n\nfn main() {\n\tn, label := choose(.right)!\n\tprintln(int_str(n) + ':' + label)\n}\n")
-	assert out == '2:right'
+fn right_pair() !(int, string) {
+	return 2, 'right'
 }
 
-fn test_result_multi_return_match_branch_unwraps_imported_payload_type() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'result_multi_return_match_imported_payload', {
-		'v.mod':  "Module { name: 'result_multi_return_match_imported_payload' }\n"
-		'main.v': "module main\n\nimport m\n\nenum Kind {\n\tleft\n\tright\n}\n\nstruct Wrap {\n\tkind  Kind\n\tinner m.Inner\n}\n\nfn (wrap Wrap) choose() !(m.Match, []string) {\n\treturn match wrap.kind {\n\t\t.left {\n\t\t\twrap.inner.pair('left')!\n\t\t}\n\t\t.right {\n\t\t\twrap.inner.pair('right')!\n\t\t}\n\t}\n}\n\nfn main() {\n\twrap := Wrap{\n\t\tkind:  .right\n\t\tinner: m.Inner{\n\t\t\tn: 2\n\t\t}\n\t}\n\tmat, groups := wrap.choose()!\n\tprintln(int_str(mat.n) + ':' + groups[0])\n}\n"
-		'm/m.v':  'module m\n\npub struct Match {\npub:\n\tn int\n}\n\npub struct Inner {\npub:\n\tn int\n}\n\npub fn (inner Inner) pair(label string) !(Match, []string) {\n\treturn Match{\n\t\tn: inner.n\n\t}, [label]\n}\n'
-	}, 'main.v')
-	assert out == '2:right'
+fn choose(kind Kind) !(int, string) {
+	return match kind {
+		.left {
+			left_pair()!
+		}
+		.right {
+			right_pair()!
+		}
+	}
+}
+
+fn main() {
+	n, label := choose(.right) or { panic(err.msg()) }
+	println(int_str(n) + ':' + label)
+}
+", '2:right'},
+		TransformFixture{'result_multi_return_match_imported_payload', "module main
+
+import m
+
+struct Wrap {
+	kind  Kind
+	inner m.Inner
+}
+
+fn (wrap Wrap) choose() !(m.Match, []string) {
+	return match wrap.kind {
+		.left {
+			wrap.inner.pair('left')!
+		}
+		.right {
+			wrap.inner.pair('right')!
+		}
+	}
+}
+
+fn main() {
+	wrap := Wrap{
+		kind:  .right
+		inner: m.Inner{
+			n: 2
+		}
+	}
+	mat, groups := wrap.choose() or { panic(err.msg()) }
+	println(int_str(mat.n) + ':' + groups[0])
+}
+", '2:right'},
+	], mut files)
 }
 
 fn test_string_to_owned_compiles_under_ownership_cgen() {
@@ -5579,17 +5629,11 @@ fn main() {
 	use_callbacks()
 }
 '
-	src_path := os.join_path(review_transform_fixture_dir, 'v3_owned_value_receiver_method_closure.v')
-	c_path := os.join_path(review_transform_fixture_dir, 'v3_owned_value_receiver_method_closure.c')
-	os.write_file(src_path, source) or { panic(err) }
-	gen := os.exec([v3_bin, '-nocache', '-ownership', src_path, '-b', 'c', '-o', c_path])
-	assert gen.exit_code == 0, gen.output
-	c_source := os.read_file(c_path) or { panic(err) }
+	out, c_source := run_good_with_c(v3_bin, 'owned_value_receiver_method_closure', '-nocache -ownership', source)
 	assert c_source.contains('closure__closure_create_with_data_and_drop'), c_source
 	assert c_source.contains('string__free(&((ctx->receiver).text));'), c_source
 	assert c_source.contains('.receiver = __v3_method_receiver_clone_'), c_source
 	assert c_source.contains('Holder__read(__v3_method_receiver_clone_'), c_source
-	out := run_good_with_flags(v3_bin, 'owned_value_receiver_method_closure', '-ownership', source)
 	assert out == 'owned:7\nowned:7'
 }
 
@@ -5617,17 +5661,11 @@ fn main() {
 	println(callback())
 }
 '
-	src_path := os.join_path(review_transform_fixture_dir, 'v3_owned_rvalue_method_receiver.v')
-	c_path := os.join_path(review_transform_fixture_dir, 'v3_owned_rvalue_method_receiver.c')
-	os.write_file(src_path, source) or { panic(err) }
-	gen := os.exec([v3_bin, '-nocache', '-ownership', src_path, '-b', 'c', '-o', c_path])
-	assert gen.exit_code == 0, gen.output
-	c_source := os.read_file(c_path) or { panic(err) }
+	out, c_source := run_good_with_c(v3_bin, 'owned_rvalue_method_receiver', '-nocache -ownership', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
 	assert main_body.contains('((void*)&__method_receiver_'), main_body
 	assert main_body.contains('string__free(&((__method_receiver_'), main_body
 	assert !main_body.contains('&(make_holder())'), main_body
-	out := run_good_with_flags(v3_bin, 'owned_rvalue_method_receiver', '-ownership', source)
 	assert out == 'owned:7\nowned:7'
 }
 
@@ -5650,18 +5688,11 @@ fn main() {
 	println(int_str(exercise()))
 }
 '
-	src_path := os.join_path(review_transform_fixture_dir, 'v3_owned_fn_literal_capture_context.v')
-	c_path := os.join_path(review_transform_fixture_dir, 'v3_owned_fn_literal_capture_context.c')
-	os.write_file(src_path, source) or { panic(err) }
-	gen := os.exec([v3_bin, '-nocache', '-ownership', '-gc', 'none', src_path, '-b', 'c', '-o',
-		c_path])
-	assert gen.exit_code == 0, gen.output
-	c_source := os.read_file(c_path) or { panic(err) }
+	out, c_source := run_good_with_c(v3_bin, 'owned_fn_literal_capture_context', '-nocache -ownership -gc none', source)
 	assert c_source.contains('static void _flctxdrop_'), c_source
 	assert c_source.contains('closure__closure_create_with_data_and_drop'), c_source
 	assert c_source.contains('string__free(&((*ctx).text));'), c_source
 	assert c_source.contains('array__free(&((*ctx).values));'), c_source
-	out := run_good_with_flags(v3_bin, 'owned_fn_literal_capture_context', '-ownership -gc none', source)
 	assert out == '95'
 }
 
@@ -6151,20 +6182,49 @@ fn check_imported_struct_default_fn_alias(c_source string) {
 	assert !c_source.contains('(Callback)'), c_source
 }
 
-fn test_json2_c_alias_fields_keep_declaring_module_types() {
+fn test_json2_module_field_types() {
 	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'json2_c_alias_field_types', 'import sokol.sapp\nimport x.json2\n\nfn main() {\n\tevent := json2.decode[sapp.Event]("{}") or { sapp.Event{} }\n\tprintln(int_str(int(event.frame_count)))\n}\n')
-	assert out == '0'
-}
+	mut files := {
+		'model/model.v':     'module model\n\npub type Values = map[string]int\n\npub struct Config {\npub mut:\n\tvalues Values\n}\n'
+		'discord/discord.v': 'module discord\n\nimport x.json2\n\npub struct Packet {\npub:\n\tvalue int\n}\n\npub fn encode_packet(value int) string {\n\treturn json2.encode[Packet](Packet{\n\t\tvalue: value\n\t})\n}\n\npub fn decode_packet(src string) !Packet {\n\treturn json2.decode[Packet](src)!\n}\n'
+	}
+	run_good_main_fixture_project(v3_bin, 'json2_module_field_types', [
+		TransformFixture{'json2_c_alias_field_types', 'import sokol.sapp
+import x.json2
 
-fn test_json2_reflected_map_alias_infers_value_type() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'json2_reflected_map_alias', {
-		'v.mod':         "Module { name: 'json2_reflected_map_alias' }\n"
-		'model/model.v': 'module model\n\npub type Values = map[string]int\n\npub struct Config {\npub mut:\n\tvalues Values\n}\n'
-		'main.v':        'module main\n\nimport model\nimport x.json2\n\nfn main() {\n\tconfig := json2.decode[model.Config](r\'{"values":{"answer":42}}\')!\n\tprintln(config.values["answer"])\n}\n'
-	}, 'main.v')
-	assert out == '42'
+fn main() {
+	event := json2.decode[sapp.Event]("{}") or { sapp.Event{} }
+	println(int_str(int(event.frame_count)))
+}
+', '0'},
+		TransformFixture{'json2_reflected_map_alias', 'module main
+
+import model
+import x.json2
+
+fn main() {
+	config := json2.decode[model.Config](r\'{"values":{"answer":42}}\') or { panic(err.msg()) }
+	println(config.values["answer"])
+}
+', '42'},
+		TransformFixture{'json2_any_map_value', 'import x.json2
+
+fn main() {
+	values := json2.decode[map[string]json2.Any](r\'{"ok":true}\') or { panic(err.msg()) }
+	println(values["ok"] or { json2.Any(false) })
+}
+', 'true'},
+		TransformFixture{'json2_explicit_generic_calling_module', 'module main
+
+import discord
+
+fn main() {
+	src := discord.encode_packet(42)
+	decoded := discord.decode_packet(src) or { panic(err.msg()) }
+	println(decoded.value)
+}
+', '42'},
+	], mut files)
 }
 
 fn test_json2_reflected_fields_keep_independent_decoder_specializations() {
@@ -6183,38 +6243,61 @@ fn test_json2_reflected_fields_keep_independent_decoder_specializations() {
 	assert c_code.contains('json2__Decoder_Result__decode_value(decoder, target)'), c_code
 }
 
-fn test_json2_reflected_main_type_does_not_use_imported_homonym() {
+fn test_json2_main_and_imported_type_homonyms() {
 	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'json2_reflected_main_type_collision', {
-		'v.mod':             "Module { name: 'json2_reflected_main_type_collision' }\n"
+	mut files := {
 		'discord/discord.v': 'module discord\n\npub struct Discord {\npub:\n\tname string\n}\n'
-		'main.v':            'module main\n\nimport discord\nimport x.json2\n\nstruct Discord {\n\tvalue int\n}\n\nstruct Chat {\n\tdiscord_apis []Discord\n}\n\nfn main() {\n\t_ = json2.encode(discord.Discord{})\n\tchat := json2.decode[Chat](r\'{"discord_apis":[{"value":42}]}\')!\n\tencoded := json2.encode(chat)\n\tprintln(json2.decode[Chat](encoded)!.discord_apis[0].value)\n}\n'
-	}, 'main.v')
-	assert out == '42'
+		'event.v':           'struct Event {\n\tvalue int\n}\n'
+	}
+	run_good_main_fixture_project(v3_bin, 'json2_main_and_imported_type_homonyms', [
+		TransformFixture{'json2_reflected_main_type_collision', 'module main
+
+import discord
+import x.json2
+
+struct Discord {
+	value int
+}
+
+struct Chat {
+	discord_apis []Discord
+}
+
+fn main() {
+	_ = json2.encode(discord.Discord{})
+	chat := json2.decode[Chat](r\'{"discord_apis":[{"value":42}]}\') or { panic(err.msg()) }
+	encoded := json2.encode(chat)
+	decoded := json2.decode[Chat](encoded) or { panic(err.msg()) }
+	println(decoded.discord_apis[0].value)
+}
+', '42'},
+		TransformFixture{'json2_array_main_type_imported_homonym', 'import gg
+import x.json2
+
+fn main() {
+	_ = json2.encode([gg.Event{}])
+	encoded := json2.encode([Event{
+		value: 42
+	}])
+	println(encoded)
+}
+', '[{"value":42}]'},
+		TransformFixture{'json2_decode_main_type_imported_homonym', 'import gg
+import x.json2
+
+fn main() {
+	_ = json2.decode[gg.Event]("{}") or { gg.Event{} }
+	event := json2.decode[Event](r\'{"value":42}\') or { panic(err.msg()) }
+	println(event.value)
+}
+', '42'},
+	], mut files)
 }
 
 fn test_json2_encode_keeps_independent_array_element_specializations() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'json2_independent_array_element_specializations', 'import x.json2\n\nstruct Event {\n\tvalue int\n}\n\nstruct Payload {\n\tflags [][]bool\n\tevents []Event\n}\n\nfn main() {\n\tpayload := Payload{\n\t\tflags: [[true]]\n\t\tevents: [Event{\n\t\t\tvalue: 42\n\t\t}]\n\t}\n\tencoded := json2.encode(payload)\n\tprintln(json2.decode[Payload](encoded)!.events[0].value)\n}\n')
 	assert out == '42'
-}
-
-fn test_json2_encode_array_keeps_main_type_with_imported_homonym() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'json2_array_main_type_imported_homonym', 'import gg\nimport x.json2\n\nstruct Event {\n\tvalue int\n}\n\nfn main() {\n\t_ = json2.encode([gg.Event{}])\n\tencoded := json2.encode([Event{\n\t\tvalue: 42\n\t}])\n\tprintln(encoded)\n}\n')
-	assert out.contains('"value":42')
-}
-
-fn test_json2_decode_keeps_main_type_with_imported_homonym() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'json2_decode_main_type_imported_homonym', 'import gg\nimport x.json2\n\nstruct Event {\n\tvalue int\n}\n\nfn main() {\n\t_ = json2.decode[gg.Event]("{}") or { gg.Event{} }\n\tevent := json2.decode[Event](r\'{"value":42}\')!\n\tprintln(event.value)\n}\n')
-	assert out == '42'
-}
-
-fn test_json2_decode_any_map_keeps_sum_value_type() {
-	v3_bin := build_v3_review_transform()
-	out := run_good(v3_bin, 'json2_any_map_value', 'import x.json2\n\nfn main() {\n\tvalues := json2.decode[map[string]json2.Any](r\'{"ok":true}\')!\n\tprintln(values["ok"] or { json2.Any(false) })\n}\n')
-	assert out == 'true'
 }
 
 fn test_json2_callback_field_keeps_declaring_module_and_pointer_depth() {
@@ -6225,16 +6308,6 @@ fn test_json2_callback_field_keeps_declaring_module_and_pointer_depth() {
 		'main.v':        'module main\n\nimport model\nimport x.json2\n\nstruct Event {}\n\ntype Callback = fn (voidptr, &Event)\n\nstruct Config {\n\tcallback Callback\n}\n\nfn main() {\n\t_ := json2.decode[Config]("{}") or { Config{} }\n\tconfig := json2.decode[model.Config]("{}") or { model.Config{} }\n\tprintln(config.callback == unsafe { nil })\n}\n'
 	}, 'main.v')
 	assert out == 'true'
-}
-
-fn test_json2_explicit_generic_type_keeps_calling_module() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'json2_explicit_generic_calling_module', {
-		'v.mod':             "Module { name: 'json2_explicit_generic_calling_module' }\n"
-		'discord/discord.v': 'module discord\n\nimport x.json2\n\npub struct Packet {\npub:\n\tvalue int\n}\n\npub fn encode_packet(value int) string {\n\treturn json2.encode[Packet](Packet{\n\t\tvalue: value\n\t})\n}\n\npub fn decode_packet(src string) !Packet {\n\treturn json2.decode[Packet](src)!\n}\n'
-		'main.v':            'module main\n\nimport discord\n\nfn main() {\n\tsrc := discord.encode_packet(42)\n\tprintln(discord.decode_packet(src)!.value)\n}\n'
-	}, 'main.v')
-	assert out == '42'
 }
 
 fn test_parallel_json2_specializations_emit_registered_bodies() {
