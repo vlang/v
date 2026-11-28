@@ -1675,6 +1675,21 @@ fn compile_good_project(v3_bin string, name string, flags string, files map[stri
 	return good_bin
 }
 
+fn run_good_main_fixture_project(v3_bin string, name string, cases []TransformFixture, mut files map[string]string) {
+	// Keep each caller in its own main-module file so its imports stay file-local.
+	mut calls := []string{cap: cases.len}
+	for case in cases {
+		calls << "\t\t'${case.name}' { ${case.name}() }"
+		files['${case.name}.v'] = case.source.replace_once('fn main() {', 'fn ${case.name}() {')
+	}
+	files['main.v'] = "module main\n\nfn main() {\n\tmatch arguments()[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
+	good_bin := compile_good_project(v3_bin, name, '', files, '')
+	for case in cases {
+		out := run_good_binary(good_bin, case.name, case.name)
+		assert out == case.expected, '${case.name}: expected `${case.expected}`, got `${out}`'
+	}
+}
+
 fn run_good_module_batch(v3_bin string, name string, cases []TransformFixture) {
 	run_good_module_batch_with_flags(v3_bin, name, '', cases)
 }
@@ -2374,19 +2389,7 @@ pub fn make() Box[int] {
 		'a/tast/value.v':            'module tast\n\npub struct Value {\npub:\n\tn int\n}\n'
 		'b/tast/value.v':            'module tast\n\npub struct Value {\npub:\n\ttext string\n}\n'
 	}
-	// Keep each caller in its own main-module file so its imports stay file-local.
-	mut calls := []string{cap: cases.len}
-	for case in cases {
-		calls << "\t\t'${case.name}' { ${case.name}() }"
-		files['${case.name}.v'] = case.source.replace_once('fn main() {', 'fn ${case.name}() {')
-	}
-	files['main.v'] = "module main\n\nfn main() {\n\tmatch arguments()[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
-	name := 'imported_calls_and_type_resolution'
-	good_bin := compile_good_project(v3_bin, name, '', files, '')
-	for case in cases {
-		out := run_good_binary(good_bin, case.name, case.name)
-		assert out == case.expected, '${case.name}: expected `${case.expected}`, got `${out}`'
-	}
+	run_good_main_fixture_project(v3_bin, 'imported_calls_and_type_resolution', cases, mut files)
 }
 
 fn test_array_stringification_prefers_local_struct_over_imported_alias() {
@@ -2397,36 +2400,6 @@ fn test_array_stringification_prefers_local_struct_over_imported_alias() {
 		'main.v':        "module main\n\nimport other\n\nstruct Event {\n\tkind int\n\targ string\n}\n\nfn main() {\n\t_ := other.Event(other.ForeignEvent{\n\t\ttouches: 3\n\t})\n\tevents := [Event{\n\t\tkind: 7\n\t\targ: 'ok'\n\t}]\n\tprintln(events)\n}\n"
 	}, 'main.v')
 	assert out == "[Event{\n    kind: 7\n    arg: 'ok'\n}]"
-}
-
-fn test_imported_struct_zero_fields_use_declaration_module_aliases() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'imported_struct_field_alias_scope', {
-		'v.mod':       "Module { name: 'imported_struct_field_alias_scope' }\n"
-		'other/mod.v': 'module other
-
-pub type Type = u32
-
-pub struct Holder {
-pub:
-	typ Type
-}
-'
-		'main.v':      'module main
-
-import other
-
-struct Type {
-	sym &int @[required]
-}
-
-fn main() {
-	holder := other.Holder{}
-	println(holder.typ)
-}
-'
-	}, 'main.v')
-	assert out == '0'
 }
 
 fn test_review_value_and_call_runtime() {
@@ -5692,15 +5665,105 @@ fn test_array_literal_separator_handling() {
 	run_bad(v3_bin, 'array_literal_doubled_comma', 'fn main() {\n\t_ := [1,,2]\n}\n', 'unexpected token `,`, expecting `]`')
 }
 
-fn test_container_wrapped_import_alias_type_resolves() {
+fn test_imported_values_and_comptime_metadata() {
 	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'container_import_alias_types', {
-		'v.mod':     "Module { name: 'container_import_alias_types' }\n"
-		'bar/bar.v': 'module bar\n\npub struct Baz {\npub:\n\tn int\n}\n'
-		'foo/foo.v': 'module foo\n\nimport bar as b\n\npub struct Holder {\npub:\n\titems []b.Baz\n\tone   ?b.Baz\n}\n\npub fn make() Holder {\n\treturn Holder{\n\t\titems: [b.Baz{\n\t\t\tn: 1\n\t\t}, b.Baz{\n\t\t\tn: 2\n\t\t}]\n\t\tone: b.Baz{\n\t\t\tn: 7\n\t\t}\n\t}\n}\n'
-		'main.v':    'module main\n\nimport foo\n\nfn main() {\n\th := foo.make()\n\tmut out := int_str(h.items[0].n) + int_str(h.items[1].n)\n\tif v := h.one {\n\t\tout += int_str(v.n)\n\t}\n\tprintln(out)\n}\n'
-	}, 'main.v')
-	assert out == '127'
+	cases := [
+		TransformFixture{'imported_struct_field_alias_scope', 'module main
+
+import other
+
+struct Type {
+	sym &int @[required]
+}
+
+fn main() {
+	holder := other.Holder{}
+	println(holder.typ)
+}
+', '0'},
+		TransformFixture{'container_import_alias_types', 'module main\n\nimport foo\n\nfn main() {\n\th := foo.make()\n\tmut out := int_str(h.items[0].n) + int_str(h.items[1].n)\n\tif v := h.one {\n\t\tout += int_str(v.n)\n\t}\n\tprintln(out)\n}\n', '127'},
+		TransformFixture{'const_len_fixed_array_map_equality', 'module main\n\nimport store\n\nfn main() {\n\tprintln(store.check())\n}\n', 'true'},
+		TransformFixture{'comptime_type_condition_module_alias', 'module main\n\nimport foo\n\nfn main() {\n\tprintln(foo.check())\n}\n', 'alias'},
+		TransformFixture{'generic_indirections_integer_literals', 'module main\n\nimport probe\n\nfn main() {\n\tn := 7\n\tprintln(int_str(probe.depth(n)))\n\tprintln(int_str(probe.depth(&n)))\n}\n', '0\n1'},
+		TransformFixture{'shadowed_minmaxof_calls', 'module main\n\nimport shadow { maxof, minof }\n\nfn main() {\n\tprintln(int_str(maxof[int]()))\n\tprintln(int_str(minof[int]()))\n}\n', '7\n-7'},
+		TransformFixture{'comptime_pointer_field_call_return_type', 'module main\n\nimport codec\nimport model\n\nfn main() {\n\tmut context := model.Context{\n\t\tapp: &model.App{}\n\t}\n\tcodec.fill(mut context)\n\tprintln(context.app.value)\n}\n', '42'},
+		TransformFixture{'imported_struct_default_constants', 'module main\n\nimport widget\n\nfn main() {\n\tconfig := widget.Config{}\n\tprintln(config.style)\n\tprintln(config.origin.len)\n}\n', 'none\n2'},
+		// `main` cannot redeclare the builtin `FieldData`; a module type with that name
+		// still has to reflect its own fields, not the builtin metadata struct.
+		TransformFixture{'comptime_user_fielddata_metadata', 'module main
+
+import meta
+
+fn main() {
+	$for field in meta.FieldData.fields {
+		println(field.name)
+		println(field.is_pub)
+		println(field.is_mut)
+		println(field.attrs.join(","))
+	}
+}
+', 'value\ntrue\ntrue\nmain_attr'},
+		TransformFixture{'generic_main_default_short_name_collision', 'module main\n\nimport factory\n\nstruct Doc {\n\titems []int\n}\n\nfn main() {\n\tvalue := factory.make[Doc]()\n\tprintln(value.items.len)\n}\n', '0'},
+		TransformFixture{'comptime_method_multi_return_guard', 'module main
+
+struct Marker {}
+
+struct Item {}
+
+struct App {}
+
+fn (App) route() Marker {
+	return Marker{}
+}
+
+fn (App) helper() !(Item, []u8) {
+	return Item{}, []u8{}
+}
+
+fn inspect[A]() {
+	$for method in A.methods {
+		$if method.return_type is Marker {
+			println(method.name)
+		}
+	}
+}
+
+fn main() {
+	inspect[App]()
+}
+', 'route'},
+	]
+	mut files := {
+		'v.mod':           "Module { name: 'imported_values_and_comptime_metadata' }\n"
+		'other/mod.v':     'module other
+
+pub type Type = u32
+
+pub struct Holder {
+pub:
+	typ Type
+}
+'
+		'bar/bar.v':       'module bar\n\npub struct Baz {\npub:\n\tn int\n}\n'
+		'foo/foo.v':       'module foo\n\nimport bar as b\n\npub struct Holder {\npub:\n\titems []b.Baz\n\tone   ?b.Baz\n}\n\npub fn make() Holder {\n\treturn Holder{\n\t\titems: [b.Baz{\n\t\t\tn: 1\n\t\t}, b.Baz{\n\t\t\tn: 2\n\t\t}]\n\t\tone: b.Baz{\n\t\t\tn: 7\n\t\t}\n\t}\n}\n'
+		'store/store.v':   "module store\n\nconst n = 2\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\npub fn check() bool {\n\tmut left := map[string][n]string{}\n\tleft['k'] = [n]string{init: 'ab'.clone()}\n\tmut right := map[string][n]string{}\n\tright['k'] = [n]string{init: join('a', 'b')}\n\treturn left == right\n}\n"
+		'foo/check.v':     "module foo\n\ntype ID = int\n\npub fn check() string {\n\t\$if ID is \$alias {\n\t\treturn 'alias'\n\t} \$else {\n\t\treturn 'not alias'\n\t}\n}\n"
+		'probe/probe.v':   'module probe\n\npub fn depth[T](value T) int {\n\t_ = value\n\t\$if T.indirections == 0 {\n\t\treturn 0\n\t} \$else \$if T.indirections == 1 {\n\t\treturn 1\n\t}\n\treturn 2\n}\n'
+		'shadow/shadow.v': 'module shadow\n\npub fn maxof[T]() int {\n\treturn 7\n}\n\npub fn minof[T]() int {\n\treturn -7\n}\n'
+		'model/model.v':   'module model\n\npub struct App {\npub mut:\n\tvalue int\n}\n\npub struct Context {\npub mut:\n\tapp &App\n}\n'
+		'codec/codec.v':   'module codec\n\npub fn fill[T](mut value T) {\n\t\$for field in T.fields {\n\t\t\$if field.indirections == 1 {\n\t\t\tmut decoded_ptr := create_ptr(value.\$(field.name))\n\t\t\tdecoded_ptr.value = 42\n\t\t\tvalue.\$(field.name) = decoded_ptr\n\t\t}\n\t}\n}\n\nfn create_ptr[T](_ &T) &T {\n\treturn &T{}\n}\n'
+		'widget/widget.v': "module widget\n\npub const no_style = 'none'\npub const origin = [0.0, 0.0]\n\npub struct Config {\npub:\n\tstyle  string = no_style\n\torigin []f64  = origin\n}\n"
+		'meta/meta.v':     'module meta
+
+pub struct FieldData {
+pub mut:
+	@[main_attr]
+	value int
+}
+'
+		'factory/x.v':     'module factory\n\nstruct Doc {\n\tast &int\n}\n\npub fn make[T]() T {\n\treturn T{}\n}\n'
+	}
+	run_good_main_fixture_project(v3_bin, 'imported_values_and_comptime_metadata', cases, mut files)
 }
 
 fn test_cyclic_interface_default_does_not_deref_nil_global() {
@@ -5711,15 +5774,6 @@ fn test_cyclic_interface_default_does_not_deref_nil_global() {
 		'main.v':        "module main\n\nimport cycle\n\nfn main() {\n\t_ = cycle.empty_id()\n\tprintln('alive')\n}\n"
 	}, 'main.v')
 	assert out == 'alive'
-}
-
-fn test_const_length_fixed_array_map_values_compare_semantically() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'const_len_fixed_array_map_equality', {
-		'main.v':        'module main\n\nimport store\n\nfn main() {\n\tprintln(store.check())\n}\n'
-		'store/store.v': "module store\n\nconst n = 2\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\npub fn check() bool {\n\tmut left := map[string][n]string{}\n\tleft['k'] = [n]string{init: 'ab'.clone()}\n\tmut right := map[string][n]string{}\n\tright['k'] = [n]string{init: join('a', 'b')}\n\treturn left == right\n}\n"
-	}, 'main.v')
-	assert out == 'true'
 }
 
 fn test_interface_array_repeat_evaluates_receiver_once() {
@@ -5733,25 +5787,6 @@ fn test_array_repeat_safe_wrapper_compiles_in_prod() {
 	out := run_good_with_flags(v3_bin, 'array_repeat_prod', '-prod', 'fn main() {\n\tprintln([1, 2, 3].repeat(2))\n}\n')
 	assert out == '[1, 2, 3, 1, 2, 3]'
 	run_bad_with_flags(v3_bin, 'array_repeat_to_depth_prod', '-prod', 'fn main() {\n\t_ := [1, 2, 3].repeat_to_depth(2, 0)\n}\n', 'must be called from an `unsafe` block')
-}
-
-fn test_comptime_type_conditions_qualify_module_aliases() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'comptime_type_condition_module_alias', {
-		'main.v':    'module main\n\nimport foo\n\nfn main() {\n\tprintln(foo.check())\n}\n'
-		'foo/foo.v': "module foo\n\ntype ID = int\n\npub fn check() string {\n\t\$if ID is \$alias {\n\t\treturn 'alias'\n\t} \$else {\n\t\treturn 'not alias'\n\t}\n}\n"
-	}, 'main.v')
-	assert out == 'alias'
-}
-
-fn test_imported_generic_indirections_conditions_keep_integer_literals() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'generic_indirections_integer_literals', {
-		'v.mod':         "Module { name: 'generic_indirections_integer_literals' }\n"
-		'probe/probe.v': 'module probe\n\npub fn depth[T](value T) int {\n\t_ = value\n\t\$if T.indirections == 0 {\n\t\treturn 0\n\t} \$else \$if T.indirections == 1 {\n\t\treturn 1\n\t}\n\treturn 2\n}\n'
-		'main.v':        'module main\n\nimport probe\n\nfn main() {\n\tn := 7\n\tprintln(int_str(probe.depth(n)))\n\tprintln(int_str(probe.depth(&n)))\n}\n'
-	}, 'main.v')
-	assert out == '0\n1'
 }
 
 fn test_single_module_test_file_skips_premodule_attributes() {
@@ -5802,15 +5837,6 @@ fn test_map_literal_entries_evaluate_once() {
 		TransformFixture{'map_literal_str_side_effects', "__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'k' + int_str(key_calls)\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tprintln({\n\t\tnext_key(): next_val()\n\t})\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n", "{'k1': 10}\n1,1"},
 		TransformFixture{'map_literal_decl_side_effects', "__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'key'\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tvalues := {\n\t\tnext_key(): next_val()\n\t}\n\tprintln(int_str(values['key']))\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n", '10\n1,1'},
 	])
-}
-
-fn test_shadowed_minmaxof_calls_are_not_rewritten() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'shadowed_minmaxof_calls', {
-		'main.v':          'module main\n\nimport shadow { maxof, minof }\n\nfn main() {\n\tprintln(int_str(maxof[int]()))\n\tprintln(int_str(minof[int]()))\n}\n'
-		'shadow/shadow.v': 'module shadow\n\npub fn maxof[T]() int {\n\treturn 7\n}\n\npub fn minof[T]() int {\n\treturn -7\n}\n'
-	}, 'main.v')
-	assert out == '7\n-7'
 }
 
 fn test_parallel_monomorphization_grows_uneven_worker_regions() {
@@ -6028,17 +6054,6 @@ fn test_comptime_field_generic_calls_keep_resolved_field_types() {
 	assert out == '0'
 }
 
-fn test_comptime_pointer_field_generic_local_uses_call_return_type() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'comptime_pointer_field_call_return_type', {
-		'v.mod':         "Module { name: 'comptime_pointer_field_call_return_type' }\n"
-		'model/model.v': 'module model\n\npub struct App {\npub mut:\n\tvalue int\n}\n\npub struct Context {\npub mut:\n\tapp &App\n}\n'
-		'codec/codec.v': 'module codec\n\npub fn fill[T](mut value T) {\n\t\$for field in T.fields {\n\t\t\$if field.indirections == 1 {\n\t\t\tmut decoded_ptr := create_ptr(value.\$(field.name))\n\t\t\tdecoded_ptr.value = 42\n\t\t\tvalue.\$(field.name) = decoded_ptr\n\t\t}\n\t}\n}\n\nfn create_ptr[T](_ &T) &T {\n\treturn &T{}\n}\n'
-		'main.v':        'module main\n\nimport codec\nimport model\n\nfn main() {\n\tmut context := model.Context{\n\t\tapp: &model.App{}\n\t}\n\tcodec.fill(mut context)\n\tprintln(context.app.value)\n}\n'
-	}, 'main.v')
-	assert out == '42'
-}
-
 fn test_imported_struct_default_qualifies_function_alias_cast() {
 	v3_bin := build_v3_review_transform()
 	c_source := gen_c_from_project(v3_bin, 'imported_struct_default_fn_alias', {
@@ -6047,16 +6062,6 @@ fn test_imported_struct_default_qualifies_function_alias_cast() {
 		'main.v':          'module main\n\nimport widget\n\nfn main() {\n\tconfig := widget.Config{}\n\tprintln(config.callback == unsafe { nil })\n}\n'
 	}, 'main.v')
 	assert !c_source.contains('(Callback)'), c_source
-}
-
-fn test_imported_struct_defaults_keep_declaring_module_constants() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'imported_struct_default_constants', {
-		'v.mod':           "Module { name: 'imported_struct_default_constants' }\n"
-		'widget/widget.v': "module widget\n\npub const no_style = 'none'\npub const origin = [0.0, 0.0]\n\npub struct Config {\npub:\n\tstyle  string = no_style\n\torigin []f64  = origin\n}\n"
-		'main.v':          'module main\n\nimport widget\n\nfn main() {\n\tconfig := widget.Config{}\n\tprintln(config.style)\n\tprintln(config.origin.len)\n}\n'
-	}, 'main.v')
-	assert out == 'none\n2'
 }
 
 fn test_json2_c_alias_fields_keep_declaring_module_types() {
@@ -6099,37 +6104,6 @@ fn test_json2_reflected_main_type_does_not_use_imported_homonym() {
 		'main.v':            'module main\n\nimport discord\nimport x.json2\n\nstruct Discord {\n\tvalue int\n}\n\nstruct Chat {\n\tdiscord_apis []Discord\n}\n\nfn main() {\n\t_ = json2.encode(discord.Discord{})\n\tchat := json2.decode[Chat](r\'{"discord_apis":[{"value":42}]}\')!\n\tencoded := json2.encode(chat)\n\tprintln(json2.decode[Chat](encoded)!.discord_apis[0].value)\n}\n'
 	}, 'main.v')
 	assert out == '42'
-}
-
-fn test_comptime_user_fielddata_uses_its_own_field_metadata() {
-	v3_bin := build_v3_review_transform()
-	// `main` cannot redeclare the builtin `FieldData`; a module type with that name
-	// still has to reflect its own fields, not the builtin metadata struct.
-	out := run_good_project(v3_bin, 'comptime_user_fielddata_metadata', {
-		'v.mod':       "Module { name: 'comptime_user_fielddata_metadata' }\n"
-		'meta/meta.v': 'module meta
-
-pub struct FieldData {
-pub mut:
-	@[main_attr]
-	value int
-}
-'
-		'main.v':      'module main
-
-import meta
-
-fn main() {
-	$for field in meta.FieldData.fields {
-		println(field.name)
-		println(field.is_pub)
-		println(field.is_mut)
-		println(field.attrs.join(","))
-	}
-}
-'
-	}, 'main.v')
-	assert out == 'value\ntrue\ntrue\nmain_attr'
 }
 
 fn test_json2_encode_keeps_independent_array_element_specializations() {
@@ -12252,16 +12226,6 @@ fn test_parallel_transform_merges_generic_call_metadata() {
 	assert out == expected.str()
 }
 
-fn test_imported_generic_default_uses_main_struct_defaults_after_short_name_collision() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'generic_main_default_short_name_collision', {
-		'v.mod':       "Module { name: 'generic_main_default_short_name_collision' }\n"
-		'factory/x.v': 'module factory\n\nstruct Doc {\n\tast &int\n}\n\npub fn make[T]() T {\n\treturn T{}\n}\n'
-		'main.v':      'module main\n\nimport factory\n\nstruct Doc {\n\titems []int\n}\n\nfn main() {\n\tvalue := factory.make[Doc]()\n\tprintln(value.items.len)\n}\n'
-	}, 'main.v')
-	assert out == '0'
-}
-
 fn test_test_command_skips_incompatible_single_file() {
 	v3_bin := build_v3_review_transform()
 	test_dir := os.join_path(review_transform_fixture_dir, 'v3_incompatible_test_${os.getpid()}')
@@ -12342,41 +12306,6 @@ fn main() {
 }
 ')
 	assert out == '7'
-}
-
-fn test_comptime_method_multi_return_type_guard_is_folded() {
-	v3_bin := build_v3_review_transform()
-	out := run_good_project(v3_bin, 'comptime_method_multi_return_guard', {
-		'main.v': 'module main
-
-struct Marker {}
-
-struct Item {}
-
-struct App {}
-
-fn (App) route() Marker {
-	return Marker{}
-}
-
-fn (App) helper() !(Item, []u8) {
-	return Item{}, []u8{}
-}
-
-fn inspect[A]() {
-	$for method in A.methods {
-		$if method.return_type is Marker {
-			println(method.name)
-		}
-	}
-}
-
-fn main() {
-	inspect[App]()
-}
-'
-	}, 'main.v')
-	assert out == 'route'
 }
 
 fn review_clone_method_fixtures() []TransformFixture {
