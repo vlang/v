@@ -25,11 +25,21 @@ fn export_attr_compile_without_memory_limit(main_file string, output string) os.
 	return os.exec([@VEXE, '-no-memory-limit', main_file, '-b', 'c', '-o', output])
 }
 
-fn test_imported_and_conditional_exports_use_expected_symbols() {
-	root := export_attr_fixture_dir('imported_and_conditional')
+fn test_runtime_exports_and_return_types() {
+	root := export_attr_fixture_dir('runtime_exports')
 	defer { os.rmdir_all(root) or {} }
 	export_attr_write_project(root, {
-		'main.v':       "module main
+		'main.v':                     "module main
+
+fn main() {
+	match arguments()[1] {
+		'imported_and_conditional' { imported_and_conditional() }
+		'natural_symbols' { natural_symbols() }
+		else { panic('unknown fixture') }
+	}
+}
+"
+		'imported_and_conditional.v': "module main
 
 import expmod
 
@@ -50,14 +60,14 @@ fn enabled_export() int {
 	return 7
 }
 
-fn main() {
+fn imported_and_conditional() {
 	println(C.raw_exported_answer().str())
 	println(expmod.exported_answer().str())
 	println(take_callback(expmod.exported_answer).str())
 	println(enabled_export().str())
 }
 "
-		'expmod/mod.v': "module expmod
+		'expmod/mod.v':               "module expmod
 
 @[export: 'raw_exported_answer']
 pub fn exported_answer() int {
@@ -72,31 +82,7 @@ fn helper_unused() int {
 	return 99
 }
 "
-	})
-	bin_path := os.join_path(root, 'app')
-	compile := export_attr_compile(os.join_path(root, 'main.v'), bin_path)
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '41\n41\n41\n7', run.output
-
-	c_code := os.read_file(bin_path + '.c') or { panic(err) }
-	// Imported module bodies and export wrappers live in the module-cache unit. Their
-	// declarations and the successful calls above prove they were rooted and linked.
-	// The function keeps V's 64-bit `int`; its export presents the C ABI's `int`.
-	assert c_code.contains('i64 expmod__exported_answer(void);'), c_code
-	assert c_code.contains('int raw_exported_answer(void);'), c_code
-	assert c_code.contains('raw_exported_answer()'), c_code
-	assert c_code.contains('take_callback(expmod__exported_answer)'), c_code
-	assert c_code.contains('int raw_enabled_export(void) {'), c_code
-	assert !c_code.contains('raw_disabled_export'), c_code
-}
-
-fn test_export_natural_symbol_codegen_and_runtime() {
-	root := export_attr_fixture_dir('natural_symbols')
-	defer { os.rmdir_all(root) or {} }
-	export_attr_write_project(root, {
-		'main.v': "module main
+		'natural_symbols.v':          "module main
 
 @[export: 'natural_name']
 fn natural_name(value f64) f64 {
@@ -126,7 +112,7 @@ fn exported_rint_collision() int {
 	return 2
 }
 
-fn main() {
+fn natural_symbols() {
 	println(natural_add(3_000_000_000, 1).str())
 	println(take(natural_add).str())
 	println(renamed_add(3_000_000_000, 2).str())
@@ -134,16 +120,63 @@ fn main() {
 	println(exported_rint_collision().str())
 }
 "
+		'return_types.v':             "module main
+
+@[export: 'raw_numbers']
+fn numbers() [3]int {
+	mut values := [3]int{}
+	values[0] = 1
+	values[1] = 2
+	values[2] = 3
+	return values
+}
+
+type Callback = fn () int
+
+fn callback_value() int {
+	return 7
+}
+
+@[export: 'raw_callback']
+fn callback() Callback {
+	return callback_value
+}
+
+"
 	})
 	bin_path := os.join_path(root, 'app')
-	compile := export_attr_compile(os.join_path(root, 'main.v'), bin_path)
+	compile := export_attr_compile(root, bin_path)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	assert !compile.output.contains('redefinition'), compile.output
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '3000000001\n42\n3000000002\n1\n2', run.output
+	for fixture, expected in {
+		'imported_and_conditional': '41\n41\n41\n7'
+		'natural_symbols':          '3000000001\n42\n3000000002\n1\n2'
+	} {
+		run := os.exec([bin_path, fixture])
+		assert run.exit_code == 0, '${fixture}: ${run.output}'
+		assert run.output.trim_space() == expected, '${fixture}: ${run.output}'
+	}
+
 	c_code := os.read_file(bin_path + '.c') or { panic(err) }
+	check_imported_and_conditional_exports(c_code)
+	check_natural_export_symbols(c_code)
+	check_export_return_types(c_code)
+}
+
+fn check_imported_and_conditional_exports(c_code string) {
+	// Imported module bodies and export wrappers live in the module-cache unit. Their
+	// declarations and the successful calls above prove they were rooted and linked.
+	// The function keeps V's 64-bit `int`; its export presents the C ABI's `int`.
+	assert c_code.contains('i64 expmod__exported_answer(void);'), c_code
+	assert c_code.contains('int raw_exported_answer(void);'), c_code
+	assert c_code.contains('raw_exported_answer()'), c_code
+	assert c_code.contains('take_callback(expmod__exported_answer)'), c_code
+	assert c_code.contains('int raw_enabled_export(void) {'), c_code
+	assert !c_code.contains('raw_disabled_export'), c_code
+}
+
+fn check_natural_export_symbols(c_code string) {
 	assert c_code.count('double natural_name(double value) {') == 1, c_code
 	assert !c_code.contains('main__natural_name'), c_code
 
@@ -161,6 +194,31 @@ fn main() {
 	rint_wrapper := 'int v_rint(void) {'
 	assert c_code.count(rint_wrapper) == 1, c_code
 	assert c_code.all_after(rint_wrapper).all_before('\n}').contains('return exported_rint_collision();'), c_code
+}
+
+fn check_export_return_types(c_code string) {
+	assert c_code.contains('_v_ret_Array_fixed_i64_3 numbers(void);'), c_code
+	assert c_code.contains('_v_ret_Array_fixed_i64_3 raw_numbers(void);'), c_code
+	assert c_code.contains('_v_ret_Array_fixed_i64_3 numbers(void) {'), c_code
+	numbers_wrapper := '_v_ret_Array_fixed_i64_3 raw_numbers(void) {'
+	assert c_code.contains(numbers_wrapper), c_code
+	assert c_code.all_after(numbers_wrapper).all_before('\n}').contains('return numbers();'), c_code
+	assert !c_code.contains('\nArray_fixed_i64_3 raw_numbers(void)'), c_code
+
+	for name, return_type in {
+		'callback':     'i64'
+		'raw_callback': 'int'
+	} {
+		before_prototype, _ := c_code.split_once(' ${name}(void);') or {
+			panic('missing C prototype for ${name}')
+		}
+		typedef_name := before_prototype.all_after_last('\n')
+		assert typedef_name.starts_with('_fn_ptr_'), typedef_name
+		assert c_code.contains('typedef ${return_type} (*${typedef_name})(void);'), c_code
+		assert c_code.contains('${typedef_name} ${name}(void) {'), c_code
+	}
+	assert c_code.all_after(' raw_callback(void) {').all_before('\n}').contains('return callback();'), c_code
+	assert !c_code.contains('fn_ptr:'), c_code
 }
 
 fn test_natural_name_export_links_from_c_object_file() {
@@ -408,63 +466,6 @@ fn unnamed(int) int {
 		'generic.v': ['generic functions cannot be exported']
 		'unnamed.v': ['functions with type only params can not have bodies']
 	})
-}
-
-fn test_export_wrappers_use_fixed_array_and_fn_pointer_return_types() {
-	root := export_attr_fixture_dir('return_types')
-	defer { os.rmdir_all(root) or {} }
-	export_attr_write_project(root, {
-		'main.v': "module main
-
-@[export: 'raw_numbers']
-fn numbers() [3]int {
-	mut values := [3]int{}
-	values[0] = 1
-	values[1] = 2
-	values[2] = 3
-	return values
-}
-
-type Callback = fn () int
-
-fn callback_value() int {
-	return 7
-}
-
-@[export: 'raw_callback']
-fn callback() Callback {
-	return callback_value
-}
-
-fn main() {}
-"
-	})
-	bin_path := os.join_path(root, 'app')
-	compile := export_attr_compile(os.join_path(root, 'main.v'), bin_path)
-	assert compile.exit_code == 0, compile.output
-	c_code := os.read_file(bin_path + '.c') or { panic(err) }
-	assert c_code.contains('_v_ret_Array_fixed_i64_3 numbers(void);'), c_code
-	assert c_code.contains('_v_ret_Array_fixed_i64_3 raw_numbers(void);'), c_code
-	assert c_code.contains('_v_ret_Array_fixed_i64_3 numbers(void) {'), c_code
-	numbers_wrapper := '_v_ret_Array_fixed_i64_3 raw_numbers(void) {'
-	assert c_code.contains(numbers_wrapper), c_code
-	assert c_code.all_after(numbers_wrapper).all_before('\n}').contains('return numbers();'), c_code
-	assert !c_code.contains('\nArray_fixed_i64_3 raw_numbers(void)'), c_code
-
-	for name, return_type in {
-		'callback':     'i64'
-		'raw_callback': 'int'
-	} {
-		before_prototype, _ := c_code.split_once(' ${name}(void);') or {
-			panic('missing C prototype for ${name}')
-		}
-		typedef_name := before_prototype.all_after_last('\n')
-		assert typedef_name.starts_with('_fn_ptr_'), typedef_name
-		assert c_code.contains('typedef ${return_type} (*${typedef_name})(void);'), c_code
-		assert c_code.contains('${typedef_name} ${name}(void) {'), c_code
-	}
-	assert c_code.all_after(' raw_callback(void) {').all_before('\n}').contains('return callback();'), c_code
-	assert !c_code.contains('fn_ptr:'), c_code
 }
 
 fn test_export_wrapper_for_veb_handler_forwards_implicit_ctx() {

@@ -26,6 +26,19 @@ pub mut:
 	storage_keys     []string
 	next_generation  int
 	lifetime         int
+	// module_name is the module whose code this scope belongs to; child scopes inherit it.
+	module_name string
+	// module_globals lists the global names that several modules declare. Only the file
+	// scope has it: a bare lookup of such a name resolves to the global of the looking
+	// scope's module, bound in the file scope under its qualified name.
+	module_globals &ScopeModuleGlobals = unsafe { nil }
+}
+
+// ScopeModuleGlobals holds the global names that several modules declare.
+@[heap]
+pub struct ScopeModuleGlobals {
+pub mut:
+	names map[string]bool
 }
 
 pub struct ScopeBindingOwner {
@@ -119,6 +132,7 @@ pub fn new_scope(parent &Scope) &Scope {
 			parent:          parent
 			fast_lookup:     scope_fast_lookup_enabled
 			fast_generation: 1
+			module_name:     if parent != nil { parent.module_name } else { '' }
 		}
 	}
 }
@@ -129,6 +143,7 @@ pub fn new_scope(parent &Scope) &Scope {
 // generations, turning lookup/insert into an O(n) scan over dead entries.
 pub fn (mut s Scope) reset(parent &Scope) {
 	s.parent = parent
+	s.module_name = if parent != unsafe { nil } { parent.module_name } else { '' }
 	s.names.clear()
 	s.types.clear()
 	s.storage_keys.clear()
@@ -197,6 +212,9 @@ pub fn (s &Scope) lookup(name string) ?Type {
 			if scope.name_mask & bit != 0 {
 				i := scope.own_binding_index(name)
 				if i >= 0 {
+					if scope.module_globals != unsafe { nil } {
+						return scope.types[scope.module_global_index(name, i, s.module_name)]
+					}
 					return scope.types[i]
 				}
 			}
@@ -204,15 +222,41 @@ pub fn (s &Scope) lookup(name string) ?Type {
 		}
 		return none
 	}
-	for i := s.names.len - 1; i >= 0; i-- {
-		if s.names[i] == name {
-			return s.types[i]
+	mut scope := unsafe { &Scope(s) }
+	for scope != unsafe { nil } {
+		for i := scope.names.len - 1; i >= 0; i-- {
+			if scope.names[i] == name {
+				if scope.module_globals != unsafe { nil } {
+					return scope.types[scope.module_global_index(name, i, s.module_name)]
+				}
+				return scope.types[i]
+			}
 		}
-	}
-	if s.parent != unsafe { nil } {
-		return s.parent.lookup(name)
+		scope = scope.parent
 	}
 	return none
+}
+
+// module_global_index returns `index`, the binding of `name` in this file scope, or, when
+// several modules declare a global `name`, the binding of the global of `module_name`.
+fn (s &Scope) module_global_index(name string, index int, module_name string) int {
+	if module_name.len > 0 && s.module_globals.names[name] {
+		qualified_name := '${module_name}.${name}'
+		$if ownership ? {
+			// Ownership builds keep the names of a scope only in its list.
+			for i := s.names.len - 1; i >= 0; i-- {
+				if s.names[i] == qualified_name {
+					return i
+				}
+			}
+		} $else {
+			qualified := s.own_binding_index(qualified_name)
+			if qualified >= 0 {
+				return qualified
+			}
+		}
+	}
+	return index
 }
 
 // lookup_before returns the nearest binding for `name` in the scopes from this one
@@ -275,8 +319,11 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 				scope = scope.parent
 				continue
 			}
-			i := scope.own_binding_index(name)
+			mut i := scope.own_binding_index(name)
 			if i >= 0 {
+				if scope.module_globals != unsafe { nil } {
+					i = scope.module_global_index(name, i, s.module_name)
+				}
 				return ScopeBindingOwner{
 					scope:       scope
 					index:       i
@@ -289,19 +336,25 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 		}
 		return none
 	}
-	for i := s.names.len - 1; i >= 0; i-- {
-		if s.names[i] == name {
-			return ScopeBindingOwner{
-				scope:       s
-				index:       i
-				generation:  s.generations[i]
-				lifetime:    s.lifetime
-				storage_key: s.storage_keys[i]
+	mut scope := unsafe { &Scope(s) }
+	for scope != unsafe { nil } {
+		for j := scope.names.len - 1; j >= 0; j-- {
+			if scope.names[j] == name {
+				i := if scope.module_globals != unsafe { nil } {
+					scope.module_global_index(name, j, s.module_name)
+				} else {
+					j
+				}
+				return ScopeBindingOwner{
+					scope:       scope
+					index:       i
+					generation:  scope.generations[i]
+					lifetime:    scope.lifetime
+					storage_key: scope.storage_keys[i]
+				}
 			}
 		}
-	}
-	if s.parent != unsafe { nil } {
-		return s.parent.lookup_owner(name)
+		scope = scope.parent
 	}
 	return none
 }

@@ -8,15 +8,8 @@ struct BorrowedRangeRejection {
 	expected string
 }
 
-fn test_borrowed_array_references_preserve_owners_and_parameter_headers() {
-	root := os.join_path(os.vtmp_dir(), 'borrowed_array_references_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, '@[has_globals]
-module main
-
-__global global_bytes = [u8(5), 6, 7]
+fn borrowed_array_range_fixture() string {
+	return '__global global_bytes = [u8(5), 6, 7]
 
 struct Buffer implements IClone {
 mut:
@@ -155,22 +148,43 @@ fn check_parameter_header() {
  assert resources[0].value == 1
 }
 
-fn main() {
+fn check_array_ranges() {
  check_range_owner()
  println("range owner")
  check_parameter_header()
  println("parameter header")
 }
-')!
+'
+}
+
+fn test_borrowed_array_and_string_range_references() {
+	root := os.join_path(os.vtmp_dir(), 'borrowed_range_references_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, '@[has_globals]\nmodule main\n\nimport os\n\n' +
+		borrowed_array_range_fixture() + '\n' + borrowed_string_range_fixture())!
 	for mode in [['-no-parallel'], []string{}] {
 		name := if mode.len > 0 { 'program_serial' } else { 'program_parallel' }
 		output := os.join_path(root, name + $if windows { '.exe' } $else { '' })
 		compile := os.exec([...borrowed_range_compiler_args, '-cc', 'clang', ...mode, '-o', output,
 			source])
 		assert compile.exit_code == 0, '${mode}: ${compile.output}'
+		array_run := os.exec([output, 'arrays'])
+		assert array_run.exit_code == 0, '${mode}: ${array_run.output}'
+		assert array_run.output.trim_space().split_into_lines() == ['range owner', 'parameter header'], '${mode}: ${array_run.output}'
 		run := os.exec([output])
 		assert run.exit_code == 0, '${mode}: ${run.output}'
-		assert run.output.trim_space().split_into_lines() == ['range owner', 'parameter header'], '${mode}: ${run.output}'
+		assert run.output.trim_space().split_into_lines() == ['headers', 'evaluation order'], '${mode}: ${run.output}'
+		valid := os.exec([output, '1', '3'])
+		assert valid.exit_code == 0, '${mode}: ${valid.output}'
+		assert valid.output.trim_space() == 'bounds', '${mode}: ${valid.output}'
+		for bounds in [[-1, 2], [0, 5], [3, 2], [5, 5], [0, -1]] {
+			start, end := bounds[0], bounds[1]
+			invalid := os.exec([output, start.str(), end.str()])
+			assert invalid.exit_code != 0, '${mode}: ${bounds}: ${invalid.output}'
+			assert invalid.output.contains('substr(${start}, ${end}) out of bounds (len=4) s=abcd'), '${mode}: ${bounds}: ${invalid.output}'
+		}
 	}
 }
 
@@ -260,17 +274,8 @@ fn check_borrowed_range_rejections(root string, cases []BorrowedRangeRejection) 
 	}
 }
 
-fn test_borrowed_string_ranges_preserve_headers_bounds_and_evaluation_order() {
-	root := os.join_path(os.vtmp_dir(), 'borrowed_string_ranges_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, '@[has_globals]
-module main
-
-import os
-
-__global calls = 0
+fn borrowed_string_range_fixture() string {
+	return '__global calls = 0
 __global ordered_text = "abcdef"
 fn source() &string { assert calls == 0; calls++; return &ordered_text }
 fn ordered_start() int { assert calls == 1; calls++; return 1 }
@@ -286,10 +291,6 @@ fn split[^a](text &^a string) []&^a string {
 }
 fn header_view[^a](text &^a string, start int, end int) &^a string {
  return &((*text)[start..end])
-}
-fn disturb_stack(seed int) int {
- values := [seed, seed + 1, seed + 2, seed + 3]!
- return values[0] + values[3]
 }
 fn check_headers() {
  text := "abc\\nxyz".to_owned()
@@ -333,6 +334,10 @@ fn check_evaluation_order() {
 }
 
 fn main() {
+ if os.args.len == 2 && os.args[1] == "arrays" {
+  check_array_ranges()
+  return
+ }
  if os.args.len == 1 {
   check_headers()
   println("headers")
@@ -343,26 +348,7 @@ fn main() {
   println("bounds")
  }
 }
-')!
-	for mode in [['-no-parallel'], []string{}] {
-		name := if mode.len > 0 { 'program_serial' } else { 'program_parallel' }
-		output := os.join_path(root, name + $if windows { '.exe' } $else { '' })
-		compile := os.exec([...borrowed_range_compiler_args, '-cc', 'clang', ...mode, '-o', output,
-			source])
-		assert compile.exit_code == 0, '${mode}: ${compile.output}'
-		run := os.exec([output])
-		assert run.exit_code == 0, '${mode}: ${run.output}'
-		assert run.output.trim_space().split_into_lines() == ['headers', 'evaluation order'], '${mode}: ${run.output}'
-		valid := os.exec([output, '1', '3'])
-		assert valid.exit_code == 0, '${mode}: ${valid.output}'
-		assert valid.output.trim_space() == 'bounds', '${mode}: ${valid.output}'
-		for bounds in [[-1, 2], [0, 5], [3, 2], [5, 5], [0, -1]] {
-			start, end := bounds[0], bounds[1]
-			invalid := os.exec([output, start.str(), end.str()])
-			assert invalid.exit_code != 0, '${mode}: ${bounds}: ${invalid.output}'
-			assert invalid.output.contains('substr(${start}, ${end}) out of bounds (len=4) s=abcd'), '${mode}: ${bounds}: ${invalid.output}'
-		}
-	}
+'
 }
 
 fn borrowed_range_source_loan_rejections() []BorrowedRangeRejection {

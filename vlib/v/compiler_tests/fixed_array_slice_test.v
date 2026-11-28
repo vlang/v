@@ -23,15 +23,12 @@ fn main() {
 	src_file := os.join_path(root, 'v3_fixed_slice.v')
 	os.write_file(src_file, src) or { panic(err) }
 	bin := os.join_path(root, 'v3_fixed_slice_bin')
-	compile := os.exec([@VEXE, src_file, '-b', 'c', '-o', bin])
+	compile := os.exec([@VEXE, '-keepc', src_file, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.count('eval') == 1, run.output
 
-	c_file := os.join_path(root, 'v3_fixed_slice.c')
-	generate_c := os.exec([@VEXE, '-o', c_file, src_file])
-	assert generate_c.exit_code == 0, generate_c.output
-	generated_c := os.read_file(c_file) or { panic(err) }
+	generated_c := os.read_file(bin + '.c') or { panic(err) }
 	assert !generated_c.contains('(int[3]){a[0], a[1], a[2]}'), generated_c
 }

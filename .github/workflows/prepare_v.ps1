@@ -56,7 +56,49 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "The optimized compiler failed its version check (exit $LASTEXITCODE)"
     }
-    Move-Item -LiteralPath $production -Destination '.\v.exe' -Force
+    # A scanner can briefly lock either executable after the version check.
+    $destination = Join-Path (Get-Location) 'v.exe'
+    for ($attempt = 0; ; $attempt++) {
+        try {
+            [IO.File]::Move($production, $destination, $true)
+            break
+        } catch {
+            $cause = $_.Exception.GetBaseException()
+            $win32Error = $cause.HResult -band 0xffff
+            $sharingViolation = $cause -is [IO.IOException] -and $win32Error -in @(32, 33)
+            # MoveFileEx can report ACCESS_DENIED for a destination held without
+            # FILE_SHARE_DELETE. Only retry that error if a DELETE-access probe
+            # independently observes an actual sharing or lock violation.
+            if (-not $sharingViolation -and $cause -is [UnauthorizedAccessException] -and $win32Error -eq 5) {
+                if (-not ('CompilerPublicationLockProbe' -as [type])) {
+                    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+public static class CompilerPublicationLockProbe {
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFileW(string path, uint access,
+        uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+    public static int Probe(string path) {
+        using (var handle = CreateFileW(path, 0x10000, 7, IntPtr.Zero, 3, 0x80, IntPtr.Zero)) {
+            return handle.IsInvalid ? Marshal.GetLastWin32Error() : 0;
+        }
+    }
+}
+'@
+                }
+                $sourceProbe = [CompilerPublicationLockProbe]::Probe($production)
+                $destinationProbe = [CompilerPublicationLockProbe]::Probe($destination)
+                $sharingViolation = $sourceProbe -in @(32, 33) -or $destinationProbe -in @(32, 33)
+                Write-Host "Compiler publication access denied: Win32 $win32Error, source probe $sourceProbe, destination probe $destinationProbe"
+            }
+            if ($attempt -ge 12 -or -not $sharingViolation) {
+                throw
+            }
+            Write-Warning "Compiler publication sharing violation (Win32 $win32Error), retry $($attempt + 1)/12"
+            Start-Sleep -Milliseconds 500
+        }
+    }
 } finally {
     [Environment]::SetEnvironmentVariable('VFLAGS', $savedVFlags, 'Process')
     [Environment]::SetEnvironmentVariable('VEXE', $savedVExe, 'Process')

@@ -1311,6 +1311,8 @@ pub mut:
 	inferred_c_globals       []InferredCGlobal // the entries of c_globals that this checker added, for its merge
 	global_names             map[string]bool
 	shared_global_names      map[string]bool
+	main_global_names        map[string]bool   // the globals that the `main` module declares
+	global_decl_modules      map[string]string // bare global name -> its module, `*` when several declare it
 	const_types              map[string]Type
 	const_exprs              map[string]flat.NodeId
 	const_modules            map[string]string
@@ -2013,6 +2015,8 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		c_globals:                             tc.c_globals
 		global_names:                          tc.global_names
 		shared_global_names:                   tc.shared_global_names
+		main_global_names:                     tc.main_global_names
+		global_decl_modules:                   tc.global_decl_modules
 		const_types:                           tc.const_types
 		const_exprs:                           tc.const_exprs
 		const_modules:                         tc.const_modules
@@ -3749,6 +3753,9 @@ fn extend_type_cache(mut values []&Type, n int) {
 // push_scope updates push scope state for TypeChecker.
 pub fn (mut tc TypeChecker) push_scope() {
 	tc.cur_scope = tc.reuse_scope(tc.cur_scope)
+	if tc.cur_module.len > 0 {
+		tc.cur_scope.module_name = tc.cur_module
+	}
 	$if ownership ? {
 		tc.ownership_push_scope()
 	}
@@ -5362,6 +5369,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 	mut p2_t0 := u64(0)
 	// Keyed by the payloads of the lanes' arenas, which outlive this loop.
 	mut promoted_types := &Pass2TypePromotion{}
+	tc.note_global_decl_modules(a, entries)
 	for pi, tl_idx in entries {
 		node := a.nodes[tl_idx]
 		node_ref := a.node(flat.NodeId(tl_idx))
@@ -5778,7 +5786,9 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 							ft = tc.resolve_type(a.child(f, 0))
 						}
 						qname := tc.qualify_name(f.value)
-						tc.file_scope.insert(f.value, ft)
+						if tc.keeps_bare_global(f.value) {
+							tc.file_scope.insert(f.value, ft)
+						}
 						tc.global_names[f.value] = true
 						tc.file_scope.insert(qname, ft)
 						tc.global_names[qname] = true
@@ -6048,6 +6058,61 @@ fn (mut tc TypeChecker) resolve_inferred_global_types(a &flat.FlatAst) {
 	tc.resolve_inferred_global_types_of(a, tc.top_level_idx)
 }
 
+// note_global_decl_modules records which module declares each global name of `entries`.
+// Function scopes reach the bare global names of every module through the shared file
+// scope; a name that several modules declare is marked there, so that a lookup from a
+// module's code resolves it to that module's global (see Scope.module_global_type).
+fn (mut tc TypeChecker) note_global_decl_modules(a &flat.FlatAst, entries []i32) {
+	mut module_name := tc.cur_module
+	for tl_idx in entries {
+		node := a.nodes[tl_idx]
+		match node.kind {
+			.file {
+				module_name = tc.file_modules[node.value] or { '' }
+			}
+			.module_decl {
+				module_name = node.value
+			}
+			.global_decl {
+				for i in 0 .. node.children_count {
+					field := a.child_node(&node, i)
+					if field.value.len == 0 || field.value.starts_with('C.') {
+						continue
+					}
+					if module_name in ['', 'main'] {
+						tc.main_global_names[field.value] = true
+					}
+					owner := tc.global_decl_modules[field.value] or {
+						tc.global_decl_modules[field.value] = module_name
+						continue
+					}
+					if owner != module_name && owner != '*' {
+						tc.global_decl_modules[field.value] = '*'
+						if isnil(tc.file_scope.module_globals) {
+							tc.file_scope.module_globals = &ScopeModuleGlobals{}
+						}
+						tc.file_scope.module_globals.names[field.value] = true
+					}
+				}
+			}
+			else {}
+		}
+	}
+}
+
+// keeps_bare_global reports whether the current module binds the bare name of its global
+// `name` in the file scope (see keeps_bare_global_of).
+fn (tc &TypeChecker) keeps_bare_global(name string) bool {
+	return tc.keeps_bare_global_of(tc.cur_module, name)
+}
+
+// keeps_bare_global_of reports whether `module_name` binds the bare name of its global
+// `name` in the file scope. A global of `main` keeps the bare name that other modules
+// share; their code reaches their own globals by the qualified names.
+pub fn (tc &TypeChecker) keeps_bare_global_of(module_name string, name string) bool {
+	return module_name in ['', 'main'] || !tc.main_global_names[name]
+}
+
 fn (mut tc TypeChecker) resolve_inferred_global_types_of(a &flat.FlatAst, entries []i32) {
 	tc.cur_module = ''
 	tc.cur_file = ''
@@ -6100,7 +6165,9 @@ fn (mut tc TypeChecker) resolve_inferred_global_types_of(a &flat.FlatAst, entrie
 						|| tc.type_text_has_generic_placeholder(ft.source_type_id()) {
 						continue
 					}
-					tc.file_scope.insert(f.value, ft)
+					if tc.keeps_bare_global(f.value) {
+						tc.file_scope.insert(f.value, ft)
+					}
 					tc.file_scope.insert(qname, ft)
 				}
 			}

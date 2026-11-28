@@ -35,13 +35,25 @@ fn test_invalid_assignment_expression_is_rejected() {
 }
 ',
 	]
+	os.write_file(os.join_path(root, 'main.v'), 'module main\n\nfn main() {}\n')!
 	for i, source in cases {
-		bin := os.join_path(root, 'v3_invalid_assignment_expression_${i}')
-		src := bin + '.v'
-		os.write_file(src, source)!
-		compile := os.exec([@VEXE, src, '-b', 'c', '-o', bin])
-		assert compile.exit_code != 0, compile.output
-		assert compile.output.contains('invalid expression: unexpected token `=`'), compile.output
-		assert !compile.output.contains('C compilation failed'), compile.output
+		name := 'invalid_${i}'
+		fixture := 'module main\n\n' + source.replace_once('fn main()', 'fn ${name}()')
+		os.write_file(os.join_path(root, '${name}.v'), fixture)!
+	}
+	bin := os.join_path(root, 'program')
+	compile := os.exec([@VEXE, root, '-b', 'c', '-o', bin])
+	assert compile.exit_code != 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	mut rejected := map[string]bool{}
+	for line in compile.output.split_into_lines() {
+		location, message := line.split_once(': error: ') or { continue }
+		if message == 'invalid expression: unexpected token `=`' {
+			file := location.all_before_last(':').all_before_last(':')
+			rejected[os.file_name(file)] = true
+		}
+	}
+	for i in 0 .. cases.len {
+		assert rejected['invalid_${i}.v'], 'invalid_${i}: ${compile.output}'
 	}
 }

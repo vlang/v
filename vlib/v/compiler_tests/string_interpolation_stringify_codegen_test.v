@@ -7,14 +7,13 @@ fn compile_string_interp_input(source string, bin string) os.Result {
 	return os.exec([@VEXE, src, '-b', 'c', '-nocolor', '-o', bin])
 }
 
-// Interpolation keeps the nested method call and the custom str helpers reachable.
-fn test_string_interpolation_keeps_callees_and_str_helpers() {
+fn test_string_interpolation_callees_defer_and_aliases() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
 	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	src := 'struct Begin {
+	defer { os.rmdir_all(dir) or {} }
+	files := {
+		// Interpolation keeps the nested method call and the custom str helpers reachable.
+		'callees.v':        'struct Begin {
 	value int
 }
 
@@ -81,28 +80,13 @@ fn check_generic_fn_alias_str() {
 	println(\'ok\')
 }
 
-fn main() {
+fn case_callees() {
 	check_interpolated_method_call()
 	check_discovered_str_helper()
 	check_generic_fn_alias_str()
 }
 '
-	bin := os.join_path(dir, 'v3_string_interp_callees')
-	compile := compile_string_interp_input(src, bin)
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().split_into_lines() == ['{"begin":7}', 'wrapped', 'ok'], run.output
-}
-
-fn test_defer_string_interpolation_with_generic_type_arguments() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
-	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	src := "struct Box[T] {
+		'defer_generics.v': "struct Box[T] {
 	value T
 }
 
@@ -142,7 +126,7 @@ fn show_value[D](value D) {
 	println('body-d')
 }
 
-fn main() {
+fn case_defer_generics() {
 	show_box(Box[int]{
 		value: 7
 	})
@@ -152,16 +136,48 @@ fn main() {
 	show_value(9)
 }
 "
-	bin := os.join_path(dir, 'v3_defer_generic_string_interp')
-	compile := compile_string_interp_input(src, bin)
-	// A `-b c` build of a `map[string]PlainBox[T]` interpolation calls prelude helpers
-	// (`v3_map_str_piece`, `v3_f64_array_str`) that need `f64__str`; before #30850 it was not
-	// kept and the link failed. The module cache hid it by linking the cached builtin object.
-	assert compile.exit_code == 0, 'undefined f64__str: ${compile.output}'
+		'aliases.v':        "type MyString = string
+type A = string
+type B = A
+type I = int
+type J = I
+type Truth = bool
+type Toggle = Truth
+
+fn case_aliases() {
+	s := MyString('y')
+	assert 'x' + s == 'xy'
+	assert s + 'z' == 'yz'
+	println('ok')
+	println(B('x'))
+	println(J(7))
+	println(Toggle(true))
+}
+"
+		'main.v':           "module main
+
+fn main() {
+	match arguments()[1] {
+		'callees' { case_callees() }
+		'defer_generics' { case_defer_generics() }
+		'aliases' { case_aliases() }
+		else { panic('unknown fixture') }
+	}
+}
+"
+	}
+	for file, source in files {
+		os.write_file(os.join_path(dir, file), source)!
+	}
+	bin := os.join_path(dir, 'v3_string_interp_success')
+	compile := os.exec([@VEXE, dir, '-b', 'c', '-nocolor', '-o', bin])
+	// Formatting map[string]PlainBox[T] uses prelude helpers that need f64__str.
+	// Keep the typed map interpolation fixture in its own build so it cannot supply that helper.
+	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	expected := "body-box
+	for name, expected in {
+		'callees':        '{"begin":7}\nwrapped\nok'
+		'defer_generics': "body-box
 box box:7
 body-plain
 plain PlainBox[int]{
@@ -175,40 +191,12 @@ plain PlainBox[int]{
 }}
 body-d
 value 9"
-	assert run.output.trim_space() == expected
-}
-
-fn test_string_plus_and_stringification_accept_aliases() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_string_interp_${tempname.unique_token()}')
-	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
+		'aliases':        'ok\nx\n7\ntrue'
+	} {
+		run := os.exec([bin, name])
+		assert run.exit_code == 0, '${name}: ${run.output}'
+		assert run.output.trim_space() == expected, '${name}: ${run.output}'
 	}
-	src := "type MyString = string
-type A = string
-type B = A
-type I = int
-type J = I
-type Truth = bool
-type Toggle = Truth
-
-fn main() {
-	s := MyString('y')
-	assert 'x' + s == 'xy'
-	assert s + 'z' == 'yz'
-	println('ok')
-	println(B('x'))
-	println(J(7))
-	println(Toggle(true))
-}
-"
-	bin := os.join_path(dir, 'v3_string_aliases')
-	compile := compile_string_interp_input(src, bin)
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([bin])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space().split_into_lines() == ['ok', 'x', '7', 'true'], run.output
 }
 
 fn test_string_plus_does_not_stringify_non_strings() {

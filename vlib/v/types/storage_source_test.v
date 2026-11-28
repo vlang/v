@@ -963,3 +963,56 @@ fn main() {
 	assert int(wrapper_call) >= 0
 	assert tc.call_param_storage_source_params(wrapper_call, 0) == [1, 2]
 }
+
+fn test_prepared_param_storage_sources_survive_lowered_callee_bodies() {
+	path := os.join_path(os.vtmp_dir(), 'v3_storage_source_prepared_${os.getpid()}.v')
+	os.write_file(path, 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn store(mut target PointerBox, value &Item) {
+	target.value = value
+}
+
+fn main() {
+	item := Item{}
+	mut box := PointerBox{
+		value: unsafe { nil }
+	}
+	store(mut box, &item)
+	_ = [item].map(it.text)
+	_ = box
+}
+') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+	mut store_call := flat.empty_node
+	mut store_write := -1
+	for i, node in a.nodes {
+		if node.kind == .call && (tc.resolved_call_name(flat.NodeId(i)) or { '' }) == 'store' {
+			store_call = flat.NodeId(i)
+		}
+		if node.kind == .selector_assign {
+			store_write = i
+		}
+	}
+	assert int(store_call) >= 0 && store_write >= 0
+	assert tc.call_param_storage_source_params(store_call, 0) == [1]
+	// Transform lowers the callee in place, possibly before lowering `.map()` asks about it.
+	tc.prepare_callback_param_flows(map[string]bool{})
+	a.nodes[store_write] = flat.Node{}
+	assert tc.call_param_storage_source_params(store_call, 0) == [1]
+}

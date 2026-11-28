@@ -33,8 +33,10 @@ fn test_translated_shared_mutations_still_require_write_locks() {
 	root := os.join_path(os.vtmp_dir(), 'v3_translated_shared_storage_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
-	path := os.join_path(root, 'main.v')
-	prefix := '@[translated]\nmodule main\nstruct State { mut: count int }\nfn main() { shared state := State{}; '
+	// Every mutation gets a function of its own: the rejected ones share one file, and the
+	// write-locked ones another, so two checks cover them.
+	mut rejected := []string{}
+	mut locked := []string{}
 	for mutation in ['= 1', '+= 1', '-= 1', '*= 1', '/= 1', '%= 1', '<<= 1', '>>= 1', '>>>= 1',
 		'&= 1', '|= 1', '^= 1', '++', '--'] {
 		for mode in ['', 'rlock', 'lock'] {
@@ -43,14 +45,31 @@ fn test_translated_shared_mutations_still_require_write_locks() {
 			} else {
 				'${mode} state { state.count ${mutation} }'
 			}
-			os.write_file(path, prefix + body + ' }\n')!
-			result := os.exec([@VEXE, '-check', path])
 			if mode == 'lock' {
-				assert result.exit_code == 0, result.output
+				locked << body
 			} else {
-				assert result.exit_code != 0, result.output
-				assert result.output.contains('lock'), result.output
+				rejected << body
 			}
+		}
+	}
+	header := '@[translated]\nmodule main\nstruct State { mut: count int }\n'
+	for accepted in [false, true] {
+		bodies := if accepted { locked } else { rejected }
+		mut functions := []string{cap: bodies.len}
+		for i, body in bodies {
+			functions << 'fn case_${i}() { shared state := State{}; ${body} }'
+		}
+		path := os.join_path(root, 'main.v')
+		os.write_file(path, header + functions.join('\n') + '\nfn main() {}\n')!
+		result := os.exec([@VEXE, '-message-limit', '1000', '-check', path])
+		if accepted {
+			assert result.exit_code == 0, result.output
+			continue
+		}
+		assert result.exit_code != 0, result.output
+		diagnostics := result.output.split_into_lines().filter(it.contains(': error: ') && it.contains('lock'))
+		for i, body in bodies {
+			assert diagnostics.any(it.contains('main.v:${header.count('\n') + i + 1}:')), '${body}: ${result.output}'
 		}
 	}
 }

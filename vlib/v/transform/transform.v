@@ -4829,7 +4829,10 @@ fn (mut t Transformer) collect_types() {
 							}
 						}
 					}
-					t.globals.set_id(f.value_text(), typ)
+					// A module's global leaves the bare name to a `main` global of that name.
+					if isnil(t.tc) || t.tc.keeps_bare_global_of(cur_mod, f.value_text()) {
+						t.globals.set_id(f.value_text(), typ)
+					}
 					if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
 						qname := '${cur_mod}.${f.value_text()}'
 						t.globals.set_id(qname, typ)

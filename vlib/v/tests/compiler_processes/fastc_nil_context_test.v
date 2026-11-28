@@ -131,25 +131,50 @@ fn count(values ...voidptr) int { return values.len }
 fn main() { assert count(nil, nil) == 2; println("ok") }
 ', false},
 	]
+	// Plain V cases are modules of one program; C interop files and the case with its own
+	// v.mod keep projects of their own.
+	shared_root := os.join_path(os.vtmp_dir(), 'fastc_nil_modules_${os.getpid()}')
+	os.mkdir_all(shared_root)!
+	defer { os.rmdir_all(shared_root) or {} }
+	mut imports := []string{}
+	mut calls := []string{}
 	for case in cases {
-		root := os.join_path(os.vtmp_dir(), 'fastc_nil_${case.name}_${os.getpid()}')
-		os.mkdir_all(root)!
-		defer { os.rmdir_all(root) or {} }
-		os.write_file(os.join_path(root, if case.c_file { 'main.c.v' } else { 'main.v' }), case.source)!
-		if case.name == 'generic_collision' {
-			os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'nil_collision' }")!
-			os.mkdir_all(os.join_path(root, 'other'))!
-			os.write_file(os.join_path(root, 'other', 'other.v'), 'module other\npub const marker = 1\npub fn consume[T](value T) T { return value }\n')!
+		if case.c_file || case.name == 'generic_collision' {
+			root := os.join_path(os.vtmp_dir(), 'fastc_nil_${case.name}_${os.getpid()}')
+			os.mkdir_all(root)!
+			defer { os.rmdir_all(root) or {} }
+			os.write_file(os.join_path(root, if case.c_file { 'main.c.v' } else { 'main.v' }), case.source)!
+			if case.name == 'generic_collision' {
+				os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'nil_collision' }")!
+				os.mkdir_all(os.join_path(root, 'other'))!
+				os.write_file(os.join_path(root, 'other', 'other.v'), 'module other\npub const marker = 1\npub fn consume[T](value T) T { return value }\n')!
+			}
+			check_fastc_nil_project(case.name, root, 1)
+			continue
 		}
-		for backend in ['c', 'fastc'] {
-			executable := os.join_path(root, 'program_${backend}')
-			build := cmdexec.run(@VEXE, ['-b', backend, '-nocache', '-gc', 'none', '-o', executable,
-				root])
-			assert build.exit_code == 0, '${case.name} ${backend}: ${build.output}'
-			run := cmdexec.run(executable, [])
-			assert run.exit_code == 0, '${case.name} ${backend}: ${run.output}'
-			assert run.output.trim_space() == 'ok', '${case.name} ${backend}: ${run.output}'
-		}
+		module_name := 'case_${case.name}'
+		assert case.source.starts_with('module main\n') && case.source.contains('\nfn main() {')
+		os.mkdir_all(os.join_path(shared_root, module_name))!
+		os.write_file(os.join_path(shared_root, module_name, '${case.name}.v'), 'module ${module_name}\n' +
+			case.source.replace_once('\nfn main() {', '\npub fn exercise() {').all_after('module main\n'))!
+		imports << 'import ${module_name}'
+		calls << '\t${module_name}.exercise()'
+	}
+	os.write_file(os.join_path(shared_root, 'main.v'), 'module main\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n')!
+	check_fastc_nil_project('modules', shared_root, calls.len)
+}
+
+// check_fastc_nil_project builds `root` with both backends and expects `ok` from each of its
+// `cases` programs.
+fn check_fastc_nil_project(name string, root string, cases int) {
+	for backend in ['c', 'fastc'] {
+		executable := os.join_path(root, 'program_${backend}')
+		build := cmdexec.run(@VEXE, ['-b', backend, '-nocache', '-gc', 'none', '-o', executable,
+			root])
+		assert build.exit_code == 0, '${name} ${backend}: ${build.output}'
+		run := cmdexec.run(executable, [])
+		assert run.exit_code == 0, '${name} ${backend}: ${run.output}'
+		assert run.output.split_into_lines() == []string{len: cases, init: 'ok'}, '${name} ${backend}: ${run.output}'
 	}
 }
 

@@ -332,7 +332,7 @@ fn main() { animation.verify_callbacks() }
 fn test_interface_generic_patterns_still_require_known_compatible_types() {
 	root := generic_interface_pattern_fixture('invalid')
 	defer { os.rmdir_all(root) or {} }
-	for pattern in [
+	patterns := [
 		'Missing[f32]',
 		'&Missing[f32]',
 		'Animator[Missing]',
@@ -359,20 +359,29 @@ fn test_interface_generic_patterns_still_require_known_compatible_types() {
 		'Plain[f32]',
 		'Wrong[f32]',
 		'&Wrong[f32]',
-	] {
-		os.write_file(os.join_path(root, 'animation', 'invalid.v'), 'module animation
-pub fn invalid(mut value Motion) {
-	if mut value is ${pattern} { println(value) }
-}
-') or { panic(err) }
-		os.write_file(os.join_path(root, 'main.v'), 'import animation
+	]
+	// Every pattern gets a function of its own in one file, so one check covers all of them.
+	mut functions := []string{cap: patterns.len}
+	mut calls := []string{cap: patterns.len}
+	for i, pattern in patterns {
+		functions << 'pub fn invalid_${i}(mut value Motion) { if mut value is ${pattern} { println(value) } }'
+		calls << '\tanimation.invalid_${i}(mut value)'
+	}
+	header := 'module animation\n'
+	os.write_file(os.join_path(root, 'animation', 'invalid.v'), header + functions.join('\n') + '\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'main.v'), 'import animation
 fn main() {
 	mut value := animation.Motion(animation.Plain{})
-	animation.invalid(mut value)
+${calls.join('\n')}
 }
 ') or { panic(err) }
-		checked := os.exec([@VEXE, '-no-retry-compilation', '-check', root])
-		assert checked.exit_code != 0, '${pattern}: ${checked.output}'
-		assert checked.output.contains('unknown type') || checked.output.contains("doesn\'t implement interface"), '${pattern}: ${checked.output}'
+	checked := os.exec([@VEXE, '-no-retry-compilation', '-message-limit', '10000', '-check', root])
+	assert checked.exit_code != 0, checked.output
+	errors := checked.output.split_into_lines().filter(it.contains(': error: ')
+		&& (it.contains('unknown type') || it.contains("doesn\'t implement interface")))
+	for i, pattern in patterns {
+		assert errors.any(it.contains('invalid.v:${i + 2}:')), '${pattern}: ${checked.output}'
 	}
 }
