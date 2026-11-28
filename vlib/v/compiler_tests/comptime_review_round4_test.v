@@ -136,6 +136,22 @@ fn round4_check_runtime(name string, cases []Round4RuntimeCase) {
 		files['${module_name}/${case.name}.v'] = source.replace_once('\nfn main()', '\npub fn exercise()')
 	}
 	files['main.v'] = "module main\n\nimport os\n${imports.join('\n')}\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
+	round4_check_runtime_outputs(name, cases, files)
+}
+
+fn round4_check_main_runtime(name string, cases []Round4RuntimeCase, extra_files map[string]string) {
+	// Keep each fixture in its own file so that its import aliases stay local.
+	mut files := extra_files.clone()
+	mut calls := []string{cap: cases.len}
+	for case in cases {
+		files['${case.name}.v'] = case.source.replace_once('\nfn main()', '\nfn ${case.name}()')
+		calls << "\t\t'${case.name}' { ${case.name}() }"
+	}
+	files['main.v'] = "module main\n\nimport os\n\nfn main() {\n\tmatch os.args[1] {\n${calls.join('\n')}\n\t\telse { panic('unknown fixture') }\n\t}\n}\n"
+	round4_check_runtime_outputs(name, cases, files)
+}
+
+fn round4_check_runtime_outputs(name string, cases []Round4RuntimeCase, files map[string]string) {
 	bin_path := round4_compile_good_project(v3_bin, name, files, '')
 	for case in cases {
 		out := round4_run_binary(case.name, bin_path, case.name)
@@ -764,17 +780,9 @@ fn main() {
 	])
 }
 
-fn test_comptime_for_import_alias_source_values() {
-	out := round4_run_good_project(v3_bin, 'import_alias_values', {
-		'v.mod':           "Module { name: 'import_alias_values' }\n"
-		'colors/colors.v': 'module colors
-
-pub enum Shade {
-	red
-	blue
-}
-'
-		'main.v':          'module main
+fn test_comptime_import_alias_lookups() {
+	round4_check_main_runtime('comptime_import_alias_lookups', [
+		Round4RuntimeCase{'import_alias_values', 'module main
 
 import colors as palette
 
@@ -785,31 +793,8 @@ fn main() {
 	}
 	println(rows.join("|"))
 }
-'
-	}, 'main.v')
-	assert out == 'red|blue'
-}
-
-fn test_comptime_for_nested_value_source_uses_resolved_field_type() {
-	out := round4_run_good_project(v3_bin, 'nested_value_resolved_field_type', {
-		'v.mod':     "Module { name: 'nested_value_resolved_field_type' }\n"
-		'pkg/pkg.v': 'module pkg
-
-pub struct Inner {
-pub:
-	count int
-}
-
-pub struct Outer {
-pub:
-	nested Inner
-}
-
-pub fn make_outer() Outer {
-	return Outer{}
-}
-'
-		'main.v':    'module main
+', 'red|blue'},
+		Round4RuntimeCase{'nested_value_resolved_field_type', 'module main
 
 import pkg
 
@@ -824,9 +809,133 @@ fn nested_names(value pkg.Outer) string {
 fn main() {
 	println(nested_names(pkg.make_outer()))
 }
+', 'count'},
+		Round4RuntimeCase{'selective_import_comptime_for_static_pruning', 'module main
+
+import pkg { S }
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field.name == "id" {
+			rows << field.name
+		} $else {
+			missing_fn()
+		}
+	}
+	println(rows.join("|"))
+}
+', 'id'},
+		Round4RuntimeCase{'attribute_reflection_import_alias', 'module main
+
+import routes as r
+
+fn attribute_name(attr VAttribute) string {
+	return attr.name
+}
+
+fn main() {
+	mut rows := []string{}
+	$for attr in r.handler.attributes {
+		rows << "direct:" + attribute_name(attr)
+	}
+	h := r.handler
+	$for attr in h.attributes {
+		rows << "local:" + attribute_name(attr)
+	}
+	println(rows.join("|"))
+}
+', 'direct:endpoint|local:endpoint'},
+		Round4RuntimeCase{'attribute_reflection_selective_import', 'module main
+
+import routes { Controller, handler }
+
+fn main() {
+	mut rows := []string{}
+	$for attr in handler.attributes {
+		rows << "direct:" + attr.name
+	}
+	h := handler
+	$for attr in h.attributes {
+		rows << "local:" + attr.name
+	}
+	$for attr in Controller.attributes {
+		rows << "type:" + attr.name
+	}
+	println(rows.join("|"))
+}
+', 'direct:endpoint|local:endpoint|type:group'},
+		Round4RuntimeCase{'params_reflection_import_alias', 'module main
+
+import pkg as p
+
+fn main() {
+	mut rows := []string{}
+	$for param in p.consume.params {
+		rows << param.name
+	}
+	println(rows.join("|"))
+}
+', 'item'},
+		Round4RuntimeCase{'params_reflection_selective_import', 'module main
+
+import pkg { consume }
+
+fn main() {
+	mut rows := []string{}
+	$for param in consume.params {
+		rows << "direct:" + param.name
+	}
+	h := consume
+	$for param in h.params {
+		rows << "local:" + param.name
+	}
+	println(rows.join("|"))
+}
+', 'direct:item|local:item'},
+	], {
+		'v.mod':           "Module { name: 'comptime_import_alias_lookups' }\n"
+		'colors/colors.v': 'module colors
+
+pub enum Shade {
+	red
+	blue
+}
 '
-	}, 'main.v')
-	assert out == 'count'
+		'pkg/pkg.v':       'module pkg
+
+pub struct Inner {
+pub:
+	count int
+}
+
+pub struct Outer {
+pub:
+	nested Inner
+}
+
+pub fn make_outer() Outer {
+	return Outer{}
+}
+
+pub struct S {
+pub:
+	id int
+}
+
+pub fn consume(item string) {
+	_ = item
+}
+'
+		'routes/routes.v': 'module routes
+
+@[endpoint]
+pub fn handler() {}
+
+@[group]
+pub struct Controller {}
+'
+	})
 }
 
 fn test_comptime_field_typ_guards_use_declaring_module_type() {
@@ -903,36 +1012,6 @@ fn main() {
 '
 	}, 'main.v')
 	assert out == 'value:red|value:blue|field:id'
-}
-
-fn test_selective_import_comptime_for_static_pruning_resolves_type() {
-	out := round4_run_good_project(v3_bin, 'selective_import_comptime_for_static_pruning', {
-		'v.mod':     "Module { name: 'selective_import_comptime_for_static_pruning' }\n"
-		'pkg/pkg.v': 'module pkg
-
-pub struct S {
-pub:
-	id int
-}
-'
-		'main.v':    'module main
-
-import pkg { S }
-
-fn main() {
-	mut rows := []string{}
-	$for field in S.fields {
-		$if field.name == "id" {
-			rows << field.name
-		} $else {
-			missing_fn()
-		}
-	}
-	println(rows.join("|"))
-}
-'
-	}, 'main.v')
-	assert out == 'id'
 }
 
 fn test_non_generic_call_matching_generic_short_name_does_not_skip_comptime_for() {
@@ -1401,22 +1480,9 @@ fn main() {
 	])
 }
 
-fn test_cross_module_composite_field_typ_guard_uses_qualified_type() {
-	out := round4_run_good_project(v3_bin, 'cross_module_composite_field_typ_guard', {
-		'v.mod':     "Module { name: 'cross_module_composite_field_typ_guard' }\n"
-		'pkg/pkg.v': 'module pkg
-
-pub struct Inner {
-pub:
-	id int
-}
-
-pub struct Outer {
-pub:
-	items map[string]Inner
-}
-'
-		'main.v':    'module main
+fn test_comptime_declaring_module_lookups() {
+	round4_check_main_runtime('comptime_declaring_module_lookups', [
+		Round4RuntimeCase{'cross_module_composite_field_typ_guard', 'module main
 
 import pkg
 
@@ -1431,9 +1497,146 @@ fn main() {
 	}
 	println(rows.join("|"))
 }
+', 'items'},
+		Round4RuntimeCase{'enum_const_decl_module', 'module main
+
+import colors
+
+fn main() {
+	println(colors.values())
+}
+', 'dark:6|light:7'},
+		Round4RuntimeCase{'bare_method_data_imported_return', 'module main
+
+import pkg
+
+fn main() {
+	mut items := []FunctionData{}
+	mut rows := []string{}
+	$for method in pkg.Foo.methods {
+		items << method
+		rows << typeof(method).name
+		rows << method.name
+		$if method.return_type is pkg.Ret {
+			rows << "return-guard"
+		} $else {
+			missing_imported_method_return_guard()
+		}
+		$if method.params[0].typ is pkg.Ret {
+			rows << "param-guard"
+		} $else {
+			missing_imported_method_param_guard()
+		}
+		rows << (method.return_type == typeof[pkg.Ret]().idx).str()
+		rows << (method.typ == typeof[fn (pkg.Ret) pkg.Ret]().idx).str()
+	}
+	rows << items[0].name
+	rows << (items[0].return_type == typeof[pkg.Ret]().idx).str()
+	rows << (items[0].args[0].typ == typeof[pkg.Ret]().idx).str()
+	rows << (items[0].typ == typeof[fn (pkg.Ret) pkg.Ret]().idx).str()
+	println(rows.join("|"))
+}
+', 'FunctionData|make|return-guard|param-guard|true|true|make|true|true|true'},
+		Round4RuntimeCase{'imported_function_param_module', 'module main
+
+import pkg
+
+fn main() {
+	mut params := []FunctionParam{}
+	mut rows := []string{}
+	h := pkg.consume
+	$for param in h.params {
+		params << param
+		rows << param.name
+		$if param.typ is pkg.Item {
+			rows << "guard"
+		} $else {
+			missing_imported_function_param_guard()
+		}
+		rows << (param.typ == typeof[pkg.Item]().idx).str()
+	}
+	rows << (params[0].typ == typeof[pkg.Item]().idx).str()
+	println(rows.join("|"))
+}
+', 'item|guard|true|true'},
+		Round4RuntimeCase{'local_reflection_source_module_qualification', 'module main
+
+import localmod
+
+@[main_attr]
+fn target(foreign int) {
+	_ = foreign
+}
+
+fn main() {
+	println(localmod.inspect())
+}
+', 'param:local|attr:module_attr'},
+	], {
+		'v.mod':               "Module { name: 'comptime_declaring_module_lookups' }\n"
+		'pkg/pkg.v':           'module pkg
+
+pub struct Inner {
+pub:
+	id int
+}
+
+pub struct Outer {
+pub:
+	items map[string]Inner
+}
+
+pub struct Foo {}
+
+pub struct Ret {}
+
+pub fn (f Foo) make(value Ret) Ret {
+	_ = f
+	return value
+}
+
+pub struct Item {}
+
+pub fn consume(item Item) {
+	_ = item
+}
 '
-	}, 'main.v')
-	assert out == 'items'
+		'colors/colors.v':     'module colors
+
+const base = 4
+
+pub enum Shade {
+	dark = base + 2
+	light
+}
+
+pub fn values() string {
+	mut rows := []string{}
+	$for item in Shade.values {
+		rows << item.name + ":" + int_str(item.value)
+	}
+	return rows.join("|")
+}
+'
+		'localmod/localmod.v': 'module localmod
+
+@[module_attr]
+pub fn target(local string) {
+	_ = local
+}
+
+pub fn inspect() string {
+	mut rows := []string{}
+	$for param in target.params {
+		rows << "param:" + param.name
+	}
+	$for attr in target.attributes {
+		rows << "attr:" + attr.name
+	}
+	return rows.join("|")
+}
+'
+	})
 }
 
 fn test_enum_metadata_calls_and_power_pruning() {
@@ -1692,38 +1895,6 @@ fn main() {
 }
 	", 'unknown EnumData member `nmae`'},
 	])
-}
-
-fn test_enum_values_use_const_from_declaring_module() {
-	out := round4_run_good_project(v3_bin, 'enum_const_decl_module', {
-		'v.mod':           "Module { name: 'enum_const_decl_module' }\n"
-		'colors/colors.v': 'module colors
-
-const base = 4
-
-pub enum Shade {
-	dark = base + 2
-	light
-}
-
-pub fn values() string {
-	mut rows := []string{}
-	$for item in Shade.values {
-		rows << item.name + ":" + int_str(item.value)
-	}
-	return rows.join("|")
-}
-'
-		'main.v':          'module main
-
-import colors
-
-fn main() {
-	println(colors.values())
-}
-'
-	}, 'main.v')
-	assert out == 'dark:6|light:7'
 }
 
 fn test_reflected_enum_members_and_flags() {
@@ -2208,72 +2379,6 @@ fn main() {
 	assert out == '14'
 }
 
-fn test_attribute_reflection_resolves_import_alias_sources() {
-	out := round4_run_good_project(v3_bin, 'attribute_reflection_import_alias', {
-		'v.mod':           "Module { name: 'attribute_reflection_import_alias' }\n"
-		'routes/routes.v': 'module routes
-
-@[endpoint]
-pub fn handler() {}
-'
-		'main.v':          'module main
-
-import routes as r
-
-fn attribute_name(attr VAttribute) string {
-	return attr.name
-}
-
-fn main() {
-	mut rows := []string{}
-	$for attr in r.handler.attributes {
-		rows << "direct:" + attribute_name(attr)
-	}
-	h := r.handler
-	$for attr in h.attributes {
-		rows << "local:" + attribute_name(attr)
-	}
-	println(rows.join("|"))
-}
-'
-	}, 'main.v')
-	assert out == 'direct:endpoint|local:endpoint'
-}
-
-fn test_attribute_reflection_resolves_selective_import_sources() {
-	out := round4_run_good_project(v3_bin, 'attribute_reflection_selective_import', {
-		'v.mod':           "Module { name: 'attribute_reflection_selective_import' }\n"
-		'routes/routes.v': 'module routes
-
-@[endpoint]
-pub fn handler() {}
-
-@[group]
-pub struct Controller {}
-'
-		'main.v':          'module main
-
-import routes { Controller, handler }
-
-fn main() {
-	mut rows := []string{}
-	$for attr in handler.attributes {
-		rows << "direct:" + attr.name
-	}
-	h := handler
-	$for attr in h.attributes {
-		rows << "local:" + attr.name
-	}
-	$for attr in Controller.attributes {
-		rows << "type:" + attr.name
-	}
-	println(rows.join("|"))
-}
-'
-	}, 'main.v')
-	assert out == 'direct:endpoint|local:endpoint|type:group'
-}
-
 fn test_comptime_pseudo_values_and_define_shadowing() {
 	round4_check_runtime('comptime_pseudo_values_and_define_shadowing', [
 		Round4RuntimeCase{'pseudo_value_cached_local', "fn main() {
@@ -2510,92 +2615,6 @@ fn main() {
 }
 ', 'unknown identifier `methd`'},
 	])
-}
-
-fn test_bare_method_data_and_imported_return_type_are_materialized() {
-	out := round4_run_good_project(v3_bin, 'bare_method_data_imported_return', {
-		'v.mod':     "Module { name: 'bare_method_data_imported_return' }\n"
-		'pkg/pkg.v': 'module pkg
-
-pub struct Foo {}
-
-pub struct Ret {}
-
-pub fn (f Foo) make(value Ret) Ret {
-	_ = f
-	return value
-}
-'
-		'main.v':    'module main
-
-import pkg
-
-fn main() {
-	mut items := []FunctionData{}
-	mut rows := []string{}
-	$for method in pkg.Foo.methods {
-		items << method
-		rows << typeof(method).name
-		rows << method.name
-		$if method.return_type is pkg.Ret {
-			rows << "return-guard"
-		} $else {
-			missing_imported_method_return_guard()
-		}
-		$if method.params[0].typ is pkg.Ret {
-			rows << "param-guard"
-		} $else {
-			missing_imported_method_param_guard()
-		}
-		rows << (method.return_type == typeof[pkg.Ret]().idx).str()
-		rows << (method.typ == typeof[fn (pkg.Ret) pkg.Ret]().idx).str()
-	}
-	rows << items[0].name
-	rows << (items[0].return_type == typeof[pkg.Ret]().idx).str()
-	rows << (items[0].args[0].typ == typeof[pkg.Ret]().idx).str()
-	rows << (items[0].typ == typeof[fn (pkg.Ret) pkg.Ret]().idx).str()
-	println(rows.join("|"))
-}
-'
-	}, 'main.v')
-	assert out == 'FunctionData|make|return-guard|param-guard|true|true|make|true|true|true'
-}
-
-fn test_imported_function_param_types_use_declaring_module() {
-	out := round4_run_good_project(v3_bin, 'imported_function_param_module', {
-		'v.mod':     "Module { name: 'imported_function_param_module' }\n"
-		'pkg/pkg.v': 'module pkg
-
-pub struct Item {}
-
-pub fn consume(item Item) {
-	_ = item
-}
-'
-		'main.v':    'module main
-
-import pkg
-
-fn main() {
-	mut params := []FunctionParam{}
-	mut rows := []string{}
-	h := pkg.consume
-	$for param in h.params {
-		params << param
-		rows << param.name
-		$if param.typ is pkg.Item {
-			rows << "guard"
-		} $else {
-			missing_imported_function_param_guard()
-		}
-		rows << (param.typ == typeof[pkg.Item]().idx).str()
-	}
-	rows << (params[0].typ == typeof[pkg.Item]().idx).str()
-	println(rows.join("|"))
-}
-'
-	}, 'main.v')
-	assert out == 'item|guard|true|true'
 }
 
 fn test_raw_and_quoted_string_literal_shadowing() {
@@ -3154,98 +3173,6 @@ fn test_normal_string_attribute_arguments_are_unescaped() {
 		'\t}',
 		'}',
 	].join('\n'), 'unknown function: missing_selected_escaped_attribute_fn')
-}
-
-fn test_params_reflection_resolves_import_alias_source() {
-	out := round4_run_good_project(v3_bin, 'params_reflection_import_alias', {
-		'v.mod':     "Module { name: 'params_reflection_import_alias' }\n"
-		'pkg/pkg.v': 'module pkg
-
-pub fn consume(item string) {
-	_ = item
-}
-'
-		'main.v':    'module main
-
-import pkg as p
-
-fn main() {
-	mut rows := []string{}
-	$for param in p.consume.params {
-		rows << param.name
-	}
-	println(rows.join("|"))
-}
-'
-	}, 'main.v')
-	assert out == 'item'
-}
-
-fn test_params_reflection_resolves_selective_import_source() {
-	out := round4_run_good_project(v3_bin, 'params_reflection_selective_import', {
-		'v.mod':     "Module { name: 'params_reflection_selective_import' }\n"
-		'pkg/pkg.v': 'module pkg
-
-pub fn consume(item string) {
-	_ = item
-}
-'
-		'main.v':    'module main
-
-import pkg { consume }
-
-fn main() {
-	mut rows := []string{}
-	$for param in consume.params {
-		rows << "direct:" + param.name
-	}
-	h := consume
-	$for param in h.params {
-		rows << "local:" + param.name
-	}
-	println(rows.join("|"))
-}
-'
-	}, 'main.v')
-	assert out == 'direct:item|local:item'
-}
-
-fn test_local_reflection_sources_are_qualified_to_current_module() {
-	out := round4_run_good_project(v3_bin, 'local_reflection_source_module_qualification', {
-		'v.mod':               "Module { name: 'local_reflection_source_module_qualification' }\n"
-		'localmod/localmod.v': 'module localmod
-
-@[module_attr]
-pub fn target(local string) {
-	_ = local
-}
-
-pub fn inspect() string {
-	mut rows := []string{}
-	$for param in target.params {
-		rows << "param:" + param.name
-	}
-	$for attr in target.attributes {
-		rows << "attr:" + attr.name
-	}
-	return rows.join("|")
-}
-'
-		'main.v':              'module main
-
-import localmod
-
-@[main_attr]
-fn target(foreign int) {
-	_ = foreign
-}
-
-fn main() {
-	println(localmod.inspect())
-}
-'
-	}, 'main.v')
-	assert out == 'param:local|attr:module_attr'
 }
 
 fn test_generic_reflection_compile_error_waits_for_selected_branch() {
