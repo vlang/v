@@ -1599,50 +1599,57 @@ fn decl_in_builtin_array(decl string) bool {
 	return decl.replace('\\', '/').contains('builtin/array.v:')
 }
 
-fn assert_same_array_method_declaration(method string, lines []string) {
-	questions := lines.map(word_question(it, 'gd^', functions_line(it), method, 0))
-	answers := ask_answers(os.join_path(work_dir, 'functions'), questions)
-	decl := answers[0]
-	assert decl_in_builtin_array(decl), decl
-	for i, answer in answers[1..] {
-		assert answer == decl, lines[i + 1]
-	}
-}
-
 fn test_a_member_of_a_generic_value_is_the_member_of_its_type() {
 	// `xs.map()` over `xs []T` in a generic body calls the `map` of every array:
 	// the declaration and the signature of `nums.map()` over an `[]int`.
-	assert_same_array_method_declaration('map', [
-		'\tprintln(nums.map(it * 2))',
-		'\tprintln(xs.map(count))',
-		'\treturn xs.map(|x| x.name.to_upper())',
-		// Over an array literal, whose elements the checker keeps no type for.
-		'\tprintln([3, 4].map(it + 1))',
-	])
-	assert_same_array_method_declaration('filter', [
-		'\tprintln(nums.filter(it > 1))',
-		'\tprintln(xs.filter(it.name.len > 1))',
-	])
-	assert_same_array_method_declaration('sort', [
-		'\tsorted.sort(a < b)',
-		'\txs.sort(a.name < b.name)',
-	])
+	array_methods := {
+		'map':    [
+			'\tprintln(nums.map(it * 2))',
+			'\tprintln(xs.map(count))',
+			'\treturn xs.map(|x| x.name.to_upper())',
+			// Over an array literal, whose elements the checker keeps no type for.
+			'\tprintln([3, 4].map(it + 1))',
+		]
+		'filter': [
+			'\tprintln(nums.filter(it > 1))',
+			'\tprintln(xs.filter(it.name.len > 1))',
+		]
+		'sort':   [
+			'\tsorted.sort(a < b)',
+			'\txs.sort(a.name < b.name)',
+		]
+	}
+	mut questions := []string{}
+	for method, lines in array_methods {
+		questions << lines.map(word_question(it, 'gd^', functions_line(it), method, 0))
+	}
 	box_call := '\treturn b.label()'
-	answers := ask_answers(os.join_path(work_dir, 'functions'), [
+	questions << [
 		function_hover_question('\tprintln([3, 4].map(it + 1))', 'it'),
 		function_hover_question('\tprintln(nums.map(it * 2))', 'map'),
 		function_hover_question('\tprintln(xs.map(count))', 'map'),
 		// A method of a generic struct, called on a `Box[T]`.
 		word_question(box_call, 'gd^', functions_line(box_call), 'label', 0),
 		function_hover_question(box_call, 'label'),
-	])
-	assert answers[0] == hover_of('it int')
-	map_hover := answers[1]
+	]
+	answers := ask_answers(os.join_path(work_dir, 'functions'), questions)
+	mut offset := 0
+	for _, lines in array_methods {
+		decl := answers[offset]
+		assert decl_in_builtin_array(decl), decl
+		for i, line in lines[1..] {
+			assert answers[offset + i + 1] == decl, line
+		}
+		offset += lines.len
+	}
+	member_answers := answers[offset..]
+	assert member_answers[0] == hover_of('it int')
+	map_hover := member_answers[1]
 	assert map_hover.contains('fn map('), map_hover
-	assert answers[2] == map_hover
+	assert member_answers[2] == map_hover
 	label := functions_line('fn (b Box[T]) label() string {')
-	assert answers[3] == 'main.v:${label}:14'
-	assert answers[4] == hover_of('fn label() string')
+	assert member_answers[3] == 'main.v:${label}:14'
+	assert member_answers[4] == hover_of('fn label() string')
 }
 
 fn function_hover_question(text string, word string) string {
@@ -1653,13 +1660,19 @@ fn test_the_callee_of_a_call_through_a_value_is_that_value() {
 	// A local that holds a function literal, a method value, an instance of a
 	// generic function and a parameter of a function type are described where
 	// they are called as where they are declared.
-	dir := os.join_path(work_dir, 'functions')
-	answers := ask_answers(dir, [
+	longest_call := '\tprintln(longest[User](u, u).name)'
+	answers := ask_answers(os.join_path(work_dir, 'functions'), [
 		function_hover_question('\tprintln(double(4))', 'double'),
 		function_hover_question('\tprintln(g())', 'g'),
 		function_hover_question('\tf := longest[User]', 'f'),
 		function_hover_question("\tprintln(f(u, User{ name: 'bo' }).name)", 'f'),
 		function_hover_question('\treturn f(x)', 'f'),
+		// A generic function called with its type arguments is that function.
+		function_hover_question(longest_call, 'longest'),
+		word_question(longest_call, 'gd^', functions_line(longest_call), 'longest', 0),
+		// A function literal in a generic body takes a `T`, written by its name.
+		function_hover_question('\tprintln(xs.map(count))', 'count'),
+		function_hover_question('\tcount := fn (x T) int {', 'count'),
 	])
 	assert answers[0] == hover_of('double fn (int) int')
 	assert answers[1] == hover_of('g fn () string')
@@ -1667,20 +1680,10 @@ fn test_the_callee_of_a_call_through_a_value_is_that_value() {
 	assert instance.contains('f fn ('), instance
 	assert answers[3] == instance
 	assert answers[4] == hover_of('f fn (int) int')
-	// A generic function called with its type arguments is that function.
 	longest := functions_line('fn longest[T Named](a T, b T) T {')
-	longest_call := '\tprintln(longest[User](u, u).name)'
-	longest_answers := ask_answers(dir, [
-		function_hover_question(longest_call, 'longest'),
-		word_question(longest_call, 'gd^', functions_line(longest_call), 'longest', 0),
-	])
-	assert longest_answers == [hover_of('fn longest[T Named](a T, b T) T'), 'main.v:${longest}:3']
-	// A function literal in a generic body takes a `T`, written by its name.
+	assert answers[5..7] == [hover_of('fn longest[T Named](a T, b T) T'), 'main.v:${longest}:3']
 	count := hover_of('count fn (T) int\\nT: implements main.Named')
-	assert ask_answers(dir, [
-		function_hover_question('\tprintln(xs.map(count))', 'count'),
-		function_hover_question('\tcount := fn (x T) int {', 'count'),
-	]) == [count, count]
+	assert answers[7..] == [count, count]
 }
 
 fn test_a_static_method_is_declared_by_its_name() {
