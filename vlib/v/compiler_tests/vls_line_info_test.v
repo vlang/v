@@ -671,7 +671,7 @@ fn is_name_byte(c u8) bool {
 
 fn test_hover_writes_declarations_as_v1_did() {
 	lines := program.split('\n')
-	type_hovers := ask_answers(work_dir, [
+	questions := [
 		word_question(lines[34], 'hv^', 35, 'p', 0),
 		word_question(lines[34], 'hv^', 35, 'Point', 0),
 		word_question(lines[39], 'hv^', 40, 'Color', 0),
@@ -680,33 +680,12 @@ fn test_hover_writes_declarations_as_v1_did() {
 		word_question(lines[13], 'hv^', 14, 'red', 0),
 		word_question(lines[61], 'hv^', 62, 'write', 0),
 		word_question(lines[67], 'hv^', 68, 'write', 0),
-	])
-	assert type_hovers == [
-		hover_of('p main.Point'),
-		hover_of('struct Point'),
-		hover_of('enum Color'),
-		hover_of('Color.blue = 6'),
-		hover_of('Color.red = 0'),
-		hover_of('Perm.write = 0b10 (2)'),
-		hover_of('Perm.write = 0b10 (2)'),
-	]
-	function_and_const_hovers := ask_answers(work_dir, [
 		word_question(lines[40], 'hv^', 41, 'sum', 0),
 		word_question(lines[43], 'hv^', 44, 'limit', 0),
 		word_question(lines[56], 'hv^', 57, 'total', 0),
 		word_question(lines[58], 'hv^', 59, 'new_builder', 0),
 		word_question(lines[59], 'hv^', 60, 'write_string', 0),
 		word_question(lines[57], 'hv^', 58, 'args', 0),
-	])
-	assert function_and_const_hovers == [
-		hover_of('fn sum() int'),
-		hover_of('const limit int'),
-		hover_of('fn total(base int, nums ...int) int'),
-		hover_of('fn new_builder(initial_size int) strings.Builder'),
-		hover_of('fn write_string(s string)'),
-		hover_of('const args []string'),
-	]
-	field_and_local_hovers := ask_answers(work_dir, [
 		// A field, and a field named in a struct literal.
 		word_question(lines[55], 'hv^', 56, 'x', 0),
 		word_question(lines[36], 'hv^', 37, 'y', 0),
@@ -714,14 +693,32 @@ fn test_hover_writes_declarations_as_v1_did() {
 		word_question(lines[53], 'hv^', 54, 'err', 0),
 		word_question(lines[55], 'hv^', 56, 'it', 0),
 		word_question(lines[50], 'hv^', 51, 'v', 0),
-	])
-	assert field_and_local_hovers == [
+	]
+	answers := ask_answers(work_dir, questions)
+	expected := [
+		hover_of('p main.Point'),
+		hover_of('struct Point'),
+		hover_of('enum Color'),
+		hover_of('Color.blue = 6'),
+		hover_of('Color.red = 0'),
+		hover_of('Perm.write = 0b10 (2)'),
+		hover_of('Perm.write = 0b10 (2)'),
+		hover_of('fn sum() int'),
+		hover_of('const limit int'),
+		hover_of('fn total(base int, nums ...int) int'),
+		hover_of('fn new_builder(initial_size int) strings.Builder'),
+		hover_of('fn write_string(s string)'),
+		hover_of('const args []string'),
 		hover_of('x int'),
 		hover_of('y int'),
 		hover_of('err IError'),
 		hover_of('it main.Point'),
 		hover_of('v int'),
 	]
+	assert answers.len == expected.len
+	for i, want in expected {
+		assert answers[i] == want, questions[i]
+	}
 }
 
 fn test_definition_prints_the_position_of_the_declaration() {
@@ -840,49 +837,47 @@ fn test_definition_of_a_declaration_is_the_declaration() {
 fn test_a_name_stands_for_its_nearest_declaration_implicit_ones_too() {
 	dir := os.join_path(work_dir, 'shadowing')
 	lines := shadowing_program.split('\n')
-	// The parameter `err`, and the `err` an `else` and an `or {}` declare in
-	// its function: a rename of the parameter changes the occurrences whose
-	// definition is the parameter only.
-	err_answers := ask_answers(dir, [
+	answers := ask_answers(dir, [
+		// The parameter `err`, and the `err` an `else` and an `or {}` declare in
+		// its function: a rename of the parameter changes the occurrences whose
+		// definition is the parameter only.
 		word_question(lines[7], 'gd^', 8, 'err', 0),
 		word_question(lines[11], 'gd^', 12, 'err', 0),
 		word_question(lines[14], 'gd^', 15, 'err', 0),
 		word_question(lines[7], 'hv^', 8, 'err', 0),
 		word_question(lines[11], 'hv^', 12, 'err', 0),
 		word_question(lines[14], 'hv^', 15, 'err', 0),
-	])
-	assert err_answers[0] == 'main.v:7:8'
-	assert err_answers[1] == 'main.v:11:8'
-	assert err_answers[2] == 'main.v:14:17'
-	assert err_answers[3].contains('err string')
-	assert err_answers[4].contains('err IError')
-	assert err_answers[5].contains('err IError')
-	// Locals `it` and `a`, and those `.map()` and `.sort()` declare.
-	locals_answers := ask_answers(dir, [
+		// Locals `it` and `a`, and those `.map()` and `.sort()` declare.
 		word_question(lines[22], 'gd^', 23, 'it', 0),
 		word_question(lines[22], 'hv^', 23, 'it', 0),
 		word_question(lines[23], 'gd^', 24, 'it', 0),
 		word_question(lines[23], 'hv^', 24, 'it', 0),
 		word_question(lines[26], 'gd^', 27, 'a', 0),
 		word_question(lines[27], 'gd^', 28, 'a', 0),
-	])
-	assert locals_answers[0] == 'main.v:23:16'
-	assert locals_answers[1].contains('it int')
-	assert locals_answers[2] == 'main.v:22:1'
-	assert locals_answers[3].contains('it string')
-	assert locals_answers[4] == 'main.v:27:4'
-	assert locals_answers[5] == 'main.v:25:1'
-	// A closure's capture list names the `err` of the `or {}` around it.
-	capture_answers := ask_answers(dir, [
+		// A closure's capture list names the `err` of the `or {}` around it.
 		word_question(lines[32], 'gd^', 33, 'err', 0),
 		word_question(lines[33], 'gd^', 34, 'err', 0),
 		word_question(lines[33], 'hv^', 34, 'err', 0),
 		word_question(lines[39], 'gd^', 40, 'err', 0),
 	])
-	assert capture_answers[0] == 'main.v:32:17'
-	assert capture_answers[1] == 'main.v:32:17'
-	assert capture_answers[2].contains('err IError')
-	assert capture_answers[3] == 'main.v:31:12'
+	assert answers[0] == 'main.v:7:8'
+	assert answers[1] == 'main.v:11:8'
+	assert answers[2] == 'main.v:14:17'
+	assert answers[3].contains('err string')
+	assert answers[4].contains('err IError')
+	assert answers[5].contains('err IError')
+
+	assert answers[6] == 'main.v:23:16'
+	assert answers[7].contains('it int')
+	assert answers[8] == 'main.v:22:1'
+	assert answers[9].contains('it string')
+	assert answers[10] == 'main.v:27:4'
+	assert answers[11] == 'main.v:25:1'
+
+	assert answers[12] == 'main.v:32:17'
+	assert answers[13] == 'main.v:32:17'
+	assert answers[14].contains('err IError')
+	assert answers[15] == 'main.v:31:12'
 }
 
 fn test_signature_help_marks_the_argument_under_the_cursor() {
@@ -4017,7 +4012,7 @@ fn main() {
 }
 "
 
-fn test_a_local_of_a_generic_body_has_the_type_the_check_gives_its_value() {
+fn test_generic_locals_calls_and_narrowed_type_parameters() {
 	// What a value of a type parameter makes of a local is written with the type
 	// parameter, and what it can be on a line of its own: an `if` or a `match`
 	// used as a value, an array, its element, a map, a generic struct and its
@@ -4061,15 +4056,10 @@ fn test_a_local_of_a_generic_body_has_the_type_the_check_gives_its_value() {
 		HoverExpectation{'\tnames := [x.name]', 'names', 'names []string'},
 		HoverExpectation{'\tgreeting := x.greet()', 'greeting', 'greeting string'},
 	]
-	assert_hovers('generic_forms', generic_forms_program, checks)
-}
 
-fn test_a_generic_call_in_a_generic_body_returns_what_its_arguments_bind() {
 	// `identity(a)` returns what `a` is, an `A`, not the `T` that `identity`
 	// declares; so do the other generic calls, with their type arguments
 	// written or not, and the methods of a generic struct.
-	signed := 'A: i8 | int | f64'
-	mut checks := []HoverExpectation{}
 	for local, typ in {
 		'\tsame := identity(a)':                 'A'
 		'\ttwice_same := identity(identity(a))': 'A'
@@ -4089,11 +4079,8 @@ fn test_a_generic_call_in_a_generic_body_returns_what_its_arguments_bind() {
 		// A type parameter without a constraint.
 		HoverExpectation{'\tcopy := identity(u)', 'copy', 'copy U'},
 	]
-	assert_hovers('generic_forms', generic_forms_program, checks)
-}
 
-fn test_a_type_parameter_without_a_constraint_is_what_a_compile_time_test_makes_it() {
-	assert_hovers('generic_forms', generic_forms_program, [
+	checks << [
 		// `$if u is int {`: `u` is an `int` there, and so is a local that holds it;
 		// `$else $if U is string {`, a `string`. `in` leaves the types of its list
 		// and the `$else` of `!in` the types of its. What no test decides stays `U`.
@@ -4105,19 +4092,26 @@ fn test_a_type_parameter_without_a_constraint_is_what_a_compile_time_test_makes_
 		HoverExpectation{'\t\tfloat := u', 'u', 'u U\\nU: f32 | f64'},
 		HoverExpectation{"\t\treturn 'other \${copy}'", 'copy', 'copy U'},
 		HoverExpectation{'\tcopy := identity(u)', 'u', 'u U'},
-	])
+	]
 	// Completion offers there what an `int` offers.
 	dir := program_dir('generic_forms', generic_forms_program)
 	branch := '\t\treturn n.str() + k.str() + u.hex()'
 	plain := '\treturn i.hex()'
 	branch_col := branch.index('u.hex') or { panic(branch) } + 2
 	plain_col := plain.index('i.hex') or { panic(plain) } + 2
-	answers := ask_answers(dir, [
+	mut questions := checks.map(word_question(it.line, 'hv^', line_of(generic_forms_program,
+		it.line), it.word, 0))
+	questions << [
 		'${line_of(generic_forms_program, branch)}:${branch_col}',
 		'${line_of(generic_forms_program, plain)}:${plain_col}',
-	])
-	assert answers[0] != ''
-	assert answers[0] == answers[1]
+	]
+	answers := ask_answers(dir, questions)
+	for i, check in checks {
+		assert answers[i] == hover_of(check.text), '${check.line}: ${check.word}'
+	}
+	completions := answers[checks.len..]
+	assert completions[0] != ''
+	assert completions[0] == completions[1]
 }
 
 const method_values_program = "module main
