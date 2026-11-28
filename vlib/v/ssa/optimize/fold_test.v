@@ -313,3 +313,52 @@ fn test_algebraic_simplification_parses_full_width_constants() {
 	assert replacement == other
 	assert !needs_zero
 }
+
+fn test_constant_fold_canonicalizes_narrow_results() {
+	for i, width in [8, 16, 32] {
+		for unsigned in [false, true] {
+			mut m := ssa.Module.new()
+			typ := if unsigned { m.type_store.get_uint(width) } else { m.type_store.get_int(width) }
+			maximum := if unsigned {
+				['255', '65535', '4294967295'][i]
+			} else {
+				['127', '32767', '2147483647'][i]
+			}
+			expected := if unsigned { '0' } else { ['-128', '-32768', '-2147483648'][i] }
+			function := m.new_function('wrap', typ)
+			entry := m.add_block(function, 'entry')
+			left := m.get_or_add_const(typ, maximum)
+			right := m.get_or_add_const(typ, '1')
+			sum := m.add_instr(.add, entry, typ, [left, right])
+			ret := m.add_instr(.ret, entry, 0, [sum])
+
+			optimize_with_options(mut m, OptimizeOptions{ strict_verify: true })
+
+			value := m.values[m.instrs[m.values[ret].index].operands[0]]
+			assert value.kind == .constant
+			assert value.typ == typ
+			assert value.name == expected
+		}
+	}
+}
+
+fn test_constant_fold_truncates_integer_constants() {
+	for unsigned in [false, true] {
+		mut m := ssa.Module.new()
+		typ := if unsigned { m.type_store.get_uint(8) } else { m.type_store.get_int(8) }
+		wide := m.type_store.get_int(64)
+		function := m.new_function('truncate', typ)
+		entry := m.add_block(function, 'entry')
+		initial := m.get_or_add_const(wide, '511')
+		converted := m.add_instr(.trunc, entry, typ, [initial])
+		ret := m.add_instr(.ret, entry, 0, [converted])
+
+		optimize_with_options(mut m, OptimizeOptions{ strict_verify: true })
+
+		assert m.blocks[entry].instrs == [ret]
+		value := m.values[m.instrs[m.values[ret].index].operands[0]]
+		assert value.kind == .constant
+		assert value.typ == typ
+		assert value.name == if unsigned { '255' } else { '-1' }
+	}
+}

@@ -12,6 +12,12 @@ fn constant_fold(mut m ssa.Module) bool {
 					continue
 				}
 				instr := m.instrs[m.values[val_id].index]
+				if instr.op == .trunc && instr.operands.len == 1 {
+					if fold_integer_truncation(mut m, val_id, instr.operands[0]) {
+						changed = true
+					}
+					continue
+				}
 				if instr.operands.len != 2 {
 					continue
 				}
@@ -205,7 +211,8 @@ fn constant_fold(mut m ssa.Module) bool {
 
 				if folded {
 					typ := m.values[val_id].typ
-					const_val := m.get_or_add_const(typ, '${result}')
+					bits := canonical_integer_bits(u64(result), m.type_store.types[typ])
+					const_val := m.get_or_add_const(typ, bits.str())
 					m.replace_uses(val_id, const_val)
 					changed = true
 				}
@@ -213,6 +220,23 @@ fn constant_fold(mut m ssa.Module) bool {
 		}
 	}
 	return changed
+}
+
+fn fold_integer_truncation(mut m ssa.Module, val_id ssa.ValueID, operand_id ssa.ValueID) bool {
+	operand := m.values[operand_id]
+	if operand.kind != .constant {
+		return false
+	}
+	typ_id := m.values[val_id].typ
+	typ := m.type_store.types[typ_id]
+	if typ.kind != .int_t || typ.width <= 0 || typ.width >= 64 {
+		return false
+	}
+	value := integer_constant_value(m, operand) or { return false }
+	bits := canonical_integer_bits(u64(value), typ)
+	const_val := m.get_or_add_const(typ_id, bits.str())
+	m.replace_uses(val_id, const_val)
+	return true
 }
 
 // integer_constant_value preserves the full integer bit pattern, including
@@ -240,16 +264,21 @@ fn integer_constant_value(m &ssa.Module, value ssa.Value) ?i64 {
 		literal = literal[2..]
 	}
 	parsed := literal.parse_uint(base, 64) or { return none }
-	mut bits := if negative { u64(0) - parsed } else { parsed }
-	if typ.width < 64 {
-		mask := (u64(1) << typ.width) - 1
-		bits &= mask
-		// i1 represents a boolean, rather than a signed one-bit integer.
-		if !typ.is_unsigned && typ.width > 1 && bits & (u64(1) << (typ.width - 1)) != 0 {
-			bits |= ~mask
-		}
+	bits := if negative { u64(0) - parsed } else { parsed }
+	return canonical_integer_bits(bits, typ)
+}
+
+@[inline]
+fn canonical_integer_bits(bits u64, typ ssa.Type) i64 {
+	if typ.kind != .int_t || typ.width <= 0 || typ.width >= 64 {
+		return i64(bits)
 	}
-	return i64(bits)
+	mask := (u64(1) << typ.width) - 1
+	// The one-bit integer type stores boolean values.
+	if !typ.is_unsigned && typ.width > 1 && bits & (u64(1) << (typ.width - 1)) != 0 {
+		return i64(bits | ~mask)
+	}
+	return i64(bits & mask)
 }
 
 // try_algebraic_simplify implements identity/strength-reduction simplifications:
