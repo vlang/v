@@ -843,10 +843,6 @@ fn test_definition_of_a_declaration_is_the_declaration() {
 	assert declaration(84, 'ident', 0) == 'main.v:9:12'
 }
 
-fn shadowing(code string, line int, word string) string {
-	return ask(os.join_path(work_dir, 'shadowing'), code, line, word, 0)
-}
-
 fn test_a_name_stands_for_its_nearest_declaration_implicit_ones_too() {
 	dir := os.join_path(work_dir, 'shadowing')
 	lines := shadowing_program.split('\n')
@@ -883,10 +879,16 @@ fn test_a_name_stands_for_its_nearest_declaration_implicit_ones_too() {
 	assert locals_answers[4] == 'main.v:27:4'
 	assert locals_answers[5] == 'main.v:25:1'
 	// A closure's capture list names the `err` of the `or {}` around it.
-	assert shadowing('gd^', 33, 'err') == 'main.v:32:17'
-	assert shadowing('gd^', 34, 'err') == 'main.v:32:17'
-	assert shadowing('hv^', 34, 'err').contains('err IError')
-	assert shadowing('gd^', 40, 'err') == 'main.v:31:12'
+	capture_answers := ask_answers(dir, [
+		word_question(lines[32], 'gd^', 33, 'err', 0),
+		word_question(lines[33], 'gd^', 34, 'err', 0),
+		word_question(lines[33], 'hv^', 34, 'err', 0),
+		word_question(lines[39], 'gd^', 40, 'err', 0),
+	])
+	assert capture_answers[0] == 'main.v:32:17'
+	assert capture_answers[1] == 'main.v:32:17'
+	assert capture_answers[2].contains('err IError')
+	assert capture_answers[3] == 'main.v:31:12'
 }
 
 fn test_signature_help_marks_the_argument_under_the_cursor() {
@@ -1814,7 +1816,7 @@ fn line_of(source string, text string) int {
 fn test_a_type_name_in_a_comment_or_in_the_text_of_a_string_names_no_type() {
 	// Only code refers to a type: a word of a comment or of the text of a
 	// string that spells one is no reference; an interpolated expression is code.
-	dir := program_dir('type_words_in_text', "module main
+	source := "module main
 
 struct Marker {}
 
@@ -1824,15 +1826,16 @@ fn main() {
 	println(Marker{})
 	println('\${Marker{}}')
 }
-")
-	for line in [6, 7] {
-		assert ask(dir, 'gd^', line, 'Marker', 0) == '', 'line ${line}'
-		assert ask(dir, 'hv^', line, 'Marker', 0) == '', 'line ${line}'
+"
+	lines := source.split('\n')
+	mut questions := []string{cap: 8}
+	for line in 6 .. 10 {
+		questions << word_question(lines[line - 1], 'gd^', line, 'Marker', 0)
+		questions << word_question(lines[line - 1], 'hv^', line, 'Marker', 0)
 	}
-	for line in [8, 9] {
-		assert ask(dir, 'gd^', line, 'Marker', 0) == 'main.v:3:7', 'line ${line}'
-		assert ask(dir, 'hv^', line, 'Marker', 0) == hover_of('struct Marker'), 'line ${line}'
-	}
+	answers := ask_answers(program_dir('type_words_in_text', source), questions)
+	marker_hover := hover_of('struct Marker')
+	assert answers == ['', '', '', '', 'main.v:3:7', marker_hover, 'main.v:3:7', marker_hover]
 }
 
 fn test_a_cursor_right_after_a_type_name_that_ends_a_comment_names_no_type() {
