@@ -813,10 +813,16 @@ fn test_a_name_stands_for_its_nearest_declaration_implicit_ones_too() {
 }
 
 fn test_signature_help_marks_the_argument_under_the_cursor() {
+	lines := program.split('\n')
+	answers := ask_answers(work_dir, [
+		word_question(lines[56], 'fn^', 57, 'total', 0),
+		word_question(lines[56], 'fn^', 57, '2', 0),
+		word_question(lines[46], 'fn^', 47, '2', 0),
+	])
 	total_sig := '{"signatures":[{"label":"total(base int, nums ...int) int","parameters":[{"label":"base int"},{"label":"nums ...int"}]}],"activeSignature":0,'
-	assert ask(work_dir, 'fn^', 57, 'total', 0) == total_sig + '"activeParameter":0}'
-	assert ask(work_dir, 'fn^', 57, '2', 0) == total_sig + '"activeParameter":1}'
-	assert ask(work_dir, 'fn^', 47, '2', 0) == '{"signatures":[{"label":"divide(a int, b int) !int","parameters":[{"label":"a int"},{"label":"b int"}]}],"activeSignature":0,"activeParameter":1}'
+	assert answers[0] == total_sig + '"activeParameter":0}'
+	assert answers[1] == total_sig + '"activeParameter":1}'
+	assert answers[2] == '{"signatures":[{"label":"divide(a int, b int) !int","parameters":[{"label":"a int"},{"label":"b int"}]}],"activeSignature":0,"activeParameter":1}'
 }
 
 struct Details {
@@ -830,24 +836,24 @@ struct Detail {
 	declaration string
 }
 
-fn completion(line int, col int) []Detail {
-	answer := ask_at(os.join_path(work_dir, 'completion'), '${line}:${col}')
+fn completion_details(answer string) []Detail {
 	return (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details
 }
 
 fn test_completion_lists_members_after_a_dot() {
+	answers := ask_answers(os.join_path(work_dir, 'completion'), ['17:11', '18:17', '19:3'])
 	// `p.zz`, the cursor right after the dot.
-	members := completion(17, 11).map('${it.kind} ${it.label} ${it.detail}')
+	members := completion_details(answers[0]).map('${it.kind} ${it.label} ${it.detail}')
 	assert members == ['2 sum int', '5 x int', '5 y int']
 	// `strings.zz`: the public functions, types and consts of the module.
-	module_items := completion(18, 17)
+	module_items := completion_details(answers[1])
 	builder := module_items.filter(it.label == 'new_builder')
 	assert builder.len == 1
 	assert builder[0].kind == 3
 	assert builder[0].declaration == 'fn new_builder(initial_size int) strings.Builder'
 	assert module_items.any(it.label == 'Builder')
 	// On the name of a called function: that function.
-	called := completion(19, 3)
+	called := completion_details(answers[2])
 	assert called.len == 1 && called[0].label == 'println'
 }
 
@@ -929,6 +935,19 @@ fn ask_many(dir string, questions []string) []string {
 	answer := run_line_info(dir, spec).trim_right('\n')
 	same_answer_in_method_form(dir, spec, answer.trim_space())
 	return answer.split('\n')
+}
+
+// ask_answers checks the response indexes and returns the answers in question order.
+fn ask_answers(dir string, questions []string) []string {
+	indexed := ask_many(dir, questions)
+	assert indexed.len == questions.len, indexed.str()
+	mut answers := []string{cap: questions.len}
+	for i, response in indexed {
+		prefix := '${i}\t'
+		assert response.starts_with(prefix), response
+		answers << response[prefix.len..]
+	}
+	return answers
 }
 
 struct HoverExpectation {
@@ -1309,18 +1328,25 @@ fn constrained_completion(line int, col int) []Detail {
 	if answer == '' {
 		return []
 	}
-	return (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details
+	return completion_details(answer)
 }
 
 fn test_a_constrained_value_has_the_members_of_its_constraint() {
+	text := constraints_program.split('\n')[19]
+	answers := ask_answers(os.join_path(work_dir, 'constraints'), [
+		'23:11',
+		word_question(text, 'hv^', 20, 'name', 0),
+		word_question(text, 'gd^', 20, 'name', 0),
+		'28:11',
+	])
 	// `a.zz` in `longest[T Named]`: what `Named` declares.
-	members := constrained_completion(23, 11).map('${it.kind} ${it.label} ${it.detail}')
+	members := completion_details(answers[0]).map('${it.kind} ${it.label} ${it.detail}')
 	assert members == ['2 greet string', '5 name string'], members.str()
-	assert constrained('hv^', 20, 'name', 0) == '{"contents":{"kind":"markdown","value":"```v\\nname string\\n```"}}'
+	assert answers[1] == hover_of('name string')
 	// The field of the interface that declares it.
-	assert constrained('gd^', 20, 'name', 0) == 'main.v:4:1'
+	assert answers[2] == 'main.v:4:1'
 	// `x.zz` in `describe[T Number]`: what `int` and `f64` both have.
-	labels := constrained_completion(28, 11).map(it.label)
+	labels := completion_details(answers[3]).map(it.label)
 	assert 'str' in labels, labels.str()
 	assert 'hex' !in labels, labels.str()
 }
