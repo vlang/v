@@ -80,6 +80,20 @@ struct TypedApiExamples {
 	optional_omitted ?string      @[omitempty]
 }
 
+struct TypedApiDataEnvelopeDetail {
+	code string
+}
+
+struct TypedApiDataEnvelopeItem {
+	detail TypedApiDataEnvelopeDetail
+}
+
+@[OpenApiDataEnvelope]
+struct TypedApiDataEnvelopeResponse {
+	value string
+	items []TypedApiDataEnvelopeItem
+}
+
 fn typed_api() !&TypedApiRoot {
 	mut app := &TypedApiRoot{}
 	mut group := &TypedApiGroup{}
@@ -93,6 +107,33 @@ fn api_at(value json2.Any, keys ...string) json2.Any {
 	mut result := value
 	for key in keys { result = result.as_map()[key] or { json2.Any(json2.Null{}) } }
 	return result
+}
+
+fn test_openapi_data_envelope_attribute_wraps_successful_responses() {
+	mut app := typed_api()!
+	mut doc := new_openapi()!
+	doc.add_app[TypedApiRoot, TypedApiContext](app)!
+	doc.response[TypedApiDataEnvelopeResponse]('/', .get)!
+	doc.response[TypedApiDataEnvelopeResponse]('/', .get, status: 422)!
+	raw := json2.decode[json2.Any](doc.json(false)!)!
+	mut success := api_at(raw, 'paths', '/', 'get', 'responses', '200', 'content', 'application/json',
+		'schema')
+	assert api_at(success, 'properties', 'data', '$ref').str().ends_with('TypedApiDataEnvelopeResponse')
+	envelope := api_at(raw, 'components', 'schemas', 'veb.TypedApiDataEnvelopeResponse')
+	item_ref := api_at(envelope, 'properties', 'items', 'items', '$ref')
+	assert item_ref.str().ends_with('TypedApiDataEnvelopeItem'), 'unexpected envelope schema: ${envelope}'
+	detail_ref := api_at(raw, 'components', 'schemas', 'veb.TypedApiDataEnvelopeItem', 'properties',
+		'detail', '$ref')
+	assert detail_ref.str().ends_with('TypedApiDataEnvelopeDetail'), 'unexpected detail ref: ${detail_ref}'
+	failure := api_at(raw, 'paths', '/', 'get', 'responses', '422', 'content',
+		'application/json', 'schema')
+	assert api_at(failure, '$ref').str().ends_with('TypedApiDataEnvelopeResponse')
+
+	doc.response[TypedApiDataEnvelopeResponse]('/', .get, envelope: '')!
+	unwrapped := json2.decode[json2.Any](doc.json(false)!)!
+	success = api_at(unwrapped, 'paths', '/', 'get', 'responses', '200', 'content',
+		'application/json', 'schema')
+	assert api_at(success, '$ref').str().ends_with('TypedApiDataEnvelopeResponse')
 }
 
 fn typed_document() !OpenApiDocument {
@@ -204,8 +245,8 @@ fn test_typed_openapi_schema_requests_responses_and_security() {
 	assert 'hidden' !in properties.as_map()
 	assert 'nullable' !in api_at(properties, 'optional').as_map()
 	assert 'optional' !in api_at(json2.Any(dto), 'required').as_array().map(it.str())
-	query := api_at(raw, 'paths', '/v1/nested/items/{id}', 'get', 'parameters').as_array()
-	assert query.any(api_at(it, 'name').str() == 'name' && api_at(it, 'in').str() == 'query')
+	get := api_at(raw, 'paths', '/v1/nested/items/{id}', 'get')
+	assert api_at(get, 'requestBody', 'content', 'application/json', 'schema', '$ref').str().ends_with('TypedApiDto')
 	assert api_at(raw, 'components', 'schemas', typeof(TypedApiNode{}).name, 'properties', 'children', 'items', '$ref').str().ends_with('TypedApiNode')
 	assert doc.json(false)! == doc.json(false)!
 	assert json2.decode[json2.Any](doc.json(true)!)! == raw
@@ -1074,8 +1115,8 @@ fn test_handler_typed_metadata_follows_dispatcher_and_mounts() {
 		assert '200' !in api_at(post, 'responses').as_map()
 		for verb in ['get', 'delete', 'head'] {
 			operation := api_at(raw, 'paths', prefix + '/find', verb)
-			assert 'requestBody' !in operation.as_map()
-			assert api_at(operation, 'parameters').as_array().any(api_at(it, 'name').str() == 'name')
+			assert api_at(operation, 'requestBody', 'content', 'application/json', 'schema',
+				'$ref').str().ends_with('TypedApiDto')
 		}
 		$if openapi_extra ? {
 			assert prefix + '/extra' in api_at(raw, 'paths').as_map()
@@ -1122,7 +1163,7 @@ fn test_handler_metadata_rejects_unknown_or_invalid_callbacks() {
 	if _ := doc.add_app[MissingHandlerMetadata, TypedApiContext](app) {
 		assert false, 'an unknown metadata method must be rejected'
 	} else {
-		assert err.msg().contains('unknown OpenAPI metadata method `missing`')
+		assert err.msg().contains('unknown handler-level OpenAPI metadata method `missing`')
 	}
 	if _, _, _ := parse_attrs('x', ['/x', 'post', "OpenApi: ''"]) {
 		assert false, 'an empty metadata method name must be rejected'
@@ -1132,7 +1173,7 @@ fn test_handler_metadata_rejects_unknown_or_invalid_callbacks() {
 	}
 }
 
-fn test_openapi_metadata_named_attribute_parsing() {
+fn test_openapi_handler_metadata_named_attribute_parsing() {
 	methods, path, host := parse_attrs('x', ['/x', 'post', 'veb.OpenApi',
 		"veb.OpenApi_handler: 'schema'"])!
 	assert methods == [http.Method.post]

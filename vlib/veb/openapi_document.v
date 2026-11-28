@@ -18,6 +18,54 @@ pub:
 	controllers   []string
 }
 
+// OpenApiTagGroup declares a parent tag while its route domain is registered.
+// Parent groups provide documentation structure but do not tag operations.
+pub struct OpenApiTagGroup {
+pub:
+	name          string
+	summary       string
+	parent        string
+	description   string
+	kind          string = 'nav'
+	external_docs map[string]json2.Any
+}
+
+// OpenApiControllerTag maps one mounted controller to an automatic public OpenAPI tag.
+// Declare additional controller tags with an `OpenApiTagProvider` metadata method.
+@[attribute]
+pub struct OpenApiControllerTag {
+pub:
+	name    string
+	summary string
+	parent  string
+}
+
+// OpenApiSummary overrides the generated summary for a route handler.
+@[attribute]
+pub struct OpenApiSummary {
+pub:
+	value string
+}
+
+// OpenApiOperationId overrides the generated operationId for a route handler.
+@[attribute]
+pub struct OpenApiOperationId {
+pub:
+	value string
+}
+
+// OpenApiDataEnvelope marks a response DTO that is wrapped in a top-level data field.
+@[attribute]
+pub struct OpenApiDataEnvelope {}
+
+// OpenApiControllerMetadata marks the single shared typed metadata method on a controller.
+@[attribute]
+pub struct OpenApiControllerMetadata {}
+
+// OpenApiTagProvider marks a controller method that returns multiple public tags.
+@[attribute]
+pub struct OpenApiTagProvider {}
+
 // OpenApiConfig configures an additive, typed OpenAPI document.
 @[params]
 pub struct OpenApiConfig {
@@ -63,7 +111,7 @@ pub:
 @[params]
 pub struct OpenApiRequest {
 pub:
-	// none selects query for GET/DELETE/HEAD and a body for other methods.
+	// none selects query for scalar-only GET/DELETE/HEAD DTOs and a body otherwise.
 	query       ?bool
 	media_type  string = 'application/json'
 	required    bool   = true
@@ -89,12 +137,20 @@ pub:
 }
 
 // OpenApiHandler supplies the mounted operation to a handler's typed metadata method.
-// Register that method with `@[veb.OpenApi('method_name')]` on the route handler.
+// Link it with `@[veb.OpenApi('method_name')]` on one handler, or mark one controller-wide
+// metadata method with `@[veb.OpenApiControllerMetadata]`.
 pub struct OpenApiHandler {
+pub:
+	path         string
+	method       http.Method
+	handler_name string
 mut:
-	doc    &OpenApiDocument = unsafe { nil }
-	path   string
-	method http.Method
+	doc &OpenApiDocument = unsafe { nil }
+}
+
+// operation applies structured operation metadata to the mounted operation.
+pub fn (mut handler OpenApiHandler) operation(options OpenApiOperation) ! {
+	handler.doc.operation(handler.path, handler.method, options)!
 }
 
 // request documents a request DTO using the operation's mounted path and HTTP method.
@@ -112,6 +168,13 @@ pub fn (mut handler OpenApiHandler) raw_response(status int, response map[string
 	handler.doc.raw_response(handler.path, handler.method, status, response)!
 }
 
+struct OpenApiAutomaticTag {
+mut:
+	config      OpenApiTagConfig
+	declaration bool
+	mapping     bool
+}
+
 // OpenApiDocument collects dispatcher routes and explicitly configured DTO metadata.
 pub struct OpenApiDocument {
 	config OpenApiConfig
@@ -119,6 +182,7 @@ mut:
 	paths             map[string]map[string]map[string]json2.Any
 	schemas           map[string]json2.Any
 	success_overrides map[string]bool
+	automatic_tags    map[string]OpenApiAutomaticTag
 }
 
 // new_openapi creates a document, optionally reading its API version from a v.mod file.
@@ -141,7 +205,24 @@ pub fn new_openapi(config OpenApiConfig) !OpenApiDocument {
 
 // add_app includes root routes and all recursively mounted controllers, with handler descriptions.
 pub fn (mut doc OpenApiDocument) add_app[A, X](app &A) ! {
-	for route in route_info[A, X](app)! {
+	routes := route_info[A, X](app)!
+	$if A is ControllerInterface {
+		for group in app.openapi_tag_groups {
+			doc.collect_automatic_tag_group(group)!
+		}
+	}
+	for route in routes {
+		if route.openapi_tag_provider_method_count > 1 {
+			return error('controller ${route.controller} declares multiple OpenAPI tag provider methods')
+		}
+		for group in route.openapi_tag_groups {
+			doc.collect_automatic_tag_group(group)!
+		}
+		for tag in route.openapi_tags {
+			doc.collect_automatic_controller_tag(tag, route.controller)!
+		}
+	}
+	for route in routes {
 		path := openapi_path_of(route.path)
 		for method in route.methods {
 			verb := method.str().to_lower()
@@ -194,9 +275,15 @@ pub fn (mut doc OpenApiDocument) add_app[A, X](app &A) ! {
 			responses['200'] = {
 				'description': json2.Any(doc.response_description(200))
 			}
+			summary := if route.openapi_summary != '' { route.openapi_summary } else { route.name }
+			operation_id := if route.openapi_operation_id != '' {
+				route.openapi_operation_id
+			} else {
+				openapi_id(route.controller + '_' + route.name + '_' + verb + '_' + path)
+			}
 			mut operation := map[string]json2.Any{
-				'summary':     json2.Any(route.name)
-				'operationId': json2.Any(openapi_id(route.controller + '_' + route.name + '_' + verb + '_' + path))
+				'summary':     json2.Any(summary)
+				'operationId': json2.Any(operation_id)
 				'tags':        json2.Any(doc.controller_tags(route.controller))
 				'parameters':  json2.Any(params)
 				'responses':   json2.Any(responses)
@@ -236,14 +323,83 @@ pub fn (mut doc OpenApiDocument) add_app[A, X](app &A) ! {
 			}
 			item[verb] = operation
 			doc.paths[path] = item
-			if route.openapi_metadata_name != '' {
-				if route.openapi_metadata == unsafe { nil } {
-					return error('unknown OpenAPI metadata method `${route.openapi_metadata_name}` for ${route.controller}.${route.name}; expected fn (app &Controller) metadata(mut handler veb.OpenApiHandler) !')
+			if route.openapi_controller_metadata_method_count > 1 {
+				return error('controller ${route.controller} declares multiple controller-level OpenAPI metadata methods')
+			}
+			if route.openapi_controller_metadata_name != '' {
+				if route.openapi_controller_metadata == unsafe { nil } {
+					return error('unknown shared OpenAPI metadata method `${route.openapi_controller_metadata_name}` for ${route.controller}; expected fn (app &Controller) metadata(mut handler veb.OpenApiHandler) !')
 				}
-				route.openapi_metadata(mut doc, path, method)!
+				route.openapi_controller_metadata(mut doc, path, method, route.name)!
+			}
+			if route.openapi_handler_metadata_name != '' {
+				if route.openapi_handler_metadata == unsafe { nil } {
+					return error('unknown handler-level OpenAPI metadata method `${route.openapi_handler_metadata_name}` for ${route.controller}.${route.name}; expected fn (app &Controller) metadata(mut handler veb.OpenApiHandler) !')
+				}
+				route.openapi_handler_metadata(mut doc, path, method, route.name)!
 			}
 		}
 	}
+	_ = doc.configured_tags()!
+}
+
+fn (mut doc OpenApiDocument) collect_automatic_tag_group(group OpenApiTagGroup) ! {
+	doc.collect_automatic_tag(OpenApiTagConfig{
+		name:          group.name
+		summary:       group.summary
+		parent:        group.parent
+		description:   group.description
+		kind:          group.kind
+		external_docs: group.external_docs
+	}, true, false)!
+}
+
+fn (mut doc OpenApiDocument) collect_automatic_controller_tag(tag OpenApiTagConfig, controller string) ! {
+	mut controllers := tag.controllers.clone()
+	if controller !in controllers {
+		controllers << controller
+	}
+	config := OpenApiTagConfig{
+		...tag
+		controllers: controllers
+	}
+	doc.collect_automatic_tag(config, false, true)!
+}
+
+fn (mut doc OpenApiDocument) collect_automatic_tag(config OpenApiTagConfig, declaration bool, mapping bool) ! {
+	if config.name.trim_space() == '' {
+		return error('OpenAPI tag names must not be empty')
+	}
+	mut automatic := doc.automatic_tags[config.name] or {
+		OpenApiAutomaticTag{
+			config: config
+		}
+	}
+	if (automatic.declaration && mapping) || (automatic.mapping && declaration) {
+		return error('conflicting OpenAPI tag declarations for `${config.name}`')
+	}
+	if !openapi_tag_configs_match(automatic.config, config) {
+		return error('conflicting OpenAPI tag definitions for `${config.name}`')
+	}
+	mut controllers := automatic.config.controllers.clone()
+	for controller in config.controllers {
+		if controller !in controllers {
+			controllers << controller
+		}
+	}
+	automatic.config = OpenApiTagConfig{
+		...automatic.config
+		controllers: controllers
+	}
+	automatic.declaration = automatic.declaration || declaration
+	automatic.mapping = automatic.mapping || mapping
+	doc.automatic_tags[config.name] = automatic
+}
+
+fn openapi_tag_configs_match(left OpenApiTagConfig, right OpenApiTagConfig) bool {
+	return left.name == right.name && left.summary == right.summary
+		&& left.parent == right.parent && left.description == right.description
+		&& left.kind == right.kind && left.external_docs == right.external_docs
 }
 
 // operation applies structured metadata to an existing operation.
@@ -283,7 +439,7 @@ pub fn (mut doc OpenApiDocument) request[T](path string, method http.Method, opt
 	mut item := (doc.paths[key] or { return error('unknown OpenAPI path: ${key}') }).clone()
 	mut operation := (item[verb] or { return error('unknown OpenAPI method: ${verb} ${key}') }).clone()
 	schema := doc.schema[T]()
-	query := options.query or { method in [.get, .delete, .head] }
+	query := options.query or { openapi_query_request[T](method) }
 	if query {
 		mut parameters := (operation['parameters'] or { json2.Any([]json2.Any{}) }).as_array().clone()
 		$if T is $struct {
@@ -337,15 +493,38 @@ pub fn (mut doc OpenApiDocument) request[T](path string, method http.Method, opt
 	doc.paths[key] = item
 }
 
+fn openapi_query_request[T](method http.Method) bool {
+	mut result := method in [.get, .delete, .head]
+	$if T is $struct {
+		$for field in T.fields {
+			$if field.typ is string || field.typ is int || field.typ is bool {
+			} $else {
+				result = false
+			}
+		}
+	} $else {
+		result = false
+	}
+	return result
+}
+
 // response adds a typed response; only successful responses inherit success_field wrapping.
+// A 2xx response DTO marked with OpenApiDataEnvelope is automatically wrapped in data.
 pub fn (mut doc OpenApiDocument) response[T](path string, method http.Method, options OpenApiResponse) ! {
 	mut schema := doc.schema[T]()
-	field := options.envelope or {
-		if options.status >= 200 && options.status < 300 {
-			doc.config.success_field
-		} else {
-			''
+	successful := options.status >= 200 && options.status < 300
+	mut field := if successful { doc.config.success_field } else { '' }
+	$if T is $struct {
+		$for attr in T.attributes {
+			$if attr is OpenApiDataEnvelope {
+				if successful {
+					field = 'data'
+				}
+			}
 		}
+	}
+	if envelope := options.envelope {
+		field = envelope
 	}
 	if field != '' {
 		schema = {
@@ -513,12 +692,24 @@ fn (doc &OpenApiDocument) response_description(status int) string {
 }
 
 fn (doc &OpenApiDocument) controller_tags(controller string) []json2.Any {
-	mut tags := []json2.Any{}
+	mut names := []string{}
 	for definition in doc.config.tag_definitions {
-		if controller in definition.controllers { tags << definition.name }
+		if controller in definition.controllers && definition.name !in names {
+			names << definition.name
+		}
 	}
-	if tags.len == 0 { tags << controller }
-	return tags
+	mut automatic_names := doc.automatic_tags.keys()
+	automatic_names.sort()
+	for name in automatic_names {
+		automatic := doc.automatic_tags[name] or { continue }
+		if automatic.mapping && controller in automatic.config.controllers && name !in names {
+			names << name
+		}
+	}
+	if names.len == 0 {
+		names << controller
+	}
+	return names.map(json2.Any(it))
 }
 
 fn (doc &OpenApiDocument) configured_tags() !map[string]json2.Any {
@@ -534,17 +725,19 @@ fn (doc &OpenApiDocument) configured_tags() !map[string]json2.Any {
 			return error('OpenAPI tag names must not be empty')
 		}
 		if definition.name in tags { return error('duplicate OpenAPI tag: ${definition.name}') }
-		mut tag := map[string]json2.Any{
-			'name': json2.Any(definition.name)
-		}
-		if definition.description != '' { tag['description'] = definition.description }
-		if definition.external_docs.len > 0 { tag['externalDocs'] = definition.external_docs }
-		if definition.parent != '' { tag['parent'] = definition.parent }
-		if doc.config.openapi_version.starts_with('3.2.') {
-			if definition.summary != '' { tag['summary'] = definition.summary }
-			if definition.kind != '' { tag['kind'] = definition.kind }
-		}
+		tag := doc.tag_config_object(definition)
 		tags[definition.name] = tag
+	}
+	for name, automatic in doc.automatic_tags {
+		tag := doc.tag_config_object(automatic.config)
+		if name in tags {
+			existing := tags[name] or { json2.Any(json2.null) }
+			if existing != json2.Any(tag) {
+				return error('conflicting OpenAPI tag definitions for `${name}`')
+			}
+			continue
+		}
+		tags[name] = tag
 	}
 	for name, value in tags {
 		tag := value.as_map()
@@ -558,6 +751,20 @@ fn (doc &OpenApiDocument) configured_tags() !map[string]json2.Any {
 	}
 	_ = openapi_order_tags(tags)!
 	return tags
+}
+
+fn (doc &OpenApiDocument) tag_config_object(definition OpenApiTagConfig) map[string]json2.Any {
+	mut tag := map[string]json2.Any{
+		'name': json2.Any(definition.name)
+	}
+	if definition.description != '' { tag['description'] = definition.description }
+	if definition.external_docs.len > 0 { tag['externalDocs'] = definition.external_docs }
+	if definition.parent != '' { tag['parent'] = definition.parent }
+	if doc.config.openapi_version.starts_with('3.2.') {
+		if definition.summary != '' { tag['summary'] = definition.summary }
+		if definition.kind != '' { tag['kind'] = definition.kind }
+	}
+	return tag
 }
 
 fn openapi_order_tags(tags map[string]json2.Any) ![]json2.Any {

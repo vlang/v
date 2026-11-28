@@ -14,8 +14,8 @@ fn parse_attrs(name string, attrs []string) !([]http.Method, string, string) {
 	mut methods := []http.Method{}
 	mut path := ''
 	mut host := ''
-	mut openapi_metadata := false
-	mut openapi_metadata_name := ''
+	mut handler_metadata := false
+	mut handler_metadata_name := ''
 
 	for i := 0; i < x.len; {
 		attr := x[i]
@@ -44,18 +44,22 @@ fn parse_attrs(name string, attrs []string) !([]http.Method, string, string) {
 		}
 		attribute_name := attr.all_before(':').all_after_last('.')
 		if attribute_name == 'OpenApi' {
-			if openapi_metadata {
-				return error('a route can declare only one OpenAPI metadata method')
+			if handler_metadata {
+				return error('a route can declare only one handler-level OpenAPI metadata method')
 			}
-			openapi_metadata = true
+			handler_metadata = true
 			if attr.contains(':') {
-				openapi_metadata_name = attr.all_after(':').trim_space().trim('\'"')
+				handler_metadata_name = attr.all_after(':').trim_space().trim('\'"')
 			}
 			x.delete(i)
 			continue
 		}
 		if attribute_name == 'OpenApi_handler' {
-			openapi_metadata_name = attr.all_after(':').trim_space().trim('\'"')
+			handler_metadata_name = attr.all_after(':').trim_space().trim('\'"')
+			x.delete(i)
+			continue
+		}
+		if attribute_name in ['OpenApiSummary', 'OpenApiOperationId'] {
 			x.delete(i)
 			continue
 		}
@@ -66,8 +70,8 @@ fn parse_attrs(name string, attrs []string) !([]http.Method, string, string) {
 		}
 		i++
 	}
-	if openapi_metadata && openapi_metadata_name == '' {
-		return error('OpenAPI metadata method name must not be empty')
+	if handler_metadata && handler_metadata_name == '' {
+		return error('handler-level OpenAPI metadata method name must not be empty')
 	}
 	if x.len > 0 {
 		return http.UnexpectedExtraAttributeError{
