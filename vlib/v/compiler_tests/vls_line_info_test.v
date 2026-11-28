@@ -1450,12 +1450,18 @@ fn test_the_implicit_variables_and_lambdas_of_a_constrained_body_have_its_member
 	assert answers[3] == hover_of('it T\\nT: implements main.Named')
 	assert answers[4] == hover_of('a T\\nT: implements main.Named')
 	assert answers[5] == hover_of('x T\\nT: implements main.Named')
-	// The parameter of a lambda is where its uses are declared, in any body.
-	assert ask(dir, 'gd^', 21, 'x', 1) == 'main.v:21:16'
-	assert ask(dir, 'gd^', 26, 'u', 1) == 'main.v:26:20'
-	assert ask(dir, 'hv^', 26, 'u', 1) == hover_of('u main.User')
-	// `err` of an `or {}` in a generic body: an `IError`.
-	errs := closure_members(ask_at(dir, '37:14')).map(it.all_after(' ').all_before(' '))
+	binding_answers := ask_answers(dir, [
+		// The parameter of a lambda is where its uses are declared, in any body.
+		word_question(lines[20], 'gd^', 21, 'x', 1),
+		word_question(lines[25], 'gd^', 26, 'u', 1),
+		word_question(lines[25], 'hv^', 26, 'u', 1),
+		// `err` of an `or {}` in a generic body: an `IError`.
+		'37:14',
+	])
+	assert binding_answers[0] == 'main.v:21:16'
+	assert binding_answers[1] == 'main.v:26:20'
+	assert binding_answers[2] == hover_of('u main.User')
+	errs := closure_members(binding_answers[3]).map(it.all_after(' ').all_before(' '))
 	assert 'msg' in errs && 'code' in errs, errs.str()
 }
 
@@ -1521,9 +1527,7 @@ fn test_a_compile_time_is_narrows_what_a_constrained_value_offers() {
 	// have, not only what every type of its set has; `$if value is f64 {` asks the
 	// same of `value T`, and its `$else` has the rest. With an interface, `$if a is
 	// User {` makes `a` a `User`: its members, and its field on F12.
-	dir := os.join_path(work_dir, 'comptime_members')
-	os.mkdir_all(dir) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'module main
+	source := 'module main
 
 interface Named {
 	name string
@@ -1561,9 +1565,8 @@ fn named[T Named](a T) {
 }
 
 fn main() {}
-') or {
-		panic(err)
-	}
+'
+	dir := program_dir('comptime_members', source)
 	answers := ask_answers(dir, ['16:16', '18:16', '21:16', '23:16', '30:12', '33:12'])
 	labels := answers.map(completion_details(it).map(it.label))
 	floats := ['eq_epsilon', 'str', 'strg', 'strlong', 'strsci']
@@ -1573,8 +1576,12 @@ fn main() {}
 	assert labels[3] == ['hex', 'hex2', 'hex_full', 'str']
 	assert labels[4] == ['age', 'name']
 	assert labels[5] == ['name']
-	assert ask(dir, 'gd^', 31, 'name', 0) == 'main.v:8:1'
-	assert ask(dir, 'gd^', 34, 'name', 0) == 'main.v:4:1'
+	lines := source.split('\n')
+	definitions := ask_answers(dir, [
+		word_question(lines[30], 'gd^', 31, 'name', 0),
+		word_question(lines[33], 'gd^', 34, 'name', 0),
+	])
+	assert definitions == ['main.v:8:1', 'main.v:4:1']
 }
 
 // functions_line is the 1-based number of the line of functions_program that
@@ -1748,14 +1755,18 @@ fn test_a_local_of_a_generic_body_has_the_type_of_its_value() {
 	}
 	assert_hovers('locals', locals_program, checks)
 	// A local that holds a `T` has what its constraint declares, as the `T` does.
-	line := locals_program.split('\n').index("\tprintln('\${same.name} \${first.name} \${one} \${two} \${word} \${size}')") + 1
-	assert line > 0
-	text := locals_program.split('\n')[line - 1]
-	for receiver in ['same', 'first'] {
+	text := "\tprintln('\${same.name} \${first.name} \${one} \${two} \${word} \${size}')"
+	line := line_of(locals_program, text)
+	receivers := ['same', 'first']
+	mut questions := []string{cap: receivers.len}
+	for receiver in receivers {
 		col := text.index('${receiver}.') or { -1 } + receiver.len + 2
-		answer := ask_at(os.join_path(work_dir, 'locals'), '${line}:${col}')
-		labels := (json2.decode[Details](answer) or { panic('${err}: ${answer}') }).details.map(it.label)
-		assert labels == ['name'], '${receiver}: ${labels}'
+		questions << '${line}:${col}'
+	}
+	member_answers := ask_answers(os.join_path(work_dir, 'locals'), questions)
+	for i, answer in member_answers {
+		labels := completion_details(answer).map(it.label)
+		assert labels == ['name'], '${receivers[i]}: ${labels}'
 	}
 }
 
