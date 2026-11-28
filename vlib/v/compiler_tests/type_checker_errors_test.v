@@ -78,10 +78,6 @@ fn run_bad_module_batch(compiler string, cases []TypeCheckerRejection, flags ...
 	}
 }
 
-fn run_bad_selfhost(compiler string, name string, src string, expected string) {
-	run_bad_with_flags(compiler, name, src, expected, '-selfhost')
-}
-
 fn run_bad_with_flags(compiler string, name string, src string, expected string, flags string) {
 	out := unique_temp_path(name)
 	bad_src := out + '.v'
@@ -450,278 +446,67 @@ fn test_type_checker_reports_core_semantic_errors() {
 		TypeCheckerRejection{'nested_local_redefinition', 'fn main() {\n\ta := 10\n\t{\n\t\ta := 20\n\t}\n}\n', 'redefinition of `a`'},
 		TypeCheckerRejection{'bad_container_recursive_alias', 'type A = []A\n\nfn main() {}\n', 'recursive declarations of aliases are not allowed - the alias `A` is used in the array'},
 		TypeCheckerRejection{'bad_cyclic_recursive_aliases', 'type A = B\ntype B = A\n\nfn main() {}\n', 'alias `A` forms a cycle through `B`'},
-	])
-	run_good_module_batch(v3_bin, 'interface_variadics_and_core_semantics', [
-		TypeCheckerRuntimeCase{'v_array_and_interface_mut_compatibility', 'interface Writer {
-	write(mut dst []u8)
-}
-
-struct ByteWriter {}
-
-fn (w ByteWriter) write(mut dst []u8) {
-	dst[0] = 7
-}
-
-interface Sized {
-	size() int
-}
-
-struct Item {}
-
-fn (i Item) size() int {
-	return 3
-}
-
-fn item_size(item Item) int {
-	return item.size()
-}
-
-fn interface_size(item Sized) int {
-	return item.size()
-}
-
-fn sum(values []int) int {
-	return values[0]
-}
-
-fn modify(mut values []int) {
-	assert sum(values) == 1
-	values[0] = 9
-}
-
-fn first(values &[]int) int {
-	return values[0]
-}
-
-fn main() {
-	mut bytes := [u8(0)]
-	writer := Writer(ByteWriter{})
-	writer.write(mut bytes)
-	mut values := [1, 2]
-	modify(mut values[..1])
-	assert values == [9, 2]
-	assert []int{} == []
-	unsafe {
-		ptr := &values
-		assert ptr == [9, 2]
-	}
-	item := Item{}
-	println(int(bytes[0]))
-	println(first(&values))
-	println(item_size(item))
-	println(interface_size(&item))
-}
-', '7\n9\n3\n3'},
-		TypeCheckerRuntimeCase{'embedded_interface_mut_parameter', 'interface Reader {
-mut:
-	read(mut buf []u8) int
-}
-
-interface ReaderWriter {
-	Reader
-}
-
-struct Device {}
-
-fn (_ Device) read(mut buf []u8) int {
-	buf[0] = 7
-	return 1
-}
-
-fn fill(mut stream ReaderWriter) int {
-	mut buf := [u8(0)]
-	stream.read(mut buf)
-	return int(buf[0])
-}
-
-fn main() {
-	mut stream := ReaderWriter(Device{})
-	println(fill(mut stream))
-}
-', '7'},
-		TypeCheckerRuntimeCase{'empty_interface_as_array_pattern', 'interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\txs := values(Any([1, 2]))\n\tprintln(xs[0] + xs[1])\n}\n', '3'},
-		TypeCheckerRuntimeCase{'empty_interface_as_map_pattern', "interface Any {}\nfn values(x Any) map[string]int {\n\treturn x as map[string]int\n}\nfn main() {\n\tm := values(Any({'answer': 42}))\n\tprintln(m['answer'])\n}\n", '42'},
-		TypeCheckerRuntimeCase{'good_variadic_struct_field_args', 'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points ...Point) int {\n\treturn points[0].x + points[0].y\n}\n\nfn main() {\n\tprintln(int_str(total(x: 3, y: 4)))\n}\n', '7'},
-		TypeCheckerRuntimeCase{'good_gated_scalar_and_fixed_array_indexes', 'struct Box {\n\titems [10]int\n}\n\nfn main() {\n\ta := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]\n\tprintln(int_str(a#[-1]))\n\tprintln(int_str(a#[-11] or { 42 }))\n\tprintln(a#[-2..].str())\n\tprintln("0123456789"#[-1].ascii_str())\n\tfixed := [10]int{init: index}\n\tprintln(int_str(fixed#[-1]))\n\tprintln(fixed#[-2..].str())\n\tbox := Box{\n\t\titems: fixed\n\t}\n\tprintln(int_str(box.items#[-1]))\n}\n', '9\n42\n[8, 9]\n9\n9\n[8, 9]\n9'},
-		TypeCheckerRuntimeCase{'good_voidptr_variadic_voidptr_spread', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tx := 7\n\txs := [voidptr(&x)]\n\tprintln(int_str(sink(...xs)))\n\tprintln(int_str(sink(1)))\n}\n', '1\n1'},
-		// `char` values passed through `...voidptr` use the same int-width storage as other small
-		// integer varargs, so callees that read `%c`/small-integer slots do not read past the value.
-		TypeCheckerRuntimeCase{'good_voidptr_variadic_char_promotes_to_int', 'fn sink(args ...voidptr) int {\n\treturn unsafe { *(&int(args[0])) }\n}\nfn main() {\n\tch := char(66)\n\tprintln(int_str(sink(ch)))\n}\n', '66'},
-		TypeCheckerRuntimeCase{'good_empty_interface_container_patterns', "interface Any {}\nfn main() {\n\tarr := Any([1, 2])\n\tprintln(arr is []int)\n\tprintln(arr is []string)\n\tm := Any({\n\t\t'a': 1\n\t})\n\tprintln(m is map[string]int)\n\tprintln(m is map[string]string)\n\tprintln(match arr {\n\t\t[]int { 1 }\n\t\telse { 0 }\n\t})\n}\n", 'true\nfalse\ntrue\nfalse\n1'},
-		TypeCheckerRuntimeCase{'alias_receiver_implements_interface', "type Text = string\n\nfn (t Text) display() string {\n\treturn t\n}\n\ninterface Displayable {\n\tdisplay() string\n}\n\nfn print_displayable(ds ...Displayable) {\n\tfor d in ds {\n\t\tprintln(d.display())\n\t}\n}\n\nfn main() {\n\tprint_displayable(Text('test'), Text('hehe'))\n}\n", 'test\nhehe'},
-		TypeCheckerRuntimeCase{'alias_method', 'type UserId = int\n\nfn (id UserId) str() string {\n\treturn int_str(int(id))\n}\n\nfn main() {\n\tid := UserId(1)\n\tprintln(id.str())\n}\n', '1'},
-		TypeCheckerRuntimeCase{'local_err_binding', 'fn main() {\n\terr := 2\n\tprintln(int_str(err + 1))\n}\n', '3'},
-		TypeCheckerRuntimeCase{'local_args_contains', "fn main() {\n\targs := [1, 2]\n\tif args.contains(2) {\n\t\tprintln('ok')\n\t}\n}\n", 'ok'},
-		TypeCheckerRuntimeCase{'custom_codec_methods', 'struct Codec {}\n\nfn (c Codec) decode() int {\n\treturn 7\n}\n\nfn (c Codec) encode() int {\n\treturn 8\n}\n\nfn (c Codec) use(x int) int {\n\treturn x + 1\n}\n\nfn (c Codec) run_at(x int) int {\n\treturn x + 2\n}\n\nfn main() {\n\tc := Codec{}\n\tprintln(int_str(c.decode()))\n\tprintln(int_str(c.encode()))\n\tprintln(int_str(c.use(9)))\n\tprintln(int_str(c.run_at(5)))\n}\n', '7\n8\n10\n7'},
-		TypeCheckerRuntimeCase{'item_with_user_initializer', 'struct ItemWithUserFoo {\n\titem int\n}\n\nfn main() {\n\tx := ItemWithUserFoo{\n\t\titem: 7\n\t}\n\tprintln(int_str(x.item))\n}\n', '7'},
-		TypeCheckerRuntimeCase{'struct_default_literals', 'type GetFn = fn () int\n\nfn default_num() int {\n\treturn 6\n}\n\nstruct Defaults {\n\tx int = 5\n\tget GetFn = default_num\n}\n\nfn main() {\n\ta := Defaults{}\n\tb := &Defaults{}\n\tprintln(int_str(a.x))\n\tprintln(int_str(b.x))\n\tprintln(int_str(a.get()))\n}\n', '5\n5\n6'},
-		TypeCheckerRuntimeCase{'nested_embedded_method', 'struct Leaf {}\n\nfn (leaf Leaf) value() int {\n\treturn 9\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{}\n\tprintln(int_str(outer.value()))\n}\n', '9'},
-		TypeCheckerRuntimeCase{'aliased_embedded_method', 'struct Leaf {}\n\nfn (leaf Leaf) value() int {\n\treturn 11\n}\n\nstruct Outer {\n\tLeaf\n}\n\ntype AliasOuter = Outer\n\nfn main() {\n\touter := AliasOuter{}\n\tprintln(int_str(outer.value()))\n}\n', '11'},
-		TypeCheckerRuntimeCase{'nested_embedded_field', 'struct Leaf {\n\tx int\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{\n\t\tMiddle: Middle{\n\t\t\tLeaf: Leaf{\n\t\t\t\tx: 12\n\t\t\t}\n\t\t}\n\t}\n\tprintln(int_str(outer.x))\n}\n', '12'},
-		TypeCheckerRuntimeCase{'map_mutation_lowering', "fn main() {\n\tmut m := map[string]int{}\n\tm['a'] = 1\n\tm['a'] += 2\n\tm['a']++\n\tm['a'] -= 1\n\tprintln(int_str(m['a']))\n}\n", '3'},
-		TypeCheckerRuntimeCase{'map_array_append_lowering', "fn main() {\n\tmut m := map[string][]int{}\n\tm['a'] << 1\n\tm['a'] << 2\n\tprintln(int_str(m['a'].len))\n}\n", '2'},
-		TypeCheckerRuntimeCase{'assoc_selector_type', 'struct Point {\n\tx int\n\ty int\n}\n\nfn main() {\n\tp := Point{\n\t\tx: 10\n\t\ty: 20\n\t}\n\tq := Point{\n\t\t...p\n\t\tx: 99\n\t}\n\tprintln(int_str(q.x + q.y))\n}\n', '119'},
-		TypeCheckerRuntimeCase{'array_literal_push_many', 'fn main() {\n\tmut xs := [1, 2]\n\tys := [3, 4]\n\txs << ys\n\txs << [5, 6]\n\tprintln(int_str(xs.len))\n}\n', '6'},
-		TypeCheckerRuntimeCase{'nested_array_push', 'fn main() {\n\tmut xs := [][]int{}\n\ty := [1, 2]\n\txs << y\n\tprintln(int_str(xs.len))\n\tprintln(int_str(xs[0][1]))\n}\n', '1\n2'},
-		TypeCheckerRuntimeCase{'mut_array_for_in', 'struct Item {\nmut:\n\tn int\n}\n\nfn main() {\n\tmut xs := []Item{}\n\txs << Item{n: 1}\n\tfor mut item in xs {\n\t\titem.n = 7\n\t}\n\tprintln(int_str(xs[0].n))\n}\n', '7'},
-		TypeCheckerRuntimeCase{'mut_array_for_scalar_updates', 'fn main() {\n\tmut xs := []int{}\n\txs << 1\n\txs << 2\n\tfor mut x in xs {\n\t\tx++\n\t\tx += 10\n\t}\n\tprintln(int_str(xs[0]))\n\tprintln(int_str(xs[1]))\n}\n', '12\n13'},
-		TypeCheckerRuntimeCase{'const_forward', 'const first_value = second_value\nconst second_value = 2\nfn main() {\n\tprintln(int_str(first_value))\n}\n', '2'},
-		TypeCheckerRuntimeCase{'strings_builder_from_vlib', "import strings\n\nfn main() {\n\tmut sb := strings.new_builder(16)\n\tsb.write_string('ok')\n\tsb.write_u8(u8(33))\n\tprintln(sb.last_n(3))\n\tprintln(sb.str())\n}\n", 'ok!\nok!'},
-		TypeCheckerRuntimeCase{'v_numeric_coercions', 'fn takes_f64(value f64) f64 {
-	return value
-}
-
-fn takes_i64(value i64) i64 {
-	return value
-}
-
-fn negative_one() f64 {
-	return -1
-}
-
-fn main() {
-	mut result := 2.0
-	sign := -1
-	result *= sign
-	small := f32(1.5)
-	base := 2
-	println(takes_f64(small))
-	println(takes_i64(base))
-	println(result)
-	println(negative_one())
-}
-', '1.5\n2\n-2.0\n-1.0'},
-	])
-	run_bad(v3_bin, 'bad_sum_constructor_extra_arg_as_call_arg', 'struct Empty {}\nstruct Node[T] {\n\tvalue T\n}\ntype Tree[T] = Empty | Node[T]\nfn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\nfn use(t Tree[int]) {}\nfn main() {\n\tuse(Tree[int](Empty{}, side_effect()))\n}\n', 'invalid expression: unexpected token `)`')
-	run_bad_project(v3_bin, 'bad_imported_sum_constructor_extra_arg', {
-		'trees/trees.v': 'module trees\n\npub struct Empty {}\n\npub struct Node[T] {\n\tpub:\n\tvalue T\n}\n\npub type Tree[T] = Empty | Node[T]\n\npub fn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\n'
-		'main.v':        'import trees { Empty, Tree, side_effect }\n\nfn main() {\n\t_ := Tree[int](Empty{}, side_effect())\n}\n'
-	}, 'main.v', 'unexpected `,`')
-	run_bad_project(v3_bin, 'bad_aliased_sum_constructor_extra_arg', {
-		'trees/trees.v': 'module trees\n\npub struct Empty {}\n\npub struct Node[T] {\n\tpub:\n\tvalue T\n}\n\npub type Tree[T] = Empty | Node[T]\n\npub fn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\n'
-		'main.v':        'import trees as tr\n\nfn main() {\n\t_ := tr.Tree[int](tr.Empty{}, tr.side_effect())\n}\n'
-	}, 'main.v', 'unexpected `,`')
-	run_bad_selfhost(v3_bin, 'bad_generic_param', 'fn id[T](x T) T {\n\treturn x\n}\nfn main() {\n\t_ := id(1)\n}\n', 'unsupported generic type parameter `T`')
-	run_bad_selfhost(v3_bin, 'bad_generic_type_application', 'fn takes_box(x Box[int]) {}\nfn main() {}\n', 'unsupported generic type application `Box[int]`')
-	run_bad_project(v3_bin, 'bad_bare_imported_call', {
-		'main.v':      'module main\n\nimport moda\n\nfn main() {\n\t_ := answer()\n}\n'
-		'moda/moda.v': 'module moda\n\nfn answer() int {\n\treturn 7\n}\n'
-	}, 'main.v', 'unknown function: answer')
-	run_bad_project(v3_bin, 'bad_import_leak', {
-		'main.v':      'module main\n\nimport moda\n\nfn main() {}\n'
-		'other.v':     'module main\n\nfn use_it() int {\n\treturn moda.answer()\n}\n'
-		'moda/moda.v': 'module moda\n\nfn answer() int {\n\treturn 7\n}\n'
-	}, '', 'undefined ident: `moda`')
-	init_order_out := run_good_project(v3_bin, 'module_init_order', {
-		'main.v':               'module main
-
-import moda
-import parent.child
-import foo.user
-import bar as shortbar
-import relay
-
-__global (
-	seen int
-	child_seen int
-	transitive_seen int
-)
-
-fn init() {
-	seen = moda.value()
-	child_seen = child.value()
-	transitive_seen = relay.value()
-}
-
-fn main() {
-	println(int_str(seen))
-	println(int_str(moda.value()))
-	println(int_str(child_seen))
-	println(int_str(child.value()))
-	println(int_str(user.value()))
-	println(int_str(shortbar.value()))
-	println(int_str(transitive_seen))
-	println(int_str(relay.value()))
-}
-'
-		'moda/moda.v':          'module moda
-
-__global flag int
-
-fn init() {
-	flag = 41
-}
-
-pub fn value() int {
-	return flag
-}
-'
-		'parent/child/child.v': 'module child\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
-		'foo/user/user.v':      'module user\n\nimport foo.bar as foobar\n\n__global seen int\n\nfn init() {\n\tseen = foobar.value() + 1\n}\n\npub fn value() int {\n\treturn seen\n}\n'
-		'foo/bar/bar.v':        'module bar\n\n__global flag int\n\nfn init() {\n\tflag = 40\n}\n\npub fn value() int {\n\treturn flag\n}\n'
-		'bar/bar.v':            'module bar\n\n__global flag int\n\nfn init() {\n\tflag = 3\n}\n\npub fn value() int {\n\treturn flag\n}\n'
-		'relay/relay.v':        'module relay\n\nimport modb\n\npub fn value() int {\n\treturn modb.value()\n}\n'
-		'modb/modb.v':          'module modb\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
-	}, 'main.v')
-	assert init_order_out == '41\n41\n41\n41\n41\n3\n41\n41'
-	run_bad_project(v3_bin, 'array_append_distinct_module_types', {
-		'main.v':      'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tmut xs := []moda.Foo{}\n\tys := []modb.Foo{}\n\txs << ys\n}\n'
-		'moda/moda.v': 'module moda\n\npub struct Foo {\n\ta int\n}\n'
-		'modb/modb.v': 'module modb\n\npub struct Foo {\n\tb int\n}\n'
-	}, 'main.v', 'cannot append `[]modb.Foo` to `[]moda.Foo`')
-}
-
-fn test_vv_input_with_comma_in_decl_assign_is_rejected_without_overwrite() {
-	source_path := unique_temp_path('comma_in_decl_assign') + '.vv'
-	default_output := source_path.all_before_last('.vv')
-	source := 'fn main() {\n\ta := [1, 2, 3]\n\tmut b := a.clone(), a.clone()\n\tprintln(b)\n}\n'
-	os.write_file(source_path, source) or { panic(err) }
-	defer {
-		os.rm(source_path) or {}
-		os.rm(default_output) or {}
-	}
-	result := run_type_checker_compiler(v3_bin, ['-nocache', source_path])
-	assert result.exit_code != 0, 'expected compile failure, got success: ${result.output}'
-	assert result.output.contains('unexpected `,` in expression, use `;` or a new line to separate statements'), result.output
-
-	assert (os.read_file(source_path) or { panic(err) }) == source
-}
-
-fn test_interface_container_as_cast_requirements() {
-	run_bad(v3_bin, 'bad_nonempty_interface_as_array_pattern', 'interface Speaker {\n\tspeak()\n}\nfn check(x Speaker) []int {\n\treturn x as []int\n}\nfn main() {}\n', '`[]int` is not compatible with interface `Speaker`')
-	bad_casts := "import os
-
-interface Any {}
-fn values(x Any) []int {
-	return x as []int
-}
-fn map_values(x Any) map[string]int {
-	return x as map[string]int
-}
-fn main() {
-	match os.args[1] {
-		'empty_interface_as_array_non_array_payload' {
-			_ := values(Any('not an array'))
-		}
-		'empty_interface_as_array_wrong_element_payload' {
-			_ := values(Any(['wrong element type']))
-		}
-		'empty_interface_as_map_wrong_value_payload' {
-			_ := map_values(Any({'answer': 'wrong value type'}))
-		}
-		else { panic('unknown fixture') }
-	}
-}
-"
-	run_runtime_bad_cases(v3_bin, 'bad_interface_container_casts', bad_casts, {
-		'empty_interface_as_array_non_array_payload':     'as cast: cannot cast interface value to `[]int`'
-		'empty_interface_as_array_wrong_element_payload': 'as cast: cannot cast interface value to `[]int`'
-		'empty_interface_as_map_wrong_value_payload':     'as cast: cannot cast interface value to `map[string]int`'
-	})
-}
-
-fn test_review_generic_call_diagnostics() {
-	run_bad_module_batch(v3_bin, [
+		// Regression tests for the post-PR review fixes: fixed-array literals must match
+		// the expected fixed length, and genuine fixed-array if-branches of different
+		// lengths must mismatch — while bare array literals stay length-agnostic.
+		// A literal passed where a fixed array is expected must have the exact length.
+		TypeCheckerRejection{'bad_fixed_array_arg_len', 'fn take4(a [4]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take4([1, 2])\n}\n', 'cannot use `[]int` as `[4]int` in argument 1 to `bad_fixed_array_arg_len.take4`'},
+		// Genuine fixed arrays of different lengths in if-branches must mismatch.
+		TypeCheckerRejection{'bad_if_branch_fixed_array_len', 'fn main() {\n\ta := [2]int{}\n\tb := [3]int{}\n\tc := true\n\t_ := if c { a } else { b }\n}\n', 'mismatched types `[2]int` and `[3]int`'},
+		TypeCheckerRejection{'bad_voidptr_variadic_int_spread', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\txs := [1, 2]\n\tprintln(int_str(sink(...xs)))\n}\n', 'cannot use `...int` as `...voidptr` in argument 1 to `bad_voidptr_variadic_int_spread.sink`'},
+		TypeCheckerRejection{'bad_voidptr_variadic_void_arg', 'fn side() {}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(side())))\n}\n', 'cannot use `void`'},
+		TypeCheckerRejection{'bad_voidptr_variadic_none_arg', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(none)))\n}\n', 'cannot use `?void`'},
+		TypeCheckerRejection{'bad_voidptr_variadic_multi_return_arg', 'fn pair() (int, int) {\n\treturn 1, 2\n}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(pair())))\n}\n', 'cannot use `(int, int)`'},
+		TypeCheckerRejection{'bad_voidptr_variadic_enum_shorthand_arg', 'enum Color {\n\tred\n}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(.red)))\n}\n', 'cannot use `int`'},
+		// The fixed-array literal length guard evaluates a shift length: `[1, 2]` (two
+		// elements) does not match an expected `[1 << 2]int` (four), so it is rejected.
+		TypeCheckerRejection{'bad_shift_fixed_array_literal_len', 'fn take(a [1 << 2]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n', 'cannot use `[2]int` as `[1 << 2]int` in argument 1 to `bad_shift_fixed_array_literal_len.take`'},
+		// V's unsigned right shift `>>>` is a valid constant-length operator. It must fold in
+		// the const evaluator (so the array dimension is emitted as a numeric literal, since
+		// `>>>` has no C form) and in the literal-length guard. `8 >>> 1` = 4, `16 >>> 2` = 4,
+		// `(1 << 5) >>> 2` = 8.
+		// The fixed-array literal-length guard evaluates `>>>` too: `[1, 2]` (two elements)
+		// does not match an expected `[8 >>> 1]int` (four), so it is rejected.
+		TypeCheckerRejection{'bad_unsigned_shift_fixed_array_literal_len', 'fn take(a [8 >>> 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n', 'cannot use `[2]int` as `[8 >>> 1]int` in argument 1 to `bad_unsigned_shift_fixed_array_literal_len.take`'},
+		// Non-decimal integer literals (hex `0x`, octal `0o`, binary `0b`) fold in const
+		// fixed-array lengths: `0xF & 6` = 6, `0b1100 >> 1` = 6, `0o17 & 8` = 8.
+		// The length guard evaluates non-decimal too: `[1, 2]` does not match `[0xF & 6]int`.
+		TypeCheckerRejection{'bad_non_decimal_fixed_array_literal_len', 'fn take(a [0xF & 6]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n', 'cannot use `[2]int` as `[0xF & 6]int` in argument 1 to `bad_non_decimal_fixed_array_literal_len.take`'},
+		// The fixed-array literal-length guard uses the same folded length: a `[1 << 2 + 1]int`
+		// parameter (length 5) rejects a 4-element literal.
+		TypeCheckerRejection{'bad_shift_add_precedence_literal_len', 'fn take(a [1 << 2 + 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2, 3, 4]!)\n}\n', 'cannot use `[4]int` as `[1 << 2 + 1]int` in argument 1 to `bad_shift_add_precedence_literal_len.take`'},
+		TypeCheckerRejection{'bad_if_branch_primitive_mismatch', "fn main() {\n\tc := true\n\t_ := if c { 1 } else { 'bad' }\n}\n", 'mismatched types `int literal` and `string`'},
+		TypeCheckerRejection{'bad_if_branch_value_pointer_mismatch', 'struct Foo {}\n\nfn main() {\n\tc := true\n\t_ := if c { Foo{} } else { &Foo{} }\n}\n', 'mismatched types `bad_if_branch_value_pointer_mismatch.Foo` and `&bad_if_branch_value_pointer_mismatch.Foo`'},
+		// A write to the loop-narrowed value inside the body drops the narrowing for the
+		// rest of that iteration; the lexical loop fallback must not reconstruct it.
+		TypeCheckerRejection{'bad_for_loop_smartcast_after_write', 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tmut x := FB(Foo{})\n\tfor x is Foo {\n\t\tx = Bar{}\n\t\tprintln(x.foo)\n\t}\n}\n', 'field `foo` does not exist or have the same type in these sumtype `bad_for_loop_smartcast_after_write.FB` variants:'},
+		// A recorded `p.value is Foo` reads the sum through an immutable pointer; the pointee
+		// can be reassigned through another alias before the guard, so the smartcast must not
+		// be reused for `p.value` in the then-branch.
+		TypeCheckerRejection{'bad_bool_condition_alias_pointer_pointee', 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nstruct Holder {\nmut:\n\tvalue FB\n}\n\nfn main() {\n\tmut holder := Holder{\n\t\tvalue: Foo{}\n\t}\n\tp := &holder\n\twas_foo := p.value is Foo\n\tholder.value = Bar{}\n\tif was_foo {\n\t\tprintln(p.value.foo)\n\t}\n}\n', 'field `foo` does not exist or have the same type in these sumtype `bad_bool_condition_alias_pointer_pointee.FB` variants:'},
+		TypeCheckerRejection{'bad_multi_return_match_overlong_tuple_tail_decl_assign', 'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue { 1, 2, 3 }\n\t\tfalse { 4, 5 }\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values'},
+		TypeCheckerRejection{'bad_multi_return_match_call_non_exhaustive_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression must be exhaustive'},
+		TypeCheckerRejection{'bad_multi_return_match_call_non_exhaustive_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression must be exhaustive'},
+		TypeCheckerRejection{'bad_multi_return_match_preceding_expr_decl_assign', "fn log() int {\n\tprintln('log')\n\treturn 9\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tlog()\n\t\t\t1\n\t\t}\n\t\tfalse { 2, 3 }\n\t}\n\tprintln(int_str(a + b))\n}\n", 'match expression branches cannot produce multiple assignment values'},
+		TypeCheckerRejection{'bad_multi_return_match_preceding_expr_assign', "fn log() int {\n\tprintln('log')\n\treturn 9\n}\nfn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tlog()\n\t\t\t1\n\t\t}\n\t\tfalse { 2, 3 }\n\t}\n\tprintln(int_str(a + b))\n}\n", 'match expression branches cannot produce multiple assignment values'},
+		TypeCheckerRejection{'bad_bool_pointer_match_not_exhaustive', 'fn f(b &bool) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tmut b := true\n\tprintln(int_str(f(&b)))\n}\n', 'missing return'},
+		// A `[flag]` enum match that lists only single-field branches is NOT exhaustive
+		// (combined/zero values fall through), so a non-void fn needs `else`/missing-return.
+		TypeCheckerRejection{'bad_flag_enum_match_not_exhaustive', '@[flag]\nenum Perm {\n\tread\n\twrite\n}\nfn f(p Perm) int {\n\tmatch p {\n\t\t.read { return 1 }\n\t\t.write { return 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(Perm.read)))\n}\n', 'missing return'},
+		TypeCheckerRejection{'bad_multi_return_if_tail_return', 'fn pair(flag bool) (int, int) {\n\treturn if flag {\n\t\t1\n\t\t2\n\t} else {\n\t\t3\n\t\t4\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n', 'if expression branches cannot produce multiple return values'},
+		TypeCheckerRejection{'bad_option_if_error_branch', "fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument'},
+		TypeCheckerRejection{'bad_option_const_if_error_branch', "fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument'},
+		TypeCheckerRejection{'bad_option_return_error', "fn f() ?int {\n\treturn error('bad')\n}\nfn main() {}\n", 'Option and Result types have been split'},
+		// Because a bare `[]thread`.wait() is `void` (not the receiver `[]thread`), its
+		// result cannot be bound to a variable — guards against the old fallback that typed
+		// the call as the receiver array.
+		TypeCheckerRejection{'bad_bare_thread_void_wait_assign', "fn work() {\n\tprintln('w')\n}\nfn main() {\n\tmut threads := []thread{}\n\tthreads << spawn work()\n\tx := threads.wait()\n\tprintln(x)\n}\n", 'assignment mismatch: 1 variable but `wait()` returns 0 values'},
+		TypeCheckerRejection{'bad_multi_return_if_void_tail_decl_assign', 'fn side() {}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tside()\n\t\t1\n\t} else {\n\t\tside()\n\t\t2\n\t}\n\tprintln(int_str(b))\n}\n', 'multi-return assignment mismatch'},
+		TypeCheckerRejection{'bad_void_defer_result', 'fn f() {\n\tdefer {\n\t\t_ := $res()\n\t}\n}\nfn main() {\n\tf()\n}\n', '`res` can only be used in functions that returns something'},
+		TypeCheckerRejection{'bad_result_defer_result', 'fn f() !int {\n\tdefer {\n\t\t_ := $res()\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f() or { 0 }\n}\n', '`res` cannot be used in functions that returns a Result'},
+		TypeCheckerRejection{'bad_unindexed_multi_return_defer_result', 'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res()\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n', '`res` requires an index of the returned value'},
+		TypeCheckerRejection{'bad_out_of_range_multi_return_defer_result', 'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(2)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n', 'index 2 out of range of 2 return types'},
+		TypeCheckerRejection{'bad_indexed_scalar_defer_result', 'fn f() int {\n\tdefer {\n\t\t_ := $res(0)\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f()\n}\n', '`res` index can only be used with multi-return functions'},
 		TypeCheckerRejection{'bad_nongeneric_unknown_is_pattern', 'fn check(err IError) bool {
 	return err is T
 }
@@ -940,7 +725,278 @@ fn main() {
 }
 ', 'cannot instantiate interface `Runnable`'},
 		TypeCheckerRejection{'bad_sum_constructor_extra_arg', 'struct Empty {}\nstruct Node[T] {\n\tvalue T\n}\ntype Tree[T] = Empty | Node[T]\nfn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\nfn main() {\n\t_ := Tree[int](Empty{}, side_effect())\n}\n', 'unexpected `,`'},
+		TypeCheckerRejection{'bad_nonempty_interface_as_array_pattern', 'interface Speaker {\n\tspeak()\n}\nfn check(x Speaker) []int {\n\treturn x as []int\n}\nfn main() {}\n', '`[]int` is not compatible with interface `bad_nonempty_interface_as_array_pattern.Speaker`'},
 	])
+	run_good_module_batch(v3_bin, 'interface_variadics_and_core_semantics', [
+		TypeCheckerRuntimeCase{'v_array_and_interface_mut_compatibility', 'interface Writer {
+	write(mut dst []u8)
+}
+
+struct ByteWriter {}
+
+fn (w ByteWriter) write(mut dst []u8) {
+	dst[0] = 7
+}
+
+interface Sized {
+	size() int
+}
+
+struct Item {}
+
+fn (i Item) size() int {
+	return 3
+}
+
+fn item_size(item Item) int {
+	return item.size()
+}
+
+fn interface_size(item Sized) int {
+	return item.size()
+}
+
+fn sum(values []int) int {
+	return values[0]
+}
+
+fn modify(mut values []int) {
+	assert sum(values) == 1
+	values[0] = 9
+}
+
+fn first(values &[]int) int {
+	return values[0]
+}
+
+fn main() {
+	mut bytes := [u8(0)]
+	writer := Writer(ByteWriter{})
+	writer.write(mut bytes)
+	mut values := [1, 2]
+	modify(mut values[..1])
+	assert values == [9, 2]
+	assert []int{} == []
+	unsafe {
+		ptr := &values
+		assert ptr == [9, 2]
+	}
+	item := Item{}
+	println(int(bytes[0]))
+	println(first(&values))
+	println(item_size(item))
+	println(interface_size(&item))
+}
+', '7\n9\n3\n3'},
+		TypeCheckerRuntimeCase{'embedded_interface_mut_parameter', 'interface Reader {
+mut:
+	read(mut buf []u8) int
+}
+
+interface ReaderWriter {
+	Reader
+}
+
+struct Device {}
+
+fn (_ Device) read(mut buf []u8) int {
+	buf[0] = 7
+	return 1
+}
+
+fn fill(mut stream ReaderWriter) int {
+	mut buf := [u8(0)]
+	stream.read(mut buf)
+	return int(buf[0])
+}
+
+fn main() {
+	mut stream := ReaderWriter(Device{})
+	println(fill(mut stream))
+}
+', '7'},
+		TypeCheckerRuntimeCase{'empty_interface_as_array_pattern', 'interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\txs := values(Any([1, 2]))\n\tprintln(xs[0] + xs[1])\n}\n', '3'},
+		TypeCheckerRuntimeCase{'empty_interface_as_map_pattern', "interface Any {}\nfn values(x Any) map[string]int {\n\treturn x as map[string]int\n}\nfn main() {\n\tm := values(Any({'answer': 42}))\n\tprintln(m['answer'])\n}\n", '42'},
+		TypeCheckerRuntimeCase{'good_variadic_struct_field_args', 'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points ...Point) int {\n\treturn points[0].x + points[0].y\n}\n\nfn main() {\n\tprintln(int_str(total(x: 3, y: 4)))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'good_gated_scalar_and_fixed_array_indexes', 'struct Box {\n\titems [10]int\n}\n\nfn main() {\n\ta := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]\n\tprintln(int_str(a#[-1]))\n\tprintln(int_str(a#[-11] or { 42 }))\n\tprintln(a#[-2..].str())\n\tprintln("0123456789"#[-1].ascii_str())\n\tfixed := [10]int{init: index}\n\tprintln(int_str(fixed#[-1]))\n\tprintln(fixed#[-2..].str())\n\tbox := Box{\n\t\titems: fixed\n\t}\n\tprintln(int_str(box.items#[-1]))\n}\n', '9\n42\n[8, 9]\n9\n9\n[8, 9]\n9'},
+		TypeCheckerRuntimeCase{'good_voidptr_variadic_voidptr_spread', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tx := 7\n\txs := [voidptr(&x)]\n\tprintln(int_str(sink(...xs)))\n\tprintln(int_str(sink(1)))\n}\n', '1\n1'},
+		// `char` values passed through `...voidptr` use the same int-width storage as other small
+		// integer varargs, so callees that read `%c`/small-integer slots do not read past the value.
+		TypeCheckerRuntimeCase{'good_voidptr_variadic_char_promotes_to_int', 'fn sink(args ...voidptr) int {\n\treturn unsafe { *(&int(args[0])) }\n}\nfn main() {\n\tch := char(66)\n\tprintln(int_str(sink(ch)))\n}\n', '66'},
+		TypeCheckerRuntimeCase{'good_empty_interface_container_patterns', "interface Any {}\nfn main() {\n\tarr := Any([1, 2])\n\tprintln(arr is []int)\n\tprintln(arr is []string)\n\tm := Any({\n\t\t'a': 1\n\t})\n\tprintln(m is map[string]int)\n\tprintln(m is map[string]string)\n\tprintln(match arr {\n\t\t[]int { 1 }\n\t\telse { 0 }\n\t})\n}\n", 'true\nfalse\ntrue\nfalse\n1'},
+		TypeCheckerRuntimeCase{'alias_receiver_implements_interface', "type Text = string\n\nfn (t Text) display() string {\n\treturn t\n}\n\ninterface Displayable {\n\tdisplay() string\n}\n\nfn print_displayable(ds ...Displayable) {\n\tfor d in ds {\n\t\tprintln(d.display())\n\t}\n}\n\nfn main() {\n\tprint_displayable(Text('test'), Text('hehe'))\n}\n", 'test\nhehe'},
+		TypeCheckerRuntimeCase{'alias_method', 'type UserId = int\n\nfn (id UserId) str() string {\n\treturn int_str(int(id))\n}\n\nfn main() {\n\tid := UserId(1)\n\tprintln(id.str())\n}\n', '1'},
+		TypeCheckerRuntimeCase{'local_err_binding', 'fn main() {\n\terr := 2\n\tprintln(int_str(err + 1))\n}\n', '3'},
+		TypeCheckerRuntimeCase{'local_args_contains', "fn main() {\n\targs := [1, 2]\n\tif args.contains(2) {\n\t\tprintln('ok')\n\t}\n}\n", 'ok'},
+		TypeCheckerRuntimeCase{'custom_codec_methods', 'struct Codec {}\n\nfn (c Codec) decode() int {\n\treturn 7\n}\n\nfn (c Codec) encode() int {\n\treturn 8\n}\n\nfn (c Codec) use(x int) int {\n\treturn x + 1\n}\n\nfn (c Codec) run_at(x int) int {\n\treturn x + 2\n}\n\nfn main() {\n\tc := Codec{}\n\tprintln(int_str(c.decode()))\n\tprintln(int_str(c.encode()))\n\tprintln(int_str(c.use(9)))\n\tprintln(int_str(c.run_at(5)))\n}\n', '7\n8\n10\n7'},
+		TypeCheckerRuntimeCase{'item_with_user_initializer', 'struct ItemWithUserFoo {\n\titem int\n}\n\nfn main() {\n\tx := ItemWithUserFoo{\n\t\titem: 7\n\t}\n\tprintln(int_str(x.item))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'struct_default_literals', 'type GetFn = fn () int\n\nfn default_num() int {\n\treturn 6\n}\n\nstruct Defaults {\n\tx int = 5\n\tget GetFn = default_num\n}\n\nfn main() {\n\ta := Defaults{}\n\tb := &Defaults{}\n\tprintln(int_str(a.x))\n\tprintln(int_str(b.x))\n\tprintln(int_str(a.get()))\n}\n', '5\n5\n6'},
+		TypeCheckerRuntimeCase{'nested_embedded_method', 'struct Leaf {}\n\nfn (leaf Leaf) value() int {\n\treturn 9\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{}\n\tprintln(int_str(outer.value()))\n}\n', '9'},
+		TypeCheckerRuntimeCase{'aliased_embedded_method', 'struct Leaf {}\n\nfn (leaf Leaf) value() int {\n\treturn 11\n}\n\nstruct Outer {\n\tLeaf\n}\n\ntype AliasOuter = Outer\n\nfn main() {\n\touter := AliasOuter{}\n\tprintln(int_str(outer.value()))\n}\n', '11'},
+		TypeCheckerRuntimeCase{'nested_embedded_field', 'struct Leaf {\n\tx int\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{\n\t\tMiddle: Middle{\n\t\t\tLeaf: Leaf{\n\t\t\t\tx: 12\n\t\t\t}\n\t\t}\n\t}\n\tprintln(int_str(outer.x))\n}\n', '12'},
+		TypeCheckerRuntimeCase{'map_mutation_lowering', "fn main() {\n\tmut m := map[string]int{}\n\tm['a'] = 1\n\tm['a'] += 2\n\tm['a']++\n\tm['a'] -= 1\n\tprintln(int_str(m['a']))\n}\n", '3'},
+		TypeCheckerRuntimeCase{'map_array_append_lowering', "fn main() {\n\tmut m := map[string][]int{}\n\tm['a'] << 1\n\tm['a'] << 2\n\tprintln(int_str(m['a'].len))\n}\n", '2'},
+		TypeCheckerRuntimeCase{'assoc_selector_type', 'struct Point {\n\tx int\n\ty int\n}\n\nfn main() {\n\tp := Point{\n\t\tx: 10\n\t\ty: 20\n\t}\n\tq := Point{\n\t\t...p\n\t\tx: 99\n\t}\n\tprintln(int_str(q.x + q.y))\n}\n', '119'},
+		TypeCheckerRuntimeCase{'array_literal_push_many', 'fn main() {\n\tmut xs := [1, 2]\n\tys := [3, 4]\n\txs << ys\n\txs << [5, 6]\n\tprintln(int_str(xs.len))\n}\n', '6'},
+		TypeCheckerRuntimeCase{'nested_array_push', 'fn main() {\n\tmut xs := [][]int{}\n\ty := [1, 2]\n\txs << y\n\tprintln(int_str(xs.len))\n\tprintln(int_str(xs[0][1]))\n}\n', '1\n2'},
+		TypeCheckerRuntimeCase{'mut_array_for_in', 'struct Item {\nmut:\n\tn int\n}\n\nfn main() {\n\tmut xs := []Item{}\n\txs << Item{n: 1}\n\tfor mut item in xs {\n\t\titem.n = 7\n\t}\n\tprintln(int_str(xs[0].n))\n}\n', '7'},
+		TypeCheckerRuntimeCase{'mut_array_for_scalar_updates', 'fn main() {\n\tmut xs := []int{}\n\txs << 1\n\txs << 2\n\tfor mut x in xs {\n\t\tx++\n\t\tx += 10\n\t}\n\tprintln(int_str(xs[0]))\n\tprintln(int_str(xs[1]))\n}\n', '12\n13'},
+		TypeCheckerRuntimeCase{'const_forward', 'const first_value = second_value\nconst second_value = 2\nfn main() {\n\tprintln(int_str(first_value))\n}\n', '2'},
+		TypeCheckerRuntimeCase{'strings_builder_from_vlib', "import strings\n\nfn main() {\n\tmut sb := strings.new_builder(16)\n\tsb.write_string('ok')\n\tsb.write_u8(u8(33))\n\tprintln(sb.last_n(3))\n\tprintln(sb.str())\n}\n", 'ok!\nok!'},
+		TypeCheckerRuntimeCase{'v_numeric_coercions', 'fn takes_f64(value f64) f64 {
+	return value
+}
+
+fn takes_i64(value i64) i64 {
+	return value
+}
+
+fn negative_one() f64 {
+	return -1
+}
+
+fn main() {
+	mut result := 2.0
+	sign := -1
+	result *= sign
+	small := f32(1.5)
+	base := 2
+	println(takes_f64(small))
+	println(takes_i64(base))
+	println(result)
+	println(negative_one())
+}
+', '1.5\n2\n-2.0\n-1.0'},
+	])
+	run_bad_project(v3_bin, 'bad_imported_sum_constructor_extra_arg', {
+		'trees/trees.v': 'module trees\n\npub struct Empty {}\n\npub struct Node[T] {\n\tpub:\n\tvalue T\n}\n\npub type Tree[T] = Empty | Node[T]\n\npub fn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\n'
+		'main.v':        'import trees { Empty, Tree, side_effect }\n\nfn main() {\n\t_ := Tree[int](Empty{}, side_effect())\n}\n'
+	}, 'main.v', 'unexpected `,`')
+	run_bad_project(v3_bin, 'bad_aliased_sum_constructor_extra_arg', {
+		'trees/trees.v': 'module trees\n\npub struct Empty {}\n\npub struct Node[T] {\n\tpub:\n\tvalue T\n}\n\npub type Tree[T] = Empty | Node[T]\n\npub fn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\n'
+		'main.v':        'import trees as tr\n\nfn main() {\n\t_ := tr.Tree[int](tr.Empty{}, tr.side_effect())\n}\n'
+	}, 'main.v', 'unexpected `,`')
+	run_bad_module_batch(v3_bin, [
+		TypeCheckerRejection{'bad_generic_param', 'fn id[T](x T) T {\n\treturn x\n}\nfn main() {\n\t_ := id(1)\n}\n', 'unsupported generic type parameter `T`'},
+		TypeCheckerRejection{'bad_generic_type_application', 'fn takes_box(x Box[int]) {}\nfn main() {}\n', 'unsupported generic type application `Box[int]`'},
+	], '-selfhost')
+	run_bad_project(v3_bin, 'bad_bare_imported_call', {
+		'main.v':      'module main\n\nimport moda\n\nfn main() {\n\t_ := answer()\n}\n'
+		'moda/moda.v': 'module moda\n\nfn answer() int {\n\treturn 7\n}\n'
+	}, 'main.v', 'unknown function: answer')
+	run_bad_project(v3_bin, 'bad_import_leak', {
+		'main.v':      'module main\n\nimport moda\n\nfn main() {}\n'
+		'other.v':     'module main\n\nfn use_it() int {\n\treturn moda.answer()\n}\n'
+		'moda/moda.v': 'module moda\n\nfn answer() int {\n\treturn 7\n}\n'
+	}, '', 'undefined ident: `moda`')
+	init_order_out := run_good_project(v3_bin, 'module_init_order', {
+		'main.v':               'module main
+
+import moda
+import parent.child
+import foo.user
+import bar as shortbar
+import relay
+
+__global (
+	seen int
+	child_seen int
+	transitive_seen int
+)
+
+fn init() {
+	seen = moda.value()
+	child_seen = child.value()
+	transitive_seen = relay.value()
+}
+
+fn main() {
+	println(int_str(seen))
+	println(int_str(moda.value()))
+	println(int_str(child_seen))
+	println(int_str(child.value()))
+	println(int_str(user.value()))
+	println(int_str(shortbar.value()))
+	println(int_str(transitive_seen))
+	println(int_str(relay.value()))
+}
+'
+		'moda/moda.v':          'module moda
+
+__global flag int
+
+fn init() {
+	flag = 41
+}
+
+pub fn value() int {
+	return flag
+}
+'
+		'parent/child/child.v': 'module child\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+		'foo/user/user.v':      'module user\n\nimport foo.bar as foobar\n\n__global seen int\n\nfn init() {\n\tseen = foobar.value() + 1\n}\n\npub fn value() int {\n\treturn seen\n}\n'
+		'foo/bar/bar.v':        'module bar\n\n__global flag int\n\nfn init() {\n\tflag = 40\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+		'bar/bar.v':            'module bar\n\n__global flag int\n\nfn init() {\n\tflag = 3\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+		'relay/relay.v':        'module relay\n\nimport modb\n\npub fn value() int {\n\treturn modb.value()\n}\n'
+		'modb/modb.v':          'module modb\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
+	}, 'main.v')
+	assert init_order_out == '41\n41\n41\n41\n41\n3\n41\n41'
+	run_bad_project(v3_bin, 'array_append_distinct_module_types', {
+		'main.v':      'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tmut xs := []moda.Foo{}\n\tys := []modb.Foo{}\n\txs << ys\n}\n'
+		'moda/moda.v': 'module moda\n\npub struct Foo {\n\ta int\n}\n'
+		'modb/modb.v': 'module modb\n\npub struct Foo {\n\tb int\n}\n'
+	}, 'main.v', 'cannot append `[]modb.Foo` to `[]moda.Foo`')
+}
+
+fn test_vv_input_with_comma_in_decl_assign_is_rejected_without_overwrite() {
+	source_path := unique_temp_path('comma_in_decl_assign') + '.vv'
+	default_output := source_path.all_before_last('.vv')
+	source := 'fn main() {\n\ta := [1, 2, 3]\n\tmut b := a.clone(), a.clone()\n\tprintln(b)\n}\n'
+	os.write_file(source_path, source) or { panic(err) }
+	defer {
+		os.rm(source_path) or {}
+		os.rm(default_output) or {}
+	}
+	result := run_type_checker_compiler(v3_bin, ['-nocache', source_path])
+	assert result.exit_code != 0, 'expected compile failure, got success: ${result.output}'
+	assert result.output.contains('unexpected `,` in expression, use `;` or a new line to separate statements'), result.output
+
+	assert (os.read_file(source_path) or { panic(err) }) == source
+}
+
+fn test_interface_container_as_cast_requirements() {
+	bad_casts := "import os
+
+interface Any {}
+fn values(x Any) []int {
+	return x as []int
+}
+fn map_values(x Any) map[string]int {
+	return x as map[string]int
+}
+fn main() {
+	match os.args[1] {
+		'empty_interface_as_array_non_array_payload' {
+			_ := values(Any('not an array'))
+		}
+		'empty_interface_as_array_wrong_element_payload' {
+			_ := values(Any(['wrong element type']))
+		}
+		'empty_interface_as_map_wrong_value_payload' {
+			_ := map_values(Any({'answer': 'wrong value type'}))
+		}
+		else { panic('unknown fixture') }
+	}
+}
+"
+	run_runtime_bad_cases(v3_bin, 'bad_interface_container_casts', bad_casts, {
+		'empty_interface_as_array_non_array_payload':     'as cast: cannot cast interface value to `[]int`'
+		'empty_interface_as_array_wrong_element_payload': 'as cast: cannot cast interface value to `[]int`'
+		'empty_interface_as_map_wrong_value_payload':     'as cast: cannot cast interface value to `map[string]int`'
+	})
+}
+
+fn test_review_generic_call_diagnostics() {
 	// Earlier errors stop compilation before the concrete generic calls are checked.
 	run_bad_module_batch(v3_bin, [
 		TypeCheckerRejection{'bad_generic_missing_receiver_method', 'fn invoke[T](value T) {
@@ -1327,40 +1383,6 @@ fn main() {
 	])
 }
 
-// Regression tests for the post-PR review fixes: fixed-array literals must match
-// the expected fixed length, and genuine fixed-array if-branches of different
-// lengths must mismatch — while bare array literals stay length-agnostic.
-fn test_fixed_array_length_checks() {
-	run_bad_module_batch(v3_bin, [
-		// A literal passed where a fixed array is expected must have the exact length.
-		TypeCheckerRejection{'bad_fixed_array_arg_len', 'fn take4(a [4]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take4([1, 2])\n}\n', 'cannot use `[]int` as `[4]int` in argument 1 to `bad_fixed_array_arg_len.take4`'},
-		// Genuine fixed arrays of different lengths in if-branches must mismatch.
-		TypeCheckerRejection{'bad_if_branch_fixed_array_len', 'fn main() {\n\ta := [2]int{}\n\tb := [3]int{}\n\tc := true\n\t_ := if c { a } else { b }\n}\n', 'mismatched types `[2]int` and `[3]int`'},
-		TypeCheckerRejection{'bad_voidptr_variadic_int_spread', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\txs := [1, 2]\n\tprintln(int_str(sink(...xs)))\n}\n', 'cannot use `...int` as `...voidptr` in argument 1 to `bad_voidptr_variadic_int_spread.sink`'},
-		TypeCheckerRejection{'bad_voidptr_variadic_void_arg', 'fn side() {}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(side())))\n}\n', 'cannot use `void`'},
-		TypeCheckerRejection{'bad_voidptr_variadic_none_arg', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(none)))\n}\n', 'cannot use `?void`'},
-		TypeCheckerRejection{'bad_voidptr_variadic_multi_return_arg', 'fn pair() (int, int) {\n\treturn 1, 2\n}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(pair())))\n}\n', 'cannot use `(int, int)`'},
-		TypeCheckerRejection{'bad_voidptr_variadic_enum_shorthand_arg', 'enum Color {\n\tred\n}\n\nfn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\tprintln(int_str(sink(.red)))\n}\n', 'cannot use `int`'},
-		// The fixed-array literal length guard evaluates a shift length: `[1, 2]` (two
-		// elements) does not match an expected `[1 << 2]int` (four), so it is rejected.
-		TypeCheckerRejection{'bad_shift_fixed_array_literal_len', 'fn take(a [1 << 2]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n', 'cannot use `[2]int` as `[1 << 2]int` in argument 1 to `bad_shift_fixed_array_literal_len.take`'},
-		// V's unsigned right shift `>>>` is a valid constant-length operator. It must fold in
-		// the const evaluator (so the array dimension is emitted as a numeric literal, since
-		// `>>>` has no C form) and in the literal-length guard. `8 >>> 1` = 4, `16 >>> 2` = 4,
-		// `(1 << 5) >>> 2` = 8.
-		// The fixed-array literal-length guard evaluates `>>>` too: `[1, 2]` (two elements)
-		// does not match an expected `[8 >>> 1]int` (four), so it is rejected.
-		TypeCheckerRejection{'bad_unsigned_shift_fixed_array_literal_len', 'fn take(a [8 >>> 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n', 'cannot use `[2]int` as `[8 >>> 1]int` in argument 1 to `bad_unsigned_shift_fixed_array_literal_len.take`'},
-		// Non-decimal integer literals (hex `0x`, octal `0o`, binary `0b`) fold in const
-		// fixed-array lengths: `0xF & 6` = 6, `0b1100 >> 1` = 6, `0o17 & 8` = 8.
-		// The length guard evaluates non-decimal too: `[1, 2]` does not match `[0xF & 6]int`.
-		TypeCheckerRejection{'bad_non_decimal_fixed_array_literal_len', 'fn take(a [0xF & 6]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2]!)\n}\n', 'cannot use `[2]int` as `[0xF & 6]int` in argument 1 to `bad_non_decimal_fixed_array_literal_len.take`'},
-		// The fixed-array literal-length guard uses the same folded length: a `[1 << 2 + 1]int`
-		// parameter (length 5) rejects a 4-element literal.
-		TypeCheckerRejection{'bad_shift_add_precedence_literal_len', 'fn take(a [1 << 2 + 1]int) int {\n\treturn a[0]\n}\nfn main() {\n\t_ := take([1, 2, 3, 4]!)\n}\n', 'cannot use `[4]int` as `[1 << 2 + 1]int` in argument 1 to `bad_shift_add_precedence_literal_len.take`'},
-	])
-}
-
 fn test_conditional_values_and_result_paths() {
 	run_good_module_batch(v3_bin, 'conditional_values_and_result_paths', [
 		TypeCheckerRuntimeCase{'statement_if_mixed_tail_exprs', "fn main() {\n\tmut n := 0\n\tmut errors := []string{}\n\tif true {\n\t\tn++\n\t} else {\n\t\terrors << 'bad'\n\t}\n\tprintln(int_str(n + errors.len))\n}\n", '1'},
@@ -1452,36 +1474,12 @@ fn test_multi_return_if_tail_infers_common_type() {
 	run_bad(v3_bin, 'bad_multi_return_if_call_mixed_tuple_tail_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tpair(1)\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n', 'expression evaluated but not used')
 }
 
-fn test_nested_if_tuple_tail_multi_return_lowers_each_value() {
-	run_bad_with_flags(v3_bin, 'bad_nested_mixed_tuple_tail_branch_type', "fn pair() (int, string) {\n\treturn 1, 'pair'\n}\nfn main() {\n\touter := false\n\tinner := false\n\ta, b := if outer {\n\t\tpair()\n\t} else {\n\t\tif inner {\n\t\t\t1\n\t\t\t'a'\n\t\t} else {\n\t\t\ttrue\n\t\t\t'b'\n\t\t}\n\t}\n\tprintln(int_str(a) + b)\n}\n", 'mismatched types `(int, string)` and `string`', '-check')
-}
-
 fn test_match_multi_return_tails_require_explicit_tuple() {
-	run_bad_module_batch(v3_bin, [
-		TypeCheckerRejection{'bad_if_branch_primitive_mismatch', "fn main() {\n\tc := true\n\t_ := if c { 1 } else { 'bad' }\n}\n", 'mismatched types `int literal` and `string`'},
-		TypeCheckerRejection{'bad_if_branch_value_pointer_mismatch', 'struct Foo {}\n\nfn main() {\n\tc := true\n\t_ := if c { Foo{} } else { &Foo{} }\n}\n', 'mismatched types `bad_if_branch_value_pointer_mismatch.Foo` and `&bad_if_branch_value_pointer_mismatch.Foo`'},
-		// A write to the loop-narrowed value inside the body drops the narrowing for the
-		// rest of that iteration; the lexical loop fallback must not reconstruct it.
-		TypeCheckerRejection{'bad_for_loop_smartcast_after_write', 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tmut x := FB(Foo{})\n\tfor x is Foo {\n\t\tx = Bar{}\n\t\tprintln(x.foo)\n\t}\n}\n', 'field `foo` does not exist or have the same type in these sumtype `bad_for_loop_smartcast_after_write.FB` variants:'},
-		// A recorded `p.value is Foo` reads the sum through an immutable pointer; the pointee
-		// can be reassigned through another alias before the guard, so the smartcast must not
-		// be reused for `p.value` in the then-branch.
-		TypeCheckerRejection{'bad_bool_condition_alias_pointer_pointee', 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nstruct Holder {\nmut:\n\tvalue FB\n}\n\nfn main() {\n\tmut holder := Holder{\n\t\tvalue: Foo{}\n\t}\n\tp := &holder\n\twas_foo := p.value is Foo\n\tholder.value = Bar{}\n\tif was_foo {\n\t\tprintln(p.value.foo)\n\t}\n}\n', 'field `foo` does not exist or have the same type in these sumtype `bad_bool_condition_alias_pointer_pointee.FB` variants:'},
-		TypeCheckerRejection{'bad_multi_return_match_overlong_tuple_tail_decl_assign', 'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue { 1, 2, 3 }\n\t\tfalse { 4, 5 }\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values'},
-		TypeCheckerRejection{'bad_multi_return_match_call_non_exhaustive_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression must be exhaustive'},
-		TypeCheckerRejection{'bad_multi_return_match_call_non_exhaustive_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression must be exhaustive'},
-		TypeCheckerRejection{'bad_multi_return_match_preceding_expr_decl_assign', "fn log() int {\n\tprintln('log')\n\treturn 9\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tlog()\n\t\t\t1\n\t\t}\n\t\tfalse { 2, 3 }\n\t}\n\tprintln(int_str(a + b))\n}\n", 'match expression branches cannot produce multiple assignment values'},
-		TypeCheckerRejection{'bad_multi_return_match_preceding_expr_assign', "fn log() int {\n\tprintln('log')\n\treturn 9\n}\nfn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tlog()\n\t\t\t1\n\t\t}\n\t\tfalse { 2, 3 }\n\t}\n\tprintln(int_str(a + b))\n}\n", 'match expression branches cannot produce multiple assignment values'},
-		TypeCheckerRejection{'bad_bool_pointer_match_not_exhaustive', 'fn f(b &bool) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tmut b := true\n\tprintln(int_str(f(&b)))\n}\n', 'missing return'},
-		// A `[flag]` enum match that lists only single-field branches is NOT exhaustive
-		// (combined/zero values fall through), so a non-void fn needs `else`/missing-return.
-		TypeCheckerRejection{'bad_flag_enum_match_not_exhaustive', '@[flag]\nenum Perm {\n\tread\n\twrite\n}\nfn f(p Perm) int {\n\tmatch p {\n\t\t.read { return 1 }\n\t\t.write { return 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(Perm.read)))\n}\n', 'missing return'},
-		TypeCheckerRejection{'bad_multi_return_if_tail_return', 'fn pair(flag bool) (int, int) {\n\treturn if flag {\n\t\t1\n\t\t2\n\t} else {\n\t\t3\n\t\t4\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n', 'if expression branches cannot produce multiple return values'},
-	])
 	run_bad_module_batch(v3_bin, [
 		TypeCheckerRejection{'bad_multi_return_match_tail_decl_assign', 'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values'},
 		TypeCheckerRejection{'bad_multi_return_match_call_mixed_tuple_tail_decl_assign', 'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple assignment values'},
 		TypeCheckerRejection{'bad_multi_return_match_tail_return', 'fn pair(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n', 'match expression branches cannot produce multiple return values'},
+		TypeCheckerRejection{'bad_nested_mixed_tuple_tail_branch_type', "fn pair() (int, string) {\n\treturn 1, 'pair'\n}\nfn main() {\n\touter := false\n\tinner := false\n\ta, b := if outer {\n\t\tpair()\n\t} else {\n\t\tif inner {\n\t\t\t1\n\t\t\t'a'\n\t\t} else {\n\t\t\ttrue\n\t\t\t'b'\n\t\t}\n\t}\n\tprintln(int_str(a) + b)\n}\n", 'mismatched types `(int, string)` and `string`'},
 	], '-check')
 }
 
@@ -2109,36 +2107,19 @@ fn test_pr_review_codegen_batch_twentynine() {
 }
 
 fn test_defer_result_review_regressions() {
-	run_bad_module_batch(v3_bin, [
-		TypeCheckerRejection{'bad_option_if_error_branch', "fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument'},
-		TypeCheckerRejection{'bad_option_const_if_error_branch', "fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {}\n", 'cannot use `!int` as type `?int` in return argument'},
-		TypeCheckerRejection{'bad_option_return_error', "fn f() ?int {\n\treturn error('bad')\n}\nfn main() {}\n", 'Option and Result types have been split'},
-		// Because a bare `[]thread`.wait() is `void` (not the receiver `[]thread`), its
-		// result cannot be bound to a variable — guards against the old fallback that typed
-		// the call as the receiver array.
-		TypeCheckerRejection{'bad_bare_thread_void_wait_assign', "fn work() {\n\tprintln('w')\n}\nfn main() {\n\tmut threads := []thread{}\n\tthreads << spawn work()\n\tx := threads.wait()\n\tprintln(x)\n}\n", 'assignment mismatch: 1 variable but `wait()` returns 0 values'},
-		TypeCheckerRejection{'bad_multi_return_if_void_tail_decl_assign', 'fn side() {}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tside()\n\t\t1\n\t} else {\n\t\tside()\n\t\t2\n\t}\n\tprintln(int_str(b))\n}\n', 'multi-return assignment mismatch'},
-		TypeCheckerRejection{'bad_void_defer_result', 'fn f() {\n\tdefer {\n\t\t_ := $res()\n\t}\n}\nfn main() {\n\tf()\n}\n', '`res` can only be used in functions that returns something'},
-		TypeCheckerRejection{'bad_result_defer_result', 'fn f() !int {\n\tdefer {\n\t\t_ := $res()\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f() or { 0 }\n}\n', '`res` cannot be used in functions that returns a Result'},
-		TypeCheckerRejection{'bad_unindexed_multi_return_defer_result', 'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res()\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n', '`res` requires an index of the returned value'},
-		TypeCheckerRejection{'bad_out_of_range_multi_return_defer_result', 'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(2)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n', 'index 2 out of range of 2 return types'},
-		TypeCheckerRejection{'bad_indexed_scalar_defer_result', 'fn f() int {\n\tdefer {\n\t\t_ := $res(0)\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f()\n}\n', '`res` index can only be used with multi-return functions'},
-	])
-	// Parser errors would hide the type-checker diagnostics above.
+	// Keep parser errors in their own build so the checker can report its diagnostics.
 	run_bad_module_batch(v3_bin, [
 		TypeCheckerRejection{'bad_defer_result_trailing_argument_tokens', 'fn f() (int, int) {\n\tdefer {\n\t\t_ := $res(0 + 1)\n\t}\n\treturn 1, 2\n}\nfn main() {\n\t_, _ := f()\n}\n', 'expected `)` immediately after the `$res` index'},
 		TypeCheckerRejection{'bad_bare_defer_result', 'fn f() int {\n\tdefer {\n\t\t_ := $res\n\t}\n\treturn 1\n}\nfn main() {\n\t_ := f()\n}\n', 'expected `(` after `$res`'},
 		TypeCheckerRejection{'bad_nested_block_defer_result', 'fn f() int {\n\t{\n\t\tdefer {\n\t\t\tprintln(int_str($res()))\n\t\t}\n\t}\n\treturn 7\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n', '`res` can only be used in function-exit defer blocks'},
 		TypeCheckerRejection{'bad_loop_defer_result', 'fn f() int {\n\tfor _ in 0 .. 1 {\n\t\tdefer {\n\t\t\tprintln(int_str($res()))\n\t\t}\n\t}\n\treturn 7\n}\nfn main() {\n\tprintln(int_str(f()))\n}\n', '`res` can only be used in function-exit defer blocks'},
+		TypeCheckerRejection{'bad_sum_constructor_extra_arg_as_call_arg', 'struct Empty {}\nstruct Node[T] {\n\tvalue T\n}\ntype Tree[T] = Empty | Node[T]\nfn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\nfn use(t Tree[int]) {}\nfn main() {\n\tuse(Tree[int](Empty{}, side_effect()))\n}\n', 'invalid expression: unexpected token `)`'},
+		TypeCheckerRejection{'bad_direct_recursive_alias', 'type A = A\n\nfn main() {}\n', 'a type alias can not refer to itself: A'},
+		TypeCheckerRejection{'bad_if_guard_or_handled_value', 'fn maybe() ?int {\n\treturn 1\n}\nfn main() {\n\tif value := maybe() or { return } {\n\t\tprintln(int_str(value))\n\t}\n}\n', 'if guard condition expression is illegal, it should return an Option'},
 	])
 }
 
 fn test_recursive_alias_review_regressions() {
-	run_bad(v3_bin, 'bad_direct_recursive_alias', 'type A = A\n\nfn main() {}\n', 'a type alias can not refer to itself: A')
-}
-
-fn test_if_guard_rejects_or_handled_value() {
-	run_bad(v3_bin, 'bad_if_guard_or_handled_value', 'fn maybe() ?int {\n\treturn 1\n}\nfn main() {\n\tif value := maybe() or { return } {\n\t\tprintln(int_str(value))\n\t}\n}\n', 'if guard condition expression is illegal, it should return an Option')
 }
 
 fn test_module_qualified_type_chaining_only_allows_enums() {
