@@ -837,79 +837,6 @@ fn test_ownership_returning_owned_value_and_param() {
 
 	// Owning calls copy literals, so their returned copies keep move tracking.
 
-	ok_nested_fn_literal_return := run_ownership_check(v3_bin, 'nested_fn_literal_return_ignored', "
-fn run(f fn () string) {
-	_ = f
-}
-
-fn outer() string {
-	run(fn () string {
-		return 'hello'.to_owned()
-	})
-	return ''
-}
-
-fn main() {
-	s := outer()
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert ok_nested_fn_literal_return.exit_code == 0, ok_nested_fn_literal_return.output
-
-	ok_multi_return_reassign_plain := run_ownership_check(v3_bin, 'multi_return_reassign_plain_slot', "
-fn make() (string, int) {
-	return 'literal', 0
-}
-
-fn main() {
-	mut s := 'hello'.to_owned()
-	s, _ = make()
-	t := s
-	println(s)
-	_ = t
-}
-")
-	assert ok_multi_return_reassign_plain.exit_code == 0, ok_multi_return_reassign_plain.output
-
-	ok_owned_swap := run_ownership_check(v3_bin, 'owned_swap_multi_assign', "
-fn main() {
-	mut a := 'left'.to_owned()
-	mut b := 'right'.to_owned()
-	a, b = b, a
-	x := a
-	y := b
-	_ = x
-	_ = y
-}
-")
-	assert ok_owned_swap.exit_code == 0, ok_owned_swap.output
-
-	ok_return_conditional_move_does_not_leak := run_ownership_check(v3_bin, 'return_conditional_move_does_not_leak', "
-fn f(cond bool) string {
-	s := 'x'.to_owned()
-	return if cond {
-		t := s
-		_ = t
-		''
-	} else {
-		''
-	}
-}
-
-fn g() {
-	s := 'y'.to_owned()
-	println(s)
-}
-
-fn main() {
-	_ = f(false)
-	g()
-}
-")
-	assert ok_return_conditional_move_does_not_leak.exit_code == 0, ok_return_conditional_move_does_not_leak.output
-
 	fail_module_return := run_ownership_check_with_module(v3_bin, 'module_return_owned', '
 import foo
 
@@ -1595,23 +1522,6 @@ fn write_ownership_module_cases(root string, cases []OwnershipModuleCase) string
 
 fn test_ownership_assignment_to_storage_consumes_rhs() {
 	v3_bin := ownership_compiler
-	ok_whole_overwrite_clears_field := run_ownership_check(v3_bin, 'whole_overwrite_clears_owned_field', '
-struct Holder {
-mut:
-	value string
-}
-
-fn main() {
-	mut h := Holder{value: "field".to_owned()}
-	old := h.value
-	h = Holder{value: ""}
-	t := h.value
-	println(h.value)
-	_ = old
-	_ = t
-}
-')
-	assert ok_whole_overwrite_clears_field.exit_code == 0, ok_whole_overwrite_clears_field.output
 
 	fail_aggregate_copy := run_ownership_check(v3_bin, 'aggregate_copy_moves_owned_field', '
 struct Holder {
@@ -1631,69 +1541,6 @@ fn main() {
 	assert fail_aggregate_copy.exit_code != 0
 	assert fail_aggregate_copy.output.contains('use of moved value: `h2.value`'), fail_aggregate_copy.output
 	assert fail_aggregate_copy.output.contains('use of moved value: `h`'), fail_aggregate_copy.output
-
-	ok_array_loop_dynamic_append_return := run_ownership_check(v3_bin, 'array_loop_dynamic_append_return', '
-fn split_parts(glob string) []string {
-	mut parts := []string{}
-	for i := 0; i < glob.len; i++ {
-		if glob[i] == `,` {
-			parts << glob[0..i].to_owned()
-		}
-	}
-	parts << glob[0..].to_owned()
-	return parts
-}
-
-fn main() {
-	parts := split_parts("a,b")
-	println(int_str(parts.len))
-}
-')
-	assert ok_array_loop_dynamic_append_return.exit_code == 0, ok_array_loop_dynamic_append_return.output
-
-	ok_array_first_call_arg := run_ownership_check(v3_bin, 'array_first_call_arg_clones_element', '
-fn sink(s string) {
-	_ = s
-}
-
-fn main() {
-	mut arr := ["item".to_owned()]
-	sink(arr.first())
-	x := arr[0]
-	_ = x
-}
-')
-	assert ok_array_first_call_arg.exit_code == 0, ok_array_first_call_arg.output
-
-	ok_array_pop_discard_append := run_ownership_check(v3_bin, 'array_pop_discard_updates_length', '
-fn main() {
-	mut arr := ["item".to_owned()]
-	arr.pop()
-	arr << "literal"
-	x := arr[0]
-	y := x
-	println(x)
-	_ = y
-}
-')
-	assert ok_array_pop_discard_append.exit_code == 0, ok_array_pop_discard_append.output
-
-	ok_array_pop_call_arg_append := run_ownership_check(v3_bin, 'array_pop_call_arg_updates_length', '
-fn sink(s string) {
-	_ = s
-}
-
-fn main() {
-	mut arr := ["item".to_owned()]
-	sink(arr.pop())
-	arr << "literal"
-	x := arr[0]
-	y := x
-	println(x)
-	_ = y
-}
-')
-	assert ok_array_pop_call_arg_append.exit_code == 0, ok_array_pop_call_arg_append.output
 
 	fail_array_len_init := run_ownership_check(v3_bin, 'array_len_init_owned_element', '
 fn main() {
@@ -2232,31 +2079,6 @@ ${setup}
 	for line, case in rejected_lines {
 		assert diagnostics.any(it.contains('main.v:${line}:')), '${case}: ${result.output}'
 	}
-}
-
-fn test_ownership_array_alias_builtin_method_keeps_receiver() {
-	v3_bin := ownership_compiler
-	ok := run_ownership_check(v3_bin, 'array_alias_insert_keeps_receiver', '
-type Strings = []string
-
-struct State {
-mut:
-	values map[string]string
-}
-
-fn (mut state State) reset() {
-	state.values = map[string]string{}
-}
-
-fn main() {
-	mut values := Strings{}
-	values.insert(0, "item".to_owned())
-	println(values.len)
-	mut state := State{}
-	state.reset()
-}
-')
-	assert ok.exit_code == 0, ok.output
 }
 
 fn test_ownership_aggregate_borrows_block_overlapping_reassignment() {
@@ -3844,5 +3666,166 @@ fn pass(s string) string {
 	return s
 }
 	"},
+	])
+}
+
+fn test_ownership_accepts_return_and_array_storage_programs() {
+	check_ownership_module_acceptances('return_and_array_storage_acceptances', [
+		OwnershipModuleCase{'nested_fn_literal_return_ignored', "
+fn run(f fn () string) {
+	_ = f
+}
+
+fn outer() string {
+	run(fn () string {
+		return 'hello'.to_owned()
+	})
+	return ''
+}
+
+fn main() {
+	s := outer()
+	t := s
+	println(s)
+	_ = t
+}
+"},
+		OwnershipModuleCase{'multi_return_reassign_plain_slot', "
+fn make() (string, int) {
+	return 'literal', 0
+}
+
+fn main() {
+	mut s := 'hello'.to_owned()
+	s, _ = make()
+	t := s
+	println(s)
+	_ = t
+}
+"},
+		OwnershipModuleCase{'owned_swap_multi_assign', "
+fn main() {
+	mut a := 'left'.to_owned()
+	mut b := 'right'.to_owned()
+	a, b = b, a
+	x := a
+	y := b
+	_ = x
+	_ = y
+}
+"},
+		OwnershipModuleCase{'return_conditional_move_does_not_leak', "
+fn f(cond bool) string {
+	s := 'x'.to_owned()
+	return if cond {
+		t := s
+		_ = t
+		''
+	} else {
+		''
+	}
+}
+
+fn g() {
+	s := 'y'.to_owned()
+	println(s)
+}
+
+fn main() {
+	_ = f(false)
+	g()
+}
+"},
+		OwnershipModuleCase{'whole_overwrite_clears_owned_field', '
+struct Holder {
+mut:
+	value string
+}
+
+fn main() {
+	mut h := Holder{value: "field".to_owned()}
+	old := h.value
+	h = Holder{value: ""}
+	t := h.value
+	println(h.value)
+	_ = old
+	_ = t
+}
+'},
+		OwnershipModuleCase{'array_loop_dynamic_append_return', '
+fn split_parts(glob string) []string {
+	mut parts := []string{}
+	for i := 0; i < glob.len; i++ {
+		if glob[i] == `,` {
+			parts << glob[0..i].to_owned()
+		}
+	}
+	parts << glob[0..].to_owned()
+	return parts
+}
+
+fn main() {
+	parts := split_parts("a,b")
+	println(int_str(parts.len))
+}
+'},
+		OwnershipModuleCase{'array_first_call_arg_clones_element', '
+fn sink(s string) {
+	_ = s
+}
+
+fn main() {
+	mut arr := ["item".to_owned()]
+	sink(arr.first())
+	x := arr[0]
+	_ = x
+}
+'},
+		OwnershipModuleCase{'array_pop_discard_updates_length', '
+fn main() {
+	mut arr := ["item".to_owned()]
+	arr.pop()
+	arr << "literal"
+	x := arr[0]
+	y := x
+	println(x)
+	_ = y
+}
+'},
+		OwnershipModuleCase{'array_pop_call_arg_updates_length', '
+fn sink(s string) {
+	_ = s
+}
+
+fn main() {
+	mut arr := ["item".to_owned()]
+	sink(arr.pop())
+	arr << "literal"
+	x := arr[0]
+	y := x
+	println(x)
+	_ = y
+}
+'},
+		OwnershipModuleCase{'array_alias_insert_keeps_receiver', '
+type Strings = []string
+
+struct State {
+mut:
+	values map[string]string
+}
+
+fn (mut state State) reset() {
+	state.values = map[string]string{}
+}
+
+fn main() {
+	mut values := Strings{}
+	values.insert(0, "item".to_owned())
+	println(values.len)
+	mut state := State{}
+	state.reset()
+}
+'},
 	])
 }
