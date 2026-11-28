@@ -685,10 +685,6 @@ fn hover(line int, word string, nth int) string {
 	return answer[prefix.len..answer.len - suffix.len]
 }
 
-fn definition(line int, word string, nth int) string {
-	return ask(work_dir, 'gd^', line, word, nth)
-}
-
 fn test_hover_writes_declarations_as_v1_did() {
 	assert ask(work_dir, 'hv^', 35, 'p', 0) == '{"contents":{"kind":"markdown","value":"```v\\np main.Point\\n```"}}'
 	assert hover(35, 'Point', 0) == 'struct Point'
@@ -714,20 +710,37 @@ fn test_hover_writes_declarations_as_v1_did() {
 }
 
 fn test_definition_prints_the_position_of_the_declaration() {
-	assert definition(42, 'y', 0) == 'main.v:41:1'
-	// `x := y` declares `x`: the `y` on its right is a use.
-	assert definition(43, 'y', 0) == 'main.v:41:1'
-	assert definition(45, 'i', 0) == 'main.v:44:5'
-	assert definition(41, 'sum', 0) == 'main.v:19:13'
-	assert definition(40, 'blue', 0) == 'main.v:16:1'
-	assert definition(35, 'Point', 0) == 'main.v:8:7'
-	assert definition(38, 'x', 0) == 'main.v:9:1'
-	assert definition(44, 'limit', 0) == 'main.v:6:6'
-	assert definition(52, 'v', 0) == 'main.v:51:4'
+	lines := program.split('\n')
+	answers := ask_answers(work_dir, [
+		word_question(lines[41], 'gd^', 42, 'y', 0),
+		// `x := y` declares `x`: the `y` on its right is a use.
+		word_question(lines[42], 'gd^', 43, 'y', 0),
+		word_question(lines[44], 'gd^', 45, 'i', 0),
+		word_question(lines[40], 'gd^', 41, 'sum', 0),
+		word_question(lines[39], 'gd^', 40, 'blue', 0),
+		word_question(lines[34], 'gd^', 35, 'Point', 0),
+		word_question(lines[37], 'gd^', 38, 'x', 0),
+		word_question(lines[43], 'gd^', 44, 'limit', 0),
+		word_question(lines[51], 'gd^', 52, 'v', 0),
+	])
+	assert answers == [
+		'main.v:41:1',
+		'main.v:41:1',
+		'main.v:44:5',
+		'main.v:19:13',
+		'main.v:16:1',
+		'main.v:8:7',
+		'main.v:9:1',
+		'main.v:6:6',
+		'main.v:51:4',
+	]
 	// `err` comes from the `{` of its block, and `it` from its method.
-	assert definition(48, 'err', 0) == 'main.v:47:25'
-	assert definition(54, 'err', 0) == 'main.v:53:8'
-	assert definition(56, 'it', 0) == 'main.v:56:15'
+	implicit := ask_answers(work_dir, [
+		word_question(lines[47], 'gd^', 48, 'err', 0),
+		word_question(lines[53], 'gd^', 54, 'err', 0),
+		word_question(lines[55], 'gd^', 56, 'it', 0),
+	])
+	assert implicit == ['main.v:47:25', 'main.v:53:8', 'main.v:56:15']
 }
 
 fn declaration(line int, word string, nth int) string {
