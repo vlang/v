@@ -108,14 +108,20 @@ fn test_a_type_parameter_in_a_method_receiver_belongs_to_the_method() {
 		source := 'module main\n\nstruct Box[T] {\n\tvalue T\n}\n\n${layout}fn (b Box[T]) get() T {\n\t_ := []T{}\n\treturn b.value\n}\n\nfn main() {\n\tprintln(Box[int]{}.get())\n}\n'
 		os.write_file(path, source)!
 		receiver := word_position(source, 'fn (b Box[T]) get', 'T', 0)
-		for position in [receiver, word_position(source, 'fn (b Box[T]) get', 'T', 1),
-			word_position(source, '\t_ := []T{}', 'T', 0)] {
+		positions := [receiver, word_position(source, 'fn (b Box[T]) get', 'T', 1),
+			word_position(source, '\t_ := []T{}', 'T', 0)]
+		for position in positions {
 			assert scope_review_query(path, position, 'hv').contains('[T]'), 'layout ${i} at ${position}'
-			assert scope_review_query(path, position, 'gd') == '${path}:${receiver}', 'layout ${i} at ${position}'
 		}
+		mut questions := positions.map(scope_review_question(path, it, 'gd'))
+		mut expected := []string{len: positions.len, init: '${path}:${receiver}'}
 		if layout.starts_with('fn (b Box[T]) first') {
 			first := word_position(source, 'fn (b Box[T]) first', 'T', 0)
-			assert scope_review_query(path, first, 'gd') == '${path}:${first}'
+			questions << scope_review_question(path, first, 'gd')
+			expected << '${path}:${first}'
+		}
+		for j, definition in scope_review_answers(path, questions) {
+			assert definition == expected[j], 'layout ${i}: ${questions[j]}'
 		}
 	}
 }
@@ -155,7 +161,7 @@ fn test_type_parameters_in_receivers_of_every_form_belong_to_their_method() {
 	assert scope_review_query(path, result, 'gd') == '${path}:${own}'
 	// A declaration after the methods still finds the module type `T`.
 	after := word_position(source, '__global after_methods', 'T', 0)
-	hover := scope_review_query(path, after, 'hv')
+	hover, definition := scope_review_hover_and_definition(path, after)
 	assert hover.contains('struct T') && !hover.contains('[T]'), hover
-	assert scope_review_query(path, after, 'gd') == '${path}:3:7'
+	assert definition == '${path}:3:7'
 }
