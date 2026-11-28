@@ -4,21 +4,12 @@ import v.tempname
 
 const borrowed_projection_fixture_dir = os.join_path(os.dir(@FILE), 'testdata', 'ownership_borrowed_projection')
 
-fn run_borrowed_projection_fixture(compiler string, mode string, source string) os.Result {
+fn compile_borrowed_projection_fixture(compiler string, mode string, root string, output string) os.Result {
 	return cmdexec.run_in_merged_with_env(compiler, ['-nocache', '-ownership', '-d', 'ownership',
-		...(os.split_args(mode) or { panic(err) }), 'run', source], '', {
+		...(os.split_args(mode) or { panic(err) }), '-o', output, root], '', {
 		'VFLAGS':               ''
 		'VTOOLS_CACHE_VERBOSE': ''
 	})
-}
-
-fn run_borrowed_projection_source(compiler string, root string, name string, source_text string) {
-	source := os.join_path(root, 'v3_borrowed_projection_${name}.v')
-	os.write_file(source, source_text) or { panic(err) }
-	for mode in ['-no-parallel', ''] {
-		out := run_borrowed_projection_fixture(compiler, mode, source)
-		assert out.exit_code == 0, '${name} (${mode}): ${out.output}'
-	}
 }
 
 fn test_borrowed_projection_regressions_by_context() {
@@ -33,27 +24,49 @@ fn test_borrowed_projection_regressions_by_context() {
 	root := os.join_path(os.vtmp_dir(), 'v3_borrowed_projection_${tempname.unique_token()}')
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
-	common := os.read_file(os.join_path(borrowed_projection_fixture_dir, 'common.v.txt')) or {
-		panic(err)
-	}
+	common := os.read_file(os.join_path(borrowed_projection_fixture_dir, 'common.v.txt'))!
+	mut parts := [common]
+	mut checks := []string{}
 	for name in ['assignments', 'calls_and_conversions', 'collections', 'array_initializers',
 		'indexed_aliases', 'constants'] {
-		fragment := os.read_file(os.join_path(borrowed_projection_fixture_dir, '${name}.v.txt')) or { panic(err) }
-		run_borrowed_projection_source(compiler, root, name, common + '\n' + fragment)
+		fragment := os.read_file(os.join_path(borrowed_projection_fixture_dir, '${name}.v.txt'))!
+		parts << fragment.replace_once('\nfn main() {', '\nfn check_${name}() {')
+		checks << '\tcheck_${name}()'
 	}
-	run_imported_const_projection_is_cloned(compiler, root)
-}
+	files := os.join_path(borrowed_projection_fixture_dir, 'imported_const')
+	for module_name in ['cachemod', 'imported_const'] {
+		os.mkdir(os.join_path(root, module_name))!
+	}
+	os.cp(os.join_path(files, 'v.mod.txt'), os.join_path(root, 'v.mod'))!
+	os.cp(os.join_path(files, 'cachemod.v.txt'), os.join_path(root, 'cachemod', 'cachemod.v'))!
+	imported := os.read_file(os.join_path(files, 'main.v.txt'))!
+	os.write_file(os.join_path(root, 'imported_const', 'projection.v'),
+		imported.replace_once('module main', 'module imported_const').replace_once('fn main()',
+			'pub fn check()'))!
 
-fn run_imported_const_projection_is_cloned(compiler string, root string) {
-	project := os.join_path(root, 'v3_owned_const_shadow')
-	os.mkdir_all(os.join_path(project, 'cachemod')) or { panic(err) }
-	fixtures := os.join_path(borrowed_projection_fixture_dir, 'imported_const')
-	os.cp(os.join_path(fixtures, 'v.mod.txt'), os.join_path(project, 'v.mod')) or { panic(err) }
-	os.cp(os.join_path(fixtures, 'cachemod.v.txt'), os.join_path(project, 'cachemod', 'cachemod.v')) or { panic(err) }
-	os.cp(os.join_path(fixtures, 'main.v.txt'), os.join_path(project, 'main.v')) or { panic(err) }
+	parts << 'fn check_contexts() {\n${checks.join('\n')}\n}\n'
+	os.write_file(os.join_path(root, 'contexts.v'), parts.join('\n'))!
+	os.write_file(os.join_path(root, 'main.v'), "module main
+
+import imported_const
+
+fn main() {
+	match arguments()[1] {
+		'contexts' { check_contexts() }
+		'imported_const' { imported_const.check() }
+		else { panic('unknown fixture') }
+	}
+}
+")!
 	for mode in ['-no-parallel', ''] {
-		out := run_borrowed_projection_fixture(compiler, mode, os.join_path(project, 'main.v'))
-		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 1, out.output
+		name := if mode == '' { 'program_parallel' } else { 'program_serial' }
+		output := os.join_path(root, name + $if windows { '.exe' } $else { '' })
+		compile := compile_borrowed_projection_fixture(compiler, mode, root, output)
+		assert compile.exit_code == 0, '${mode}: ${compile.output}'
+		contexts := os.exec([output, 'contexts'])
+		assert contexts.exit_code == 0, '${mode}: ${contexts.output}'
+		const_projection := os.exec([output, 'imported_const'])
+		assert const_projection.exit_code == 0, '${mode}: ${const_projection.output}'
+		assert const_projection.output.count('clone') == 1, '${mode}: ${const_projection.output}'
 	}
 }

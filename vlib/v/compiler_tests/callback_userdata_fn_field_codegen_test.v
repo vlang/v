@@ -57,49 +57,6 @@ fn callback_adapter_names(generated string, prefix string) []string {
 	return names
 }
 
-fn test_autofree_bound_main_method_callback_uses_emitted_symbol() {
-	root := os.join_path(os.vtmp_dir(), 'v3_callback_userdata_bound_method_${tempname.unique_token()}')
-	os.mkdir(root)!
-	defer { os.rmdir_all(root) or {} }
-	v3_bin := callback_ownership_compiler()
-	source := callback_write_source(root, 'autofree_bound_main_method', 'module main
-
-struct Event {
-	value int
-}
-
-@[heap]
-struct App {
-mut:
-	value int
-}
-
-struct Config {
-	on_event fn (&Event)
-}
-
-fn (mut app App) on_event(event &Event) {
-	app.value = event.value
-}
-
-fn main() {
-	mut app := &App{}
-	config := Config{on_event: app.on_event}
-	config.on_event(&Event{value: 73})
-	println(app.value)
-}
-')
-	out := os.join_path(root, 'bound_method_autofree')
-	compile := os.exec([v3_bin, '-autofree', source, '-b', 'c', '-o', '${out}'])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '73'
-	generated := os.read_file(out + '.c') or { panic(err) }
-	assert generated.contains('main__App_on_event('), generated
-	assert !generated.contains('void App__on_event('), generated
-}
-
 fn test_callback_userdata_fn_field_rejects_incompatible_types() {
 	root := os.join_path(os.vtmp_dir(), 'v3_callback_userdata_rejections_${tempname.unique_token()}')
 	os.mkdir(root)!
@@ -176,7 +133,7 @@ fn test_callback_userdata_fn_field_adapters() {
 	os.mkdir(root)!
 	defer { os.rmdir_all(root) or {} }
 	v3_bin := callback_ownership_compiler()
-	good_src := callback_write_source(root, 'good', 'module main
+	good_code := 'module main
 
 __global C.user_data voidptr
 
@@ -287,7 +244,8 @@ fn main() {
 	}
 	println(int_str(first + second + c.frames))
 }
-')
+'
+	good_src := callback_write_source(root, 'good', good_code)
 	good_out := os.join_path(root, 'good')
 	good_compile := os.exec([v3_bin, '-enable-globals', '${good_src}', '-b', 'c', '-o', '${good_out}'])
 	assert good_compile.exit_code == 0, good_compile.output
@@ -322,20 +280,52 @@ fn main() {
 	assert !generated.contains('use_cb(frame,'), generated
 	assert !generated.contains('direct_callback_adapter'), generated
 
+	autofree_src := callback_write_source(root, 'autofree_callbacks', good_code.replace('fn main()', 'fn check_callback_adapters()') + '
+struct BoundEvent {
+	value int
+}
+
+@[heap]
+struct BoundApp {
+mut:
+	value int
+}
+
+struct BoundConfig {
+	on_event fn (&BoundEvent)
+}
+
+fn (mut app BoundApp) on_event(event &BoundEvent) {
+	app.value = event.value
+}
+
+fn check_bound_method() {
+	mut app := &BoundApp{}
+	config := BoundConfig{on_event: app.on_event}
+	config.on_event(&BoundEvent{value: 73})
+	println(app.value)
+}
+
+fn main() {
+	check_callback_adapters()
+	check_bound_method()
+}
+')
 	autofree_out := os.join_path(root, 'autofree')
-	autofree_compile :=
-		os.exec([v3_bin, '-enable-globals', '-autofree', '${good_src}', '-b', 'c', '-o',
-			'${autofree_out}'])
+	autofree_compile := os.exec([v3_bin, '-enable-globals', '-autofree', autofree_src, '-b', 'c',
+		'-o', autofree_out])
 	assert autofree_compile.exit_code == 0, autofree_compile.output
 	autofree_run := os.exec([autofree_out])
 	assert autofree_run.exit_code == 0, autofree_run.output
-	assert autofree_run.output.trim_space() == '82'
+	assert autofree_run.output.trim_space().split_into_lines() == ['82', '73'], autofree_run.output
 	autofree_c := os.read_file(autofree_out + '.c') or { panic(err) }
 	assert autofree_c.contains('main__frame((main__App*)arg0);'), autofree_c
 	assert autofree_c.contains('main__on_event(arg0, (main__App*)arg1);'), autofree_c
+	assert autofree_c.contains('main__BoundApp_on_event('), autofree_c
+	assert !autofree_c.contains('void BoundApp__on_event('), autofree_c
 
-	homonym_root := os.join_path(root, 'homonym')
-	callback_write_project_file(homonym_root, 'left/left.v', 'module left
+	symbol_root := os.join_path(root, 'callback_symbols')
+	callback_write_project_file(symbol_root, 'left/left.v', 'module left
 
 pub struct App {
 pub mut:
@@ -346,7 +336,7 @@ pub fn hit(mut app App) {
 	app.hits += 10
 }
 ')
-	callback_write_project_file(homonym_root, 'right/right.v', 'module right
+	callback_write_project_file(symbol_root, 'right/right.v', 'module right
 
 pub struct App {
 pub mut:
@@ -357,7 +347,7 @@ pub fn hit(mut app App) {
 	app.hits += 100
 }
 ')
-	homonym_main := callback_write_project_file(homonym_root, 'main.v', 'module main
+	symbol_src := callback_write_project_file(symbol_root, 'main.v', 'module main
 
 import left
 import right
@@ -370,30 +360,6 @@ struct Config {
 fn run(cfg Config) {
 	cfg.cb(cfg.user_data)
 }
-
-fn main() {
-	_ := left.App{}
-	mut app := right.App{}
-	cfg := Config{
-		cb: right.hit
-		user_data: voidptr(&app)
-	}
-	run(cfg)
-	println(int_str(app.hits))
-}
-')
-	homonym_out := os.join_path(root, 'homonym_out')
-	homonym_compile := os.exec([v3_bin, '${homonym_main}', '-b', 'c', '-o', '${homonym_out}'])
-	assert homonym_compile.exit_code == 0, homonym_compile.output
-	homonym_run := os.exec([homonym_out])
-	assert homonym_run.exit_code == 0, homonym_run.output
-	assert homonym_run.output.trim_space() == '100'
-	homonym_c := os.read_file(homonym_out + '.c') or { panic(err) }
-	assert homonym_c.contains('right__hit_callback_adapter'), homonym_c
-	assert homonym_c.contains('right__hit((right__App*)arg0);'), homonym_c
-	assert !homonym_c.contains('left__hit_callback_adapter'), homonym_c
-
-	c_fn_src := callback_write_source(root, 'c_fn_value', 'module main
 
 fn C.abs(int) int
 
@@ -411,22 +377,37 @@ fn call_c(cb fn (int) int) int {
 	return cb(-3)
 }
 
-fn main() {
+fn check_c_function_value() {
 	_ := App{}
 	rc := call_c(C.abs)
 	println(int_str(rc))
 }
+
+fn main() {
+	_ := left.App{}
+	mut app := right.App{}
+	cfg := Config{
+		cb: right.hit
+		user_data: voidptr(&app)
+	}
+	run(cfg)
+	println(int_str(app.hits))
+	check_c_function_value()
+}
 ')
-	c_fn_out := os.join_path(root, 'c_fn')
-	c_fn_compile := os.exec([v3_bin, '${c_fn_src}', '-b', 'c', '-o', '${c_fn_out}'])
-	assert c_fn_compile.exit_code == 0, c_fn_compile.output
-	c_fn_run := os.exec([c_fn_out])
-	assert c_fn_run.exit_code == 0, c_fn_run.output
-	assert c_fn_run.output.trim_space() == '3'
-	c_fn_c := os.read_file(c_fn_out + '.c') or { panic(err) }
-	assert c_fn_c.contains('call_c(abs)'), c_fn_c
-	assert !c_fn_c.contains('call_c((_fn_ptr'), c_fn_c
-	assert !c_fn_c.contains('int abs(App*'), c_fn_c
+	symbol_out := os.join_path(root, 'callback_symbols_out')
+	symbol_compile := os.exec([v3_bin, symbol_src, '-b', 'c', '-o', symbol_out])
+	assert symbol_compile.exit_code == 0, symbol_compile.output
+	symbol_run := os.exec([symbol_out])
+	assert symbol_run.exit_code == 0, symbol_run.output
+	assert symbol_run.output.trim_space().split_into_lines() == ['100', '3'], symbol_run.output
+	symbols := os.read_file(symbol_out + '.c') or { panic(err) }
+	assert symbols.contains('right__hit_callback_adapter'), symbols
+	assert symbols.contains('right__hit((right__App*)arg0);'), symbols
+	assert !symbols.contains('left__hit_callback_adapter'), symbols
+	assert symbols.contains('call_c(abs)'), symbols
+	assert !symbols.contains('call_c((_fn_ptr'), symbols
+	assert !symbols.contains('int abs(App*'), symbols
 }
 
 fn test_callback_parallel_wrapper_names_are_stable() {

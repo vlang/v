@@ -16,8 +16,8 @@ fn borrowed(values map[string]Row) map[string]Row {
 	return values
 }
 '
-	cases := {
-		'nested':                   header + '
+	values := {
+		'nested':             '
 fn main() {
 	scope := {"old": Row{cells: [1]}}
 	mut copy := scope.clone()
@@ -25,7 +25,7 @@ fn main() {
 	copy["old"].cells[0] = 9
 }
 '
-		'rebound':                  header + '
+		'rebound':            '
 fn main() {
 	scope := {"old": Row{cells: [1]}}
 	mut copy := scope.clone()
@@ -33,7 +33,7 @@ fn main() {
 	copy["new"] = Row{cells: [2]}
 }
 '
-		'loop_rebound':             header + '
+		'loop_rebound':       '
 fn main() {
 	scope := {"old": Row{cells: [1]}}
 	mut copy := scope.clone()
@@ -45,7 +45,7 @@ fn main() {
 	}
 }
 '
-		'mutable_escape':           header + '
+		'mutable_escape':     '
 fn replace_map(mut dst map[string]Row, src map[string]Row) {
 	dst = borrowed(src)
 }
@@ -57,7 +57,7 @@ fn main() {
 	copy["new"] = Row{cells: [2]}
 }
 '
-		'user_clone':               header + '
+		'user_clone':         '
 struct Holder {
 	values map[string]Row
 }
@@ -72,7 +72,7 @@ fn main() {
 	copy["new"] = Row{cells: [2]}
 }
 '
-		'closure_rebind':           header + '
+		'closure_rebind':     '
 fn main() {
 	scope := {"old": Row{cells: [1]}}
 	mut copy := scope.clone()
@@ -84,7 +84,26 @@ fn main() {
 	copy["new"] = Row{cells: [2]}
 }
 '
-		'field_branch':             header + '
+		'shadowed_recursion': '
+fn reset(mut dst map[string]Row, src map[string]Row) {
+	dst = borrowed(src)
+}
+
+fn recursive_name(mut dst map[string]Row, src map[string]Row) {
+	recursive_name := reset
+	recursive_name(mut dst, src)
+}
+
+fn main() {
+	scope := {"old": Row{cells: [1]}}
+	mut copy := scope.clone()
+	recursive_name(mut copy, scope)
+	copy["old"] = Row{cells: [42]}
+}
+'
+	}
+	fields := {
+		'field_branch':             '
 struct Ctx {
 mut:
 	values map[string]Row
@@ -102,7 +121,7 @@ fn main() {
 	update(Ctx{}, true)
 }
 '
-		'field_loop':               header + '
+		'field_loop':               '
 struct Ctx {
 mut:
 	values map[string]Row
@@ -123,7 +142,7 @@ fn main() {
 	update(Ctx{})
 }
 '
-		'field_alias':              header + '
+		'field_alias':              '
 struct Ctx {
 mut:
 	values map[string]Row
@@ -141,7 +160,7 @@ fn main() {
 	update(Ctx{})
 }
 '
-		'field_prior_alias_escape': header + '
+		'field_prior_alias_escape': '
 struct Ctx {
 mut:
 	values map[string]Row
@@ -163,24 +182,7 @@ fn main() {
 	update(Ctx{values: {"old": Row{cells: [1]}}})
 }
 '
-		'shadowed_recursion':       header + '
-fn reset(mut dst map[string]Row, src map[string]Row) {
-	dst = borrowed(src)
-}
-
-fn recursive_name(mut dst map[string]Row, src map[string]Row) {
-	recursive_name := reset
-	recursive_name(mut dst, src)
-}
-
-fn main() {
-	scope := {"old": Row{cells: [1]}}
-	mut copy := scope.clone()
-	recursive_name(mut copy, scope)
-	copy["old"] = Row{cells: [42]}
-}
-'
-		'field_escape':             header + '
+		'field_escape':             '
 struct Ctx {
 mut:
 	values map[string]Row
@@ -202,15 +204,36 @@ fn main() {
 }
 '
 	}
-	for name, source in cases {
-		path := os.join_path(root, '${name}.v')
-		os.write_file(path, source) or { panic(err) }
-		output := os.join_path(root, name)
-		result := os.exec([@VEXE, '-nocache', '-b', 'c', '-o', output, path])
-		assert result.exit_code != 0, '${name} unexpectedly compiled'
-		assert result.output.contains('aliases mutable data from an immutable value'), '${name}: ${result.output}'
-		if name == 'nested' {
-			assert result.output.contains('`copy["old"].cells` aliases mutable data'), result.output
-		}
+	check_map_clone_alias_batch(os.join_path(root, 'values'), header, values, 'copy')
+	check_map_clone_alias_batch(os.join_path(root, 'fields'), header, fields, 'copy.values')
+}
+
+fn check_map_clone_alias_batch(root string, header string, cases map[string]string, alias string) {
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for name, body in cases {
+		dir := os.join_path(root, name)
+		os.mkdir_all(dir) or { panic(err) }
+		source := 'module ${name}\n\n' + header + body.replace_once('\nfn main()', '\npub fn exercise()')
+		os.write_file(os.join_path(dir, '${name}.v'), source) or { panic(err) }
+		imports << 'import ${name}'
+		calls << '\t${name}.exercise()'
+	}
+	main := os.join_path(root, 'main.v')
+	os.write_file(main, 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n') or {
+		panic(err)
+	}
+	result := os.exec([@VEXE, '-nocache', '-b', 'c', '-o', os.join_path(root, 'program'), main])
+	assert result.exit_code != 0, result.output
+	mut errors := map[string][]string{}
+	for line in result.output.split_into_lines() {
+		location, message := line.split_once(': error: ') or { continue }
+		file := os.file_name(location.all_before_last(':').all_before_last(':'))
+		errors[file] << message
+	}
+	for name, _ in cases {
+		target := if name == 'nested' { 'copy["old"].cells' } else { alias }
+		expected := '`${target}` aliases mutable data from an immutable value'
+		assert errors['${name}.v'].any(it.starts_with(expected)), '${name}: ${result.output}'
 	}
 }

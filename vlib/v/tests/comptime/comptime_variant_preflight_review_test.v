@@ -27,6 +27,72 @@ fn check_variant_review_case(name string, source string, check_only bool, expect
 	assert result.exit_code == 0, result.output
 }
 
+struct VariantReviewCase {
+	name       string
+	source     string
+	check_only bool
+}
+
+// run_variant_review_cases builds the cases as modules of one program: one build runs every
+// case that runs, and one `-check` covers the check-only cases.
+fn run_variant_review_cases(name string, cases []VariantReviewCase) {
+	for check_only in [false, true] {
+		selected := cases.filter(it.check_only == check_only)
+		if selected.len == 0 {
+			continue
+		}
+		root := os.join_path(os.vtmp_dir(), 'variant_review_${name}_${check_only}_${os.getpid()}_${time.now().unix_nano()}')
+		os.mkdir_all(root) or { panic(err) }
+		defer { os.rmdir_all(root) or {} }
+		mut imports := []string{cap: selected.len}
+		mut calls := []string{cap: selected.len}
+		for case in selected {
+			module_name := 'case_${case.name}'
+			assert case.source.contains('fn main() {'), case.name
+			os.mkdir_all(os.join_path(root, module_name)) or { panic(err) }
+			os.write_file(os.join_path(root, module_name, '${module_name}.v'), 'module ${module_name}\n' +
+				case.source.replace_once('fn main() {', 'pub fn exercise() {')) or { panic(err) }
+			imports << 'import ${module_name}'
+			calls << '\t${module_name}.exercise()'
+		}
+		os.write_file(os.join_path(root, 'main.v'), '${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n') or {
+			panic(err)
+		}
+		binary := os.join_path(root, 'main')
+		args := if check_only { [@VEXE, '-check', root] } else { [@VEXE, '-o', binary, root] }
+		compiled := os.exec(args)
+		assert compiled.exit_code == 0, compiled.output
+		if !check_only {
+			result := os.exec([binary])
+			assert result.exit_code == 0, result.output
+		}
+	}
+}
+
+// Outside `main`, `value is variant` names the module's spelling of the loop variable.
+fn test_variant_guards_in_a_module_bind_each_variant() {
+	run_variant_review_cases('module_guard', [
+		VariantReviewCase{'module_guard', r'
+type Choice = int | string
+fn extract(value Choice) int {
+	$for variant in Choice.variants {
+		if value is variant {
+			$if variant.typ is int {
+				return value
+			} $else {
+				return value.len
+			}
+		}
+	}
+	return -1
+}
+fn main() {
+	assert extract(Choice(42)) == 42
+	assert extract(Choice("text")) == 4
+}', false},
+	])
+}
+
 fn test_nested_variant_guards_preserve_both_payloads() {
 	run_variant_review_case('nested', r'
 type Choice = int | string
@@ -361,6 +427,7 @@ fn main() {
 }
 
 fn test_variant_preflight_preserves_option_guard_fallthrough() {
+	mut cases := []VariantReviewCase{}
 	source := r'
 type Choice = ?int | string
 fn extract(value Choice) int {
@@ -381,26 +448,28 @@ fn main() {
 	assert extract(Choice(?int(none))) == 0
 	assert extract(Choice("text")) == 4
 }'
-	run_variant_review_case('none_guard_fallthrough', source, false)
+	cases << VariantReviewCase{'none_guard_fallthrough', source, false}
 	enclosed := source.replace('fn extract', 'fn enabled() bool { return true }\nfn extract').replace('return value\n', 'if enabled() { return value }; return 0\n')
-	run_variant_review_case('none_guard_unrelated_if', enclosed, false)
-	run_variant_review_case('none_guard_unrelated_assert', enclosed.replace('if enabled() { return value }', 'assert enabled(); return value'), false)
-	run_variant_review_case('none_guard_unrelated_loop', enclosed.replace('if enabled() { return value }', 'for enabled() { return value }'), false)
+	cases << VariantReviewCase{'none_guard_unrelated_if', enclosed, false}
+	cases << VariantReviewCase{'none_guard_unrelated_assert', enclosed.replace('if enabled() { return value }', 'assert enabled(); return value'), false}
+	cases << VariantReviewCase{'none_guard_unrelated_loop', enclosed.replace('if enabled() { return value }', 'for enabled() { return value }'), false}
 	scalar_match := source.replace('return value\n', 'match value { 42 { return value } else { return value } }\n')
-	run_variant_review_case('none_guard_scalar_match', scalar_match, false)
+	cases << VariantReviewCase{'none_guard_scalar_match', scalar_match, false}
 	with_other := source.replace('type Choice = ?int | string', 'type Choice = ?int | string\ntype Other = int | string')
 	restored_loop := with_other.replace('return value\n', 'other_value := Other("done")\nfor other_value is int { assert value is ?int; break }\nreturn value\n')
-	run_variant_review_case('none_guard_loop_restores_refinements', restored_loop, true)
+	cases << VariantReviewCase{'none_guard_loop_restores_refinements', restored_loop, true}
 	aliased_loop := restored_loop.replace('for other_value is int {', 'for narrow := other_value is int; narrow; narrow = false {')
-	run_variant_review_case('none_guard_aliased_loop_restores_refinements', aliased_loop, true)
+	cases << VariantReviewCase{'none_guard_aliased_loop_restores_refinements', aliased_loop, true}
 	restored_if := with_other.replace('return value\n', 'other_value := Other("done")\nif other_value is int { assert value is ?int }\nreturn value\n')
-	run_variant_review_case('none_guard_if_restores_refinements', restored_if, true)
+	cases << VariantReviewCase{'none_guard_if_restores_refinements', restored_if, true}
 	check_variant_review_case('invalid_fallthrough_payload', source.replace('return value\n', 'return value.len\n'), true, '`int` has no property `len`')
 	scoped := source.all_before('fn main()').replace('fn extract(value Choice) int', 'fn extract(value Choice, enabled bool) int').replace('if value == none { return 0 }', 'if enabled {\n\t\t\t\t\tif value == none { return 0 }\n\t\t\t\t\tprintln(variant.typ)\n\t\t\t\t}') + 'fn main() { _ = extract(Choice(?int(none)), false) }'
 	check_variant_review_case('conditional_fallthrough_scope', scoped, true, '`?int` as type `int`')
+	run_variant_review_cases('variant_preflight_preserves_option_guard_fallthrough', cases)
 }
 
 fn test_variant_preflight_resolves_reflected_fallthrough_targets() {
+	mut cases := []VariantReviewCase{}
 	deferred := r'
 type Choice = int | string
 fn consume(value Choice) { assert value is int || value is string }
@@ -415,9 +484,9 @@ fn main() {
 	visit(Choice(42))
 	visit(Choice("text"))
 }'
-	run_variant_review_case('deferred_reflected_fallthrough', deferred, false)
-	run_variant_review_case('deferred_reflected_assert', deferred.replace('consume(value)\n', 'assert value is variant\n\t\tconsume(value)\n'), false)
-	run_variant_review_case('outer_reflected_fallthrough', r'
+	cases << VariantReviewCase{'deferred_reflected_fallthrough', deferred, false}
+	cases << VariantReviewCase{'deferred_reflected_assert', deferred.replace('consume(value)\n', 'assert value is variant\n\t\tconsume(value)\n'), false}
+	cases << VariantReviewCase{'outer_reflected_fallthrough', r'
 type Choice = int | string
 type Other = bool | int
 fn consume(value Choice) { assert value is int || value is string }
@@ -434,7 +503,7 @@ fn visit(value Choice) {
 fn main() {
 	visit(Choice(42))
 	visit(Choice("text"))
-}', false)
+}', false}
 	source := r'
 type Choice = int | string
 fn extract(value Choice) int {
@@ -450,9 +519,10 @@ fn main() {
 	assert extract(Choice(42)) == 42
 	assert extract(Choice("text")) == 4
 }'
-	run_variant_review_case('concrete_reflected_fallthrough', source, false)
-	run_variant_review_case('concrete_reflected_assert', source.replace('if value !is variant { return 0 }', 'assert value is variant'), false)
+	cases << VariantReviewCase{'concrete_reflected_fallthrough', source, false}
+	cases << VariantReviewCase{'concrete_reflected_assert', source.replace('if value !is variant { return 0 }', 'assert value is variant'), false}
 	check_variant_review_case('invalid_reflected_fallthrough_payload', source.replace('return value }', 'return value.len }'), true, '`int` has no property `len`')
+	run_variant_review_cases('variant_preflight_resolves_reflected_fallthrough_targets', cases)
 }
 
 fn test_variant_preflight_preserves_local_storage_after_guards() {
@@ -549,6 +619,7 @@ fn main() {
 }
 
 fn test_variant_preflight_keeps_post_refinement_option_layers_separate() {
+	mut cases := []VariantReviewCase{}
 	source := r'
 type Choice = ?int | string
 fn extract(value ?Choice) int {
@@ -567,17 +638,18 @@ fn main() {
 	assert extract(?Choice(Choice(?int(42)))) == 42
 }'
 	// Check these nested options without relying on their baseline native lowering.
-	run_variant_review_case('outer_option_assert_layer', source, true)
-	run_variant_review_case('outer_option_for_assert_layer', source.replace('for _ in 0 .. 1 {', 'for true {'), true)
-	run_variant_review_case('outer_option_preceding_loop_assert_layer', source.replace('assert value is ?int', 'for _ in 0 .. 1 { assert value is ?int }'), true)
-	run_variant_review_case('outer_option_preceding_for_assert_layer', source.replace('assert value is ?int', 'for true { assert value is ?int; break }'), true)
-	run_variant_review_case('outer_option_parenthesized_assert_layer', source.replace('assert value is ?int', 'assert (value is ?int)'), true)
+	cases << VariantReviewCase{'outer_option_assert_layer', source, true}
+	cases << VariantReviewCase{'outer_option_for_assert_layer', source.replace('for _ in 0 .. 1 {', 'for true {'), true}
+	cases << VariantReviewCase{'outer_option_preceding_loop_assert_layer', source.replace('assert value is ?int', 'for _ in 0 .. 1 { assert value is ?int }'), true}
+	cases << VariantReviewCase{'outer_option_preceding_for_assert_layer', source.replace('assert value is ?int', 'for true { assert value is ?int; break }'), true}
+	cases << VariantReviewCase{'outer_option_parenthesized_assert_layer', source.replace('assert value is ?int', 'assert (value is ?int)'), true}
 	compound := source.replace('fn extract', 'fn enabled() bool { return true }\nfn extract').replace('assert value is ?int', 'assert enabled() && value is ?int')
-	run_variant_review_case('outer_option_compound_assert_layer', compound, true)
+	cases << VariantReviewCase{'outer_option_compound_assert_layer', compound, true}
 	alias := source.replace('assert value is ?int', 'only_int := value is ?int\n\t\t\tassert only_int')
-	run_variant_review_case('outer_option_alias_assert_layer', alias, true)
-	run_variant_review_case('outer_option_exit_if_layer', source.replace('assert value is ?int', 'if value !is ?int { return -1 }'), true)
-	run_variant_review_case('outer_option_exit_else_layer', source.replace('assert value is ?int', 'if value is ?int {} else { return -1 }'), true)
-	run_variant_review_case('inner_option_post_assert_guard', source.replace('return value or { 0 }', 'if value == none { return 0 }; return value'), true)
+	cases << VariantReviewCase{'outer_option_alias_assert_layer', alias, true}
+	cases << VariantReviewCase{'outer_option_exit_if_layer', source.replace('assert value is ?int', 'if value !is ?int { return -1 }'), true}
+	cases << VariantReviewCase{'outer_option_exit_else_layer', source.replace('assert value is ?int', 'if value is ?int {} else { return -1 }'), true}
+	cases << VariantReviewCase{'inner_option_post_assert_guard', source.replace('return value or { 0 }', 'if value == none { return 0 }; return value'), true}
 	check_variant_review_case('inner_post_assert_option_requires_unwrap', source.replace('return value or { 0 }', 'return value'), true, '`?int` as type `int`')
+	run_variant_review_cases('variant_preflight_keeps_post_refinement_option_layers_separate', cases)
 }

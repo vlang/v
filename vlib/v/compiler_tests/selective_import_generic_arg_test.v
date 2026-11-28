@@ -1,41 +1,118 @@
 import os
 import v.tempname
 
-// A generic call resolves its type arguments in the file that writes the call.
-// In route.v, the selectively imported iam.Token wins over json2.Token. In
-// main.v, bbb.Token wins over aaa.Token in both Token{} and take[Token].
-// Resolving the homonym during rewriting used to select an undefined
-// specialization (vlang/v#28489).
-fn test_selective_import_type_and_literal_args_win_over_imported_homonyms() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_selective_import_generic_arg_${tempname.unique_token()}')
+fn test_selective_import_generic_argument_resolution() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_selective_generic_args_${tempname.unique_token()}')
 	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	for sub in ['json2', 'iam', 'aaa', 'bbb'] {
-		os.mkdir(os.join_path(dir, sub))!
-	}
-	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "selective_arg"\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'json2', 'token.v'), 'module json2
+	defer { os.rmdir_all(dir) or {} }
+	files := {
+		// A generic call resolves its type arguments in the file that writes the call.
+		// In route.v, the selectively imported iam.Token wins over json2.Token. In
+		// generic_args.v, bbb.Token wins over aaa.Token in both Token{} and take[Token].
+		// Resolving the homonym during rewriting used to select an undefined
+		// specialization (vlang/v#28489).
+		'generic_args.v':    "module main
 
-pub struct Token {
-	kind int
-}
-') or { panic(err) }
-	os.write_file(os.join_path(dir, 'iam', 'token.v'), 'module iam
+import aaa
+import bbb { Token }
+import route
 
-pub struct Token {
-pub mut:
-	id int
+fn case_generic_args() {
+	assert route.bump_token() == 1
+	mut t := Token{}
+	bbb.take[Token](mut t)
+	_ := aaa.Token{}
+	println('ok')
+}
+"
+		// Import aliases decide which enum an `<Enum>__autostr` call belongs to as well.
+		// `import toml.token` names that module `toml.token` once the program also
+		// declares a module called `token`, and the writing file still spells the enum
+		// `token.Kind`. The helper lookup used to fall back to the bare `Kind` and emit
+		// `Kind__autostr(...)`, which cgen never defines, so formatting `[]token.Kind`
+		// failed the C compilation with `incompatible type for argument 2 of
+		// 'string__plus'` (the veb/orm RuoQi build hit this through vlib's toml parser).
+		'enum_autostr.v':    "module main
+
+import toml
+import token
+
+fn case_enum_autostr() {
+	toml.parse_text('a = 1') or { panic(err) }
+	t := token.Token{
+		id: 7
+	}
+	println(t.id)
+}
+"
+		// The reverse case: an enum type that the checker already resolved keeps its module. With
+		// `import a as real_a` and `import b as a`, `real_a.make()` returns `a.Kind`, which must
+		// be formatted by module a's helper even though this file spells module b as `a`. A
+		// parameter declared as `[]a.Kind` in the same file still means module b's enum.
+		'enum_alias.v':      "module main
+
+import a as real_a
+import b as a
+
+fn format_declared(kinds []a.Kind) string {
+	return '\${kinds}'
 }
 
-pub fn (mut t Token) bump() {
-	t.id++
+fn case_enum_alias() {
+	value := real_a.make()
+	other := a.Kind.from_b
+	println('\${value.str()} \${value} \${[value]} \${other} \${format_declared([other])}')
 }
-') or { panic(err) }
-	os.write_file(os.join_path(dir, 'route.v'), 'module route
+"
+		// A generic sum spelled with a selectively imported argument (`maybe.Maybe[Token]` with
+		// `import sum_arg.iam { Token }` next to another imported `Token`) is one specialization,
+		// `maybe.Maybe[sum_arg.iam.Token]`, in parameter types, casts and variant literals alike.
+		'sum_arg.v':         'module main
+
+import other
+import sum_arg.iam { Token }
+import maybe
+
+fn get(m maybe.Maybe[Token]) int {
+	return match m {
+		maybe.Some[Token] { m.value.id }
+		maybe.None { -1 }
+	}
+}
+
+fn case_sum_arg() {
+	m := maybe.Maybe[Token](maybe.Some[Token]{
+		value: Token{
+			id: 7
+		}
+	})
+	println(get(m))
+	println(get(maybe.Maybe[Token](maybe.None{})))
+	_ := other.Token{}
+}
+'
+		// A selective import can name a type alias (`type Alias = Real`). The literal
+		// `Alias{}` and the type argument in `take_id[Alias]` then mean `iam.Real`, not a
+		// same-named struct in another imported module.
+		'struct_alias.v':    'module main
+
+import aaa
+import iam { Alias }
+
+fn take_id[T](value T) {
+	println(value.id)
+}
+
+fn case_struct_alias() {
+	value := Alias{
+		id: 5
+	}
+	println(value.id)
+	take_id[Alias](value)
+	_ := aaa.Alias{}
+}
+'
+		'route.v':           'module route
 
 import json2
 import iam { Token }
@@ -49,16 +126,18 @@ pub fn bump_token() int {
 	bump_ctrl[Token](mut t)
 	return t.id
 }
-') or { panic(err) }
-	os.write_file(os.join_path(dir, 'aaa', 'a.v'), 'module aaa
+'
+		'v.mod':             'Module { name: "selective_import_generic_args" }
+'
+		'aaa/a.v':           'module aaa
 
 pub struct Token {
 pub mut:
 	lit  []u8
 	kind int = 3
 }
-') or { panic(err) }
-	os.write_file(os.join_path(dir, 'bbb', 'b.v'), 'module bbb
+'
+		'bbb/b.v':           'module bbb
 
 pub struct Token {
 pub mut:
@@ -68,92 +147,32 @@ pub mut:
 pub fn take[T](mut ctrl T) {
 	println(T.name)
 }
-') or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), "module main
-
-import aaa
-import bbb { Token }
-import route
-
-fn main() {
-	assert route.bump_token() == 1
-	mut t := Token{}
-	bbb.take[Token](mut t)
-	_ := aaa.Token{}
-	println('ok')
-}
-") or { panic(err) }
-	out := os.join_path(dir, 'app')
-	compile := os.exec([@VEXE, '-nocache', '-o', '${out}', dir])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'bbb.Token\nok', run.output
-}
-
-// Import aliases decide which enum an `<Enum>__autostr` call belongs to as well.
-// `import toml.token` names that module `toml.token` once the program also
-// declares a module called `token`, and the writing file still spells the enum
-// `token.Kind`. The helper lookup used to fall back to the bare `Kind` and emit
-// `Kind__autostr(...)`, which cgen never defines, so formatting `[]token.Kind`
-// failed the C compilation with `incompatible type for argument 2 of
-// 'string__plus'` (the veb/orm RuoQi build hit this through vlib's toml parser).
-fn test_path_import_alias_enum_autostr_uses_declaring_module() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_alias_enum_autostr_${tempname.unique_token()}')
-	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	os.mkdir_all(os.join_path(dir, 'token')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "alias_enum"\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'token', 'token.v'), 'module token
+'
+		'iam/token.v':       'module iam
 
 pub struct Token {
 pub mut:
 	id int
 }
-') or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), "module main
 
-import toml
-import token
-
-fn main() {
-	toml.parse_text('a = 1') or { panic(err) }
-	t := token.Token{
-		id: 7
-	}
-	println(t.id)
+pub fn (mut t Token) bump() {
+	t.id++
 }
-") or { panic(err) }
-	out := os.join_path(dir, 'app')
-	compile := os.exec([@VEXE, '-nocache', '-o', '${out}', dir])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '7'
-}
+'
+		'json2/token.v':     'module json2
 
-// The reverse case: an enum type that the checker already resolved keeps its module. With
-// `import a as real_a` and `import b as a`, `real_a.make()` returns `a.Kind`, which must
-// be formatted by module a's helper even though this file spells module b as `a`. A
-// parameter declared as `[]a.Kind` in the same file still means module b's enum.
-fn test_resolved_enum_type_is_not_retargeted_by_file_import_alias() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_resolved_enum_import_alias_${tempname.unique_token()}')
-	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	os.mkdir_all(os.join_path(dir, 'a')) or { panic(err) }
-	os.mkdir_all(os.join_path(dir, 'b')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "resolved_enum_alias"\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'a', 'a.v'), 'module a
+pub struct Token {
+	kind int
+}
+'
+		'token/token.v':     'module token
+
+pub struct Token {
+pub mut:
+	id int
+}
+'
+		'a/a.v':             'module a
 
 pub enum Kind {
 	from_a
@@ -162,70 +181,21 @@ pub enum Kind {
 pub fn make() Kind {
 	return .from_a
 }
-') or { panic(err) }
-	os.write_file(os.join_path(dir, 'b', 'b.v'), 'module b
+'
+		'b/b.v':             'module b
 
 pub enum Kind {
 	from_b
 }
-') or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), r"module main
-
-import a as real_a
-import b as a
-
-fn format_declared(kinds []a.Kind) string {
-	return '${kinds}'
-}
-
-fn main() {
-	value := real_a.make()
-	other := a.Kind.from_b
-	println('${value.str()} ${value} ${[value]} ${other} ${format_declared([other])}')
-}
-") or {
-		panic(err)
-	}
-	out := os.join_path(dir, 'app')
-	compile := os.exec([@VEXE, '-nocache', '-o', '${out}', dir])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'from_a from_a [from_a] from_b [from_b]', run.output
-}
-
-// A generic sum spelled with a selectively imported argument (`maybe.Maybe[Token]` with
-// `import iam { Token }` next to another imported `Token`) is one specialization,
-// `maybe.Maybe[iam.Token]`, in parameter types, casts and variant literals alike.
-fn test_selective_import_generic_sum_arg_wins_over_imported_homonym() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_selective_import_generic_sum_${tempname.unique_token()}')
-	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	for sub in ['iam', 'other', 'maybe'] {
-		os.mkdir_all(os.join_path(dir, sub)) or { panic(err) }
-	}
-	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "selective_generic_sum"\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'iam', 'iam.v'), 'module iam
+'
+		'sum_arg/iam/iam.v': 'module iam
 
 pub struct Token {
 pub:
 	id int
 }
-') or { panic(err) }
-	os.write_file(os.join_path(dir, 'other', 'other.v'), 'module other
-
-pub struct Token {
-pub:
-	kind string
-	lit  []u8
-}
-') or { panic(err) }
-	os.write_file(os.join_path(dir, 'maybe', 'maybe.v'), 'module maybe
+'
+		'maybe/maybe.v':     'module maybe
 
 pub struct None {}
 
@@ -235,62 +205,23 @@ pub:
 }
 
 pub type Maybe[T] = None | Some[T]
-') or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'module main
+'
+		'other/other.v':     'module other
 
-import other
-import iam { Token }
-import maybe
-
-fn get(m maybe.Maybe[Token]) int {
-	return match m {
-		maybe.Some[Token] { m.value.id }
-		maybe.None { -1 }
-	}
+pub struct Token {
+pub:
+	kind string
+	lit  []u8
 }
-
-fn main() {
-	m := maybe.Maybe[Token](maybe.Some[Token]{
-		value: Token{
-			id: 7
-		}
-	})
-	println(get(m))
-	println(get(maybe.Maybe[Token](maybe.None{})))
-	_ := other.Token{}
-}
-') or { panic(err) }
-	out := os.join_path(dir, 'app')
-	compile := os.exec([@VEXE, '-nocache', '-o', '${out}', dir])
-	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '7\n-1', run.output
-}
-
-// A selective import can name a type alias (`type Alias = Real`). The literal
-// `Alias{}` and the type argument in `take_id[Alias]` then mean `iam.Real`, not a
-// same-named struct in another imported module.
-fn test_selective_import_struct_alias_wins_over_imported_homonym() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_selective_alias_struct_${tempname.unique_token()}')
-	os.mkdir(dir)!
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	os.mkdir_all(os.join_path(dir, 'aaa')) or { panic(err) }
-	os.mkdir_all(os.join_path(dir, 'iam')) or { panic(err) }
-	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "selective_alias"\n}\n') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, 'aaa', 'alias.v'), 'module aaa
+'
+		'aaa/alias.v':       'module aaa
 
 pub struct Alias {
 pub:
 	name string
 }
-') or { panic(err) }
-	os.write_file(os.join_path(dir, 'iam', 'token.v'), 'module iam
+'
+		'iam/alias.v':       'module iam
 
 pub struct Real {
 pub mut:
@@ -298,34 +229,45 @@ pub mut:
 }
 
 pub type Alias = Real
-') or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), 'module main
-
-import aaa
-import iam { Alias }
-
-fn take_id[T](value T) {
-	println(value.id)
-}
+'
+		'main.v':            "module main
 
 fn main() {
-	value := Alias{
-		id: 5
+	match arguments()[1] {
+		'generic_args' { case_generic_args() }
+		'enum_autostr' { case_enum_autostr() }
+		'enum_alias' { case_enum_alias() }
+		'sum_arg' { case_sum_arg() }
+		'struct_alias' { case_struct_alias() }
+		else { panic('unknown fixture') }
 	}
-	println(value.id)
-	take_id[Alias](value)
-	_ := aaa.Alias{}
 }
-') or { panic(err) }
+"
+	}
+	for relative, source in files {
+		path := os.join_path(dir, relative)
+		os.mkdir_all(os.dir(path))!
+		os.write_file(path, source)!
+	}
 	out := os.join_path(dir, 'app')
-	compile := os.exec([@VEXE, '-nocache', '-o', '${out}', dir])
+	compile := os.exec([@VEXE, '-nocache', '-o', out, dir])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.exec([out])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '5\n5', run.output
+	for name, expected in {
+		'generic_args': 'bbb.Token\nok'
+		'enum_autostr': '7'
+		'enum_alias':   'from_a from_a [from_a] from_b [from_b]'
+		'sum_arg':      '7\n-1'
+		'struct_alias': '5\n5'
+	} {
+		run := os.exec([out, name])
+		assert run.exit_code == 0, '${name}: ${run.output}'
+		assert run.output.trim_space() == expected, '${name}: ${run.output}'
+	}
 }
 
+// This fixture has its own build because its imported T can collide with generic types in TOML.
+//
 // A generic parameter is lexical: inside `fn outer[T]`, the `T` in
 // `inner[T](...)` is the parameter even when the file that writes the call also
 // does `import pkg { T }`. The checker resolves the parameter first, so the

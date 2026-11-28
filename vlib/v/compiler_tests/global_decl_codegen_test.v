@@ -32,8 +32,45 @@ fn global_decl_generate_c(name string, source string) string {
 	return os.read_file(c_path) or { panic(err) }
 }
 
-fn test_global_runtime_initializer_fixtures() {
-	out := global_decl_run_good('global_initializer_cases', 'import sync.stdatomic
+fn test_implicit_global_containers_keep_synthesized_runtime_helpers() {
+	out := global_decl_run_good('implicit_global_container_helpers', "__global names []string\n__global lookup map[string]int\n\nfn main() {\n\tprintln('ok')\n}\n")
+	assert out == 'ok'
+}
+
+// Keep the qualifier on the global and preserve its declared name.
+const volatile_global_source = 'struct Rev {
+pub mut:
+	revision u64
+}
+
+__global (
+	volatile base_revision = Rev{
+		revision: 2
+	}
+)
+
+__global volatile ticks = u64(3)
+
+fn main() {
+	if base_revision.revision != 0 {
+		println(u64__str(base_revision.revision))
+	}
+	ticks = ticks + 1
+	println(u64__str(ticks))
+}
+'
+
+fn test_volatile_globals_keep_their_names_and_qualifiers() {
+	c_code := global_decl_generate_c('volatile_globals_c', volatile_global_source)
+	assert c_code.contains('volatile main__Rev base_revision'), c_code
+	assert c_code.contains('volatile u64 ticks'), c_code
+}
+
+fn test_global_initializer_batches() {
+	root := global_decl_fixture_dir()
+	defer { os.rmdir_all(root) or {} }
+	files := {
+		'initializers.v': 'import sync.stdatomic
 
 __global (
 	first_flag &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
@@ -88,23 +125,14 @@ fn check_aliased_fixed_array_initializer() {
 	println(int_str(pair[0]) + ":" + int_str(pair[1]))
 }
 
-fn main() {
+fn case_initializers() {
 	check_typed_atomic_globals()
 	check_implicit_global_dynamic_array()
 	check_grouped_global_initializers()
 	check_aliased_fixed_array_initializer()
 }
-')
-	assert out == 'true\nfalse\ntrue\nok\n9\n3:7\n5\n7:7'
-}
-
-fn test_implicit_global_containers_keep_synthesized_runtime_helpers() {
-	out := global_decl_run_good('implicit_global_container_helpers', "__global names []string\n__global lookup map[string]int\n\nfn main() {\n\tprintln('ok')\n}\n")
-	assert out == 'ok'
-}
-
-fn test_shared_global_initializer_fixtures() {
-	out := global_decl_run_good('shared_global_initializer_cases', "struct Counter {
+'
+		'shared.v':       "struct Counter {
 	value int
 }
 
@@ -124,22 +152,22 @@ fn check_explicit_shared_and_fixed_array_globals() {
 	println(int_str(fixed_rows[0][0]) + ':' + int_str(fixed_rows[0][1]))
 }
 
-__global values shared []int = []int{len: 2, cap: 4, init: 7}
+__global shared_values shared []int = []int{len: 2, cap: 4, init: 7}
 
 fn check_shared_array_constructor() {
-	summary := rlock values {
-		int_str(values.len) + ':' + int_str(values.cap) + ':' + int_str(values[0]) + ':' + int_str(values[1])
+	summary := rlock shared_values {
+		int_str(shared_values.len) + ':' + int_str(shared_values.cap) + ':' + int_str(shared_values[0]) + ':' + int_str(shared_values[1])
 	}
 	println(summary)
 }
 
-struct Config {
+struct SharedConfig {
 	value int = 7
 }
 
 __global slots shared [2]map[string]int
 __global lists shared [2][]int
-__global configs shared [2]Config
+__global shared_configs shared [2]SharedConfig
 
 fn check_implicit_shared_fixed_array_containers() {
 	lock slots {
@@ -154,46 +182,34 @@ fn check_implicit_shared_fixed_array_containers() {
 	array_value := rlock lists {
 		lists[1][0]
 	}
-	default_value := rlock configs {
-		configs[0].value
+	default_value := rlock shared_configs {
+		shared_configs[0].value
 	}
 	println(int_str(map_value) + ':' + int_str(array_value) + ':' + int_str(default_value))
 }
 
-fn main() {
+fn case_shared() {
 	check_explicit_shared_and_fixed_array_globals()
 	check_shared_array_constructor()
 	check_implicit_shared_fixed_array_containers()
 }
-")
-	assert out == '7\n34\n1:2\n2:4:7:7\n1:2:7'
-}
-
-fn test_shared_array_literal_preserves_left_to_right_evaluation() {
-	source := '__global sequence int
-__global values shared []int = [next(1), next(2)]
+"
+		'eval_order.v':   '__global sequence int
+__global sequence_values shared []int = [next(1), next(2)]
 
 fn next(digit int) int {
 	sequence = sequence * 10 + digit
 	return sequence
 }
 
-fn main() {
-	summary := rlock values {
-		int_str(values[0]) + ":" + int_str(values[1])
+fn case_eval_order() {
+	summary := rlock sequence_values {
+		int_str(sequence_values[0]) + ":" + int_str(sequence_values[1])
 	}
 	println(summary + ":" + int_str(sequence))
 }
 '
-	c_source := global_decl_generate_c('shared_array_literal_eval_order', source)
-	assert c_source.contains('array_get(values->val, 0)) = next(1);'), c_source
-	assert c_source.contains('array_get(values->val, 1)) = next(2);'), c_source
-	out := global_decl_run_good('shared_array_literal_eval_order', source)
-	assert out == '1:12:12'
-}
-
-fn test_global_array_initializer_fixtures() {
-	out := global_decl_run_good('global_array_initializer_cases', "struct Config {
+		'arrays.v':       "struct Config {
 mut:
 	retries int = 7
 	names []string
@@ -250,17 +266,13 @@ fn check_returned_fixed_array_elements() {
 	println(int_str(returned_rows[1][0]) + ':' + int_str(returned_rows[1][1]))
 }
 
-fn main() {
+fn case_arrays() {
 	check_global_array_defaults()
 	check_nested_fixed_array_defaults()
 	check_returned_fixed_array_elements()
 }
-")
-	assert out == '7\nok\n5\n9\n11\n0:0:0:0\n13\n7:fixed:17\n19\n0:7:0\n1:2\n3:4'
-}
-
-fn test_global_defaults_and_inferred_initializers() {
-	out := global_decl_run_good('global_defaults_and_inferred_initializers', "import sync.stdatomic
+"
+		'defaults.v':     "import sync.stdatomic
 
 __global channels = []chan int{len: 1}
 __global events shared chan int
@@ -326,44 +338,45 @@ fn check_inferred_atomic_globals() {
 	println(flag.load())
 }
 
-fn main() {
+fn case_defaults() {
 	check_global_channel_containers()
 	check_global_enum_and_sum_defaults()
 	check_inferred_atomic_globals()
 }
-")
-	assert out == '11\n13\nready\nlocal-ready\nshared-ready\nstring:\nstring:\n7\nfalse'
-}
-
-fn test_volatile_globals_keep_their_names_and_qualifiers() {
-	// 'volatile' qualifies the global. The parser used to read it as the variable
-	// name, which left the actual name undefined.
-	source := 'struct Rev {
-pub mut:
-	revision u64
-}
-
-__global (
-	volatile base_revision = Rev{
-		revision: 2
-	}
-)
-
-__global volatile ticks = u64(3)
+"
+		'volatile.v':     volatile_global_source.replace_once('fn main()', 'fn case_volatile()')
+		'main.v':         "module main
 
 fn main() {
-	if base_revision.revision != 0 {
-		println(u64__str(base_revision.revision))
+	match arguments()[1] {
+		'initializers' { case_initializers() }
+		'shared' { case_shared() }
+		'eval_order' { case_eval_order() }
+		'arrays' { case_arrays() }
+		'defaults' { case_defaults() }
+		'volatile' { case_volatile() }
+		else { panic('unknown fixture') }
 	}
-	ticks = ticks + 1
-	println(u64__str(ticks))
 }
-'
-	out := global_decl_run_good('volatile_globals', source)
-	assert out == '2\n4'
-	// A kernel writes these where the hardware or the bootloader can see them,
-	// so the qualifier has to reach the C declaration too.
-	c_code := global_decl_generate_c('volatile_globals_c', source)
-	assert c_code.contains('volatile main__Rev base_revision'), c_code
-	assert c_code.contains('volatile u64 ticks'), c_code
+"
+	}
+	for name, fixture in files {
+		os.write_file(os.join_path(root, name), fixture) or { panic(err) }
+	}
+	bin := os.join_path(root, 'v3_global_init_batch')
+	compile := os.exec([@VEXE, '-enable-globals', root, '-b', 'c', '-o', bin])
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	for case, expected in {
+		'initializers': 'true\nfalse\ntrue\nok\n9\n3:7\n5\n7:7'
+		'shared':       '7\n34\n1:2\n2:4:7:7\n1:2:7'
+		'eval_order':   '1:12:12'
+		'arrays':       '7\nok\n5\n9\n11\n0:0:0:0\n13\n7:fixed:17\n19\n0:7:0\n1:2\n3:4'
+		'defaults':     '11\n13\nready\nlocal-ready\nshared-ready\nstring:\nstring:\n7\nfalse'
+		'volatile':     '2\n4'
+	} {
+		run := os.exec([bin, case])
+		assert run.exit_code == 0, '${case}: ${run.output}'
+		assert run.output.trim_space() == expected, '${case}: ${run.output}'
+	}
 }

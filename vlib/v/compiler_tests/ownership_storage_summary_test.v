@@ -14,12 +14,8 @@ struct OwnedStorageDiagnostic {
 	message  string
 }
 
-fn test_ownership_return_does_not_recheck_earlier_chained_receiver_after_move() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_chained_receiver_return_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source_path := os.join_path(root, 'main.v')
-	os.write_file(source_path, 'fn parse_array_key(key string) (string, int) {
+fn owned_storage_compile_check_fixtures() (string, string) {
+	chained_receiver := 'fn parse_array_key(key string) (string, int) {
 	mut index := -1
 	mut k := key
 	if k.contains("[") {
@@ -28,18 +24,33 @@ fn test_ownership_return_does_not_recheck_earlier_chained_receiver_after_move() 
 	}
 	return k, index
 }
-fn main() {
+fn check_chained_receiver() {
 	key, index := parse_array_key("entry[0]")
 	assert key == "entry" && index == 0
 }
-')!
-	for mode in ['-no-parallel', ''] {
-		result := run_owned_storage_summary(source_path, mode, '-check')
-		assert result.exit_code == 0, '${mode}: ${result.output}'
+'
+	mut recursive_setters := '
+struct Builder { number int }
+struct Holder { mut: target &Builder }
+'
+	for i in 0 .. 18 {
+		next := (i + 1) % 18
+		recursive_setters += 'fn store${i}(mut holder Holder, number int) {
+	if number > 0 { store${next}(mut holder, number - 1); store${next}(mut holder, number - 1) }
+	holder.target = &Builder{number: number}
+}
+'
 	}
+	recursive_setters += 'fn escaped() Holder {
+	mut holder := Holder{target: &Builder{number: 0}}
+	store0(mut holder, 0)
+	return holder
+}
+'
+	return chained_receiver, recursive_setters
 }
 
-fn test_ownership_map_returns_preserve_storage_summaries() {
+fn test_ownership_storage_preserves_map_returns_overwrites_and_projections() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_map_returns_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -86,10 +97,17 @@ pub fn check() {
 	assert value(mut holder) == "value"
 }
 '
+	owned_source := owned_storage_map_source_fixture(false) +
+		'pub fn check() { assert escaped().value["key"] == "value" }\n'
+	overwritten := owned_storage_overwrite_fixture('Holder{target: local.reference()}',
+		'store_number(mut holder, 42)', 'pub fn check()')
 	run_owned_storage_checks(root, {
-		'local_return':   local_return
-		'mutable_return': mutable_return
-		'chained_return': chained_return
+		'field_projections': owned_storage_field_projections_fixture()
+		'local_return':      local_return
+		'mutable_return':    mutable_return
+		'chained_return':    chained_return
+		'owned_source':      owned_source
+		'overwritten':       overwritten
 	})!
 }
 
@@ -103,8 +121,13 @@ fn run_owned_storage_checks(root string, fixtures map[string]string) ! {
 		imports << 'import ${name}'
 		calls << '\t${name}.check()'
 	}
-	os.write_file(os.join_path(root, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n')!
+	chained_receiver, recursive_setters := owned_storage_compile_check_fixtures()
+	source := 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n\n' +
+		chained_receiver
+	main := os.join_path(root, 'main.v')
 	for mode in ['-no-parallel', ''] {
+		// The recursive setter cycle exercises the default checker.
+		os.write_file(main, if mode == '' { source + recursive_setters } else { source })!
 		result := run_owned_storage_summary(root, mode, 'run')
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 	}
@@ -218,20 +241,6 @@ fn main() {}
 	check_owned_storage_rejections(root, cases)!
 }
 
-fn test_ownership_storage_preserves_owned_map_sources_and_overwrites() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_storage_acceptance_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	owned_source := owned_storage_map_source_fixture(false) +
-		'pub fn check() { assert escaped().value["key"] == "value" }\n'
-	overwritten := owned_storage_overwrite_fixture('Holder{target: local.reference()}',
-		'store_number(mut holder, 42)', 'pub fn check()')
-	run_owned_storage_checks(root, {
-		'owned_source': owned_source
-		'overwritten':  overwritten
-	})!
-}
-
 fn owned_storage_map_source_fixture(borrowed_header bool) string {
 	field_type := if borrowed_header {
 		'&map[string]string = unsafe { nil }'
@@ -253,12 +262,8 @@ fn escaped() Holder {
 '
 }
 
-fn test_ownership_field_projections_do_not_escape_local_storage() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_field_projections_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source_path := os.join_path(root, 'main.v')
-	os.write_file(source_path, 'struct Value {
+fn owned_storage_field_projections_fixture() string {
+	return 'struct Value {
 	number int
 	text string
 	values [2]int
@@ -296,7 +301,7 @@ fn result() !int {
 	ptr := &local
 	return ptr.number
 }
-fn main() {
+pub fn check() {
 	assert number() == 42
 	assert text() == "copied"
 	returned := value()
@@ -371,11 +376,7 @@ fn check_scalar_projections() {
 	assert state() == .ready
 	assert indexed() == 6
 }
-')!
-	for mode in ['-no-parallel', ''] {
-		result := run_owned_storage_summary(source_path, mode, 'run')
-		assert result.exit_code == 0, '${mode}: ${result.output}'
-	}
+'
 }
 
 fn owned_storage_overwrite_fixture(initial string, setter string, entry_point string) string {
@@ -393,34 +394,6 @@ fn escaped() Holder {
 }
 ${entry_point} { assert escaped().target.number == 42 }
 '
-}
-
-fn test_ownership_storage_queries_handle_recursive_setters() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_storage_cycle_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source_path := os.join_path(root, 'main.v')
-	mut source := 'struct Builder { number int }
-struct Holder { mut: target &Builder }
-'
-	for i in 0 .. 18 {
-		next := (i + 1) % 18
-		source += 'fn store${i}(mut holder Holder, number int) {
-	if number > 0 { store${next}(mut holder, number - 1); store${next}(mut holder, number - 1) }
-	holder.target = &Builder{number: number}
-}
-'
-	}
-	source += 'fn escaped() Holder {
-	mut holder := Holder{target: &Builder{number: 0}}
-	store0(mut holder, 0)
-	return holder
-}
-fn main() {}
-'
-	os.write_file(source_path, source)!
-	result := run_owned_storage_summary(source_path, '', '-check')
-	assert result.exit_code == 0, result.output
 }
 
 fn check_owned_storage_rejections(root string, cases []OwnedStorageRejection) ! {

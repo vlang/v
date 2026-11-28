@@ -1,3 +1,4 @@
+import json2
 import os
 import v.cmdexec
 import v.tempname
@@ -290,111 +291,122 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	}
 }
 
-fn test_i386_inline_asm_reaches_c_lowering() {
-	generate, c_source := generate_inline_asm_c_for_arch('i386_program', 'fn main() {
+fn test_i386_inline_asm_and_arch_aliases_reach_c_lowering() {
+	arches := ['i386', 'i486', 'i586', 'i686', 'x86', 'x86_32', 'ia-32', 'ia32']
+	mut source := 'fn check_i386_att() {
 	asm i386 {
 		mov eax, ebx
 		.byte 0x27, 0x35
 	}
 }
-', 'i386')
+'
+	mut calls := ['\tcheck_i386_att()']
+	for i, arch in arches {
+		source += '
+fn check_x86_alias_${i}() {
+	asm ${arch} intel {
+		mov eax, ebx
+	}
+}
+'
+		calls << '\tcheck_x86_alias_${i}()'
+	}
+	source += '\nfn main() {\n${calls.join('\n')}\n}\n'
+	generate, c_source := generate_inline_asm_c_for_arch('i386_alias_program', source, 'i386')
 	assert generate.exit_code == 0, generate.output
 	assert !generate.output.contains('inline assembly is not supported'), generate.output
-	assert c_source.contains('"mov %ebx, %eax\\n\\t"'), c_source
-	assert c_source.contains('".byte 0x27, 0x35\\n\\t"'), c_source
-	assert !c_source.contains('.byte \\\$0x27'), c_source
-}
-
-fn test_x86_inline_asm_segment_address_reaches_c_lowering() {
-	generate, c_source := generate_inline_asm_c_for_arch('segment_program', 'fn main() {
-	mut value := u64(0)
-	asm amd64 {
-		mov value, fs:[value]
-		; +r (value)
+	att := inline_asm_function_body(c_source, 'check_i386_att')
+	assert att.contains('"mov %ebx, %eax\\n\\t"'), att
+	assert att.contains('".byte 0x27, 0x35\\n\\t"'), att
+	assert !att.contains('.byte \\\$0x27'), att
+	for i, arch in arches {
+		body := inline_asm_function_body(c_source, 'check_x86_alias_${i}')
+		assert body.contains('"mov eax, ebx\\n\\t"'), '${arch}: ${body}'
 	}
 }
 
-', 'amd64')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"mov %%fs:(%[value]), %[value]\\n\\t"'), c_source
-}
-
-fn test_asm_goto_reaches_c_lowering() {
-	generate, c_source := generate_inline_asm_c('asm_jump_program', 'fn main() {
+fn test_amd64_asm_goto_lowers_labels_and_keeps_register_operands() {
+	diagnostics := check_inline_asm_lowering_cases('amd64_goto_program', [
+		InlineAsmLoweringCase{
+			name:     'goto_segment'
+			source:   '
 	asm goto amd64 {
 		mov rax, gs:[16]
 		jne over
 		; ; ; ; over
 	}
 	over:
-}
-')
-	assert generate.exit_code == 0, generate.output
-	assert !generate.output.contains('label `over` defined and not used'), generate.output
-	assert c_source.contains('__asm__ goto ('), c_source
-	assert c_source.contains('"mov %%gs:(16), %%rax\\n\\t"'), c_source
-	assert c_source.contains('"jne %l[__v_user_goto_0]\\n\\t"'), c_source
-	assert c_source.contains(': __v_user_goto_0'), c_source
-}
-
-fn test_asm_goto_does_not_rewrite_non_branch_label_names() {
-	generate, c_source := generate_inline_asm_c('goto_register_label_program', 'fn main() {
+'
+			expected: ['__asm__ goto (', '"mov %%gs:(16), %%rax\\n\\t"', '"jne %l[__v_user_goto_0]\\n\\t"',
+				': __v_user_goto_0']
+		},
+		InlineAsmLoweringCase{
+			name:      'goto_register'
+			source:    '
 	asm goto amd64 {
 		mov rax, rax
 		jmp rax
 		; ; ; ; rax
 	}
 	rax:
-}
-')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"mov %%rax, %%rax\\n\\t"'), c_source
-	assert c_source.contains('"jmp *%%rax\\n\\t"'), c_source
-	assert !c_source.contains('%l['), c_source
-}
-
-fn test_asm_goto_lowers_x86_loop_family_targets() {
-	generate, c_source := generate_inline_asm_c('goto_loop_program', 'fn main() {
+'
+			expected:  ['"mov %%rax, %%rax\\n\\t"', '"jmp *%%rax\\n\\t"']
+			forbidden: ['%l[']
+		},
+		InlineAsmLoweringCase{
+			name:     'goto_loop'
+			source:   '
 	asm goto amd64 {
 		loop done
 		; ; ; ; done
 	}
 	done:
-}
-')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"loop %l[__v_user_goto_0]\\n\\t"'), c_source
-}
-
-fn test_asm_goto_lowers_branch_after_leading_local_label() {
-	generate, c_source := generate_inline_asm_c('goto_leading_label_program', 'fn main() {
+'
+			expected: ['"loop %l[__v_user_goto_0]\\n\\t"']
+		},
+		InlineAsmLoweringCase{
+			name:     'goto_local_label'
+			source:   '
 	asm goto amd64 {
 		retry: jne done
 		; ; ; ; done
 	}
 	done:
-}
-')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"retry: jne %l[__v_user_goto_0]\\n\\t"'), c_source
-}
-
-fn test_asm_goto_lowers_uppercase_branch_mnemonics() {
-	generate, c_source := generate_inline_asm_c('goto_uppercase_mnemonic_program', 'fn main() {
+'
+			expected: ['"retry: jne %l[__v_user_goto_0]\\n\\t"']
+		},
+		InlineAsmLoweringCase{
+			name:     'goto_uppercase'
+			source:   '
 	asm goto amd64 {
 		retry: JNE done
 		; ; ; ; done
 	}
 	done:
-}
-')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"retry: JNE %l[__v_user_goto_0]\\n\\t"'), c_source
+'
+			expected: ['"retry: JNE %l[__v_user_goto_0]\\n\\t"']
+		},
+		InlineAsmLoweringCase{
+			name:     'goto_raw'
+			source:   '
+	asm goto amd64 raw {
+		"jmp %l[done]\\n\\t"
+		; ; ; ; done
+	}
+	done:
+'
+			expected: ['"jmp %l[__v_user_goto_0]\\n\\t"', ': __v_user_goto_0']
+		},
+	])
+	assert !diagnostics.contains('label `over` defined and not used'), diagnostics
 }
 
 fn test_riscv_asm_goto_lowers_direct_branch_targets() {
-	for arch in ['rv64', 'riscv64'] {
-		generate, c_source := generate_inline_asm_c_for_arch('goto_${arch}_program', 'fn main() {
+	arches := ['rv64', 'riscv64']
+	mut source := ''
+	mut calls := []string{}
+	for arch in arches {
+		source += 'fn check_${arch}_branches() {
 	asm goto ${arch} {
 		beq zero, zero, done
 		bne a0, a1, done
@@ -413,9 +425,28 @@ fn test_riscv_asm_goto_lowers_direct_branch_targets() {
 	}
 	done:
 }
-', 'riscv64')
-		assert generate.exit_code == 0, generate.output
-		assert c_source.contains('__asm__ goto ('), c_source
+'
+		calls << '\tcheck_${arch}_branches()'
+	}
+	source += '
+fn check_non_branch_operands() {
+	asm goto rv64 {
+		bext a0, a0, a0
+		jalr a0
+		jr a0
+		c.jr a0
+		; ; ; ; a0
+	}
+	a0:
+}
+
+'
+	source += 'fn main() {\n${calls.join('\n')}\n\tcheck_non_branch_operands()\n}\n'
+	generate, c_source := generate_inline_asm_c_for_arch('goto_riscv_program', source, 'riscv64')
+	assert generate.exit_code == 0, generate.output
+	for arch in arches {
+		body := inline_asm_function_body(c_source, 'check_${arch}_branches')
+		assert body.contains('__asm__ goto ('), body
 		for instruction in [
 			'beq zero, zero, %l[__v_user_goto_0]',
 			'bne a0, a1, %l[__v_user_goto_0]',
@@ -431,48 +462,23 @@ fn test_riscv_asm_goto_lowers_direct_branch_targets() {
 			'c.bnez a0, %l[__v_user_goto_0]',
 			'retry: BEQ zero, zero, %l[__v_user_goto_0]',
 		] {
-			assert c_source.contains('"${instruction}\\n\\t"'), c_source
+			assert body.contains('"${instruction}\\n\\t"'), body
 		}
-		assert c_source.contains(': __v_user_goto_0'), c_source
+		assert body.contains(': __v_user_goto_0'), body
 	}
+	operands := inline_asm_function_body(c_source, 'check_non_branch_operands')
+	assert operands.contains('"bext a0, a0, a0\\n\\t"'), operands
+	assert operands.contains('"jalr a0\\n\\t"'), operands
+	assert operands.contains('"jr a0\\n\\t"'), operands
+	assert operands.contains('"c.jr a0\\n\\t"'), operands
+	assert !operands.contains('%l['), operands
 }
 
-fn test_riscv_asm_goto_preserves_registers_and_non_branch_operands() {
-	generate, c_source := generate_inline_asm_c_for_arch('goto_riscv_operands_program', 'fn main() {
-	asm goto rv64 {
-		bext a0, a0, a0
-		jalr a0
-		jr a0
-		c.jr a0
-		; ; ; ; a0
-	}
-	a0:
-}
-', 'riscv64')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"bext a0, a0, a0\\n\\t"'), c_source
-	assert c_source.contains('"jalr a0\\n\\t"'), c_source
-	assert c_source.contains('"jr a0\\n\\t"'), c_source
-	assert c_source.contains('"c.jr a0\\n\\t"'), c_source
-	assert !c_source.contains('%l['), c_source
-}
-
-fn test_raw_asm_goto_keeps_symbolic_label_references_valid() {
-	generate, c_source := generate_inline_asm_c('raw_goto_program', 'fn main() {
-	asm goto amd64 raw {
-		"jmp %l[done]\\n\\t"
-		; ; ; ; done
-	}
-	done:
-}
-')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"jmp %l[__v_user_goto_0]\\n\\t"'), c_source
-	assert c_source.contains(': __v_user_goto_0'), c_source
-}
-
-fn test_asm_goto_across_lock_scope_is_rejected() {
-	generate, _ := generate_inline_asm_c('goto_lock_scope_program', 'struct Counter {
+fn test_asm_goto_rejects_invalid_lock_scope_targets() {
+	check_inline_asm_rejections('goto_lock_rejections', [
+		InlineAsmRejection{
+			name:     'goto_lock_scope'
+			source:   'struct Counter {
 mut:
 	value int
 }
@@ -487,9 +493,72 @@ fn main() {
 	}
 	done:
 }
-')
-	assert generate.exit_code != 0, generate.output
-	assert generate.output.contains('different `lock`/`rlock` scope'), generate.output
+'
+			expected: ['different `lock`/`rlock` scope']
+		},
+		InlineAsmRejection{
+			name:     'goto_rlock_scope'
+			source:   'struct Counter {
+mut:
+	value int
+}
+
+fn main() {
+	shared counter := Counter{}
+	rlock counter {
+		asm goto amd64 {
+			jmp done
+			; ; ; ; done
+		}
+	}
+	done:
+}
+'
+			expected: ['different `lock`/`rlock` scope']
+		},
+		InlineAsmRejection{
+			name:     'goto_lock_scope_closure'
+			source:   'struct Counter {
+mut:
+	value int
+}
+
+fn main() {
+	shared counter := Counter{}
+	f := fn [shared counter] () {
+		lock counter {
+			asm goto amd64 {
+				jmp done
+				; ; ; ; done
+			}
+		}
+		done:
+	}
+	f()
+}
+'
+			expected: ['different `lock`/`rlock` scope']
+		},
+		InlineAsmRejection{
+			name:     'goto_undeclared_label'
+			source:   'struct Counter {
+mut:
+	value int
+}
+
+fn main() {
+	shared counter := Counter{}
+	lock counter {
+		asm goto amd64 {
+			jmp done
+			; ; ; ; done
+		}
+	}
+}
+'
+			expected: ['`asm goto` cannot jump to label `done`']
+		},
+	])!
 }
 
 fn test_asm_goto_within_lock_scope_is_allowed() {
@@ -512,70 +581,6 @@ fn main() {
 	assert generate.exit_code == 0, generate.output
 	assert c_source.contains('jmp %l[__v_user_goto_0]'), c_source
 	assert !c_source.contains('#error asm goto'), c_source
-}
-
-fn test_asm_goto_across_rlock_scope_is_rejected() {
-	generate, _ := generate_inline_asm_c('goto_rlock_scope_program', 'struct Counter {
-mut:
-	value int
-}
-
-fn main() {
-	shared counter := Counter{}
-	rlock counter {
-		asm goto amd64 {
-			jmp done
-			; ; ; ; done
-		}
-	}
-	done:
-}
-')
-	assert generate.exit_code != 0, generate.output
-	assert generate.output.contains('different `lock`/`rlock` scope'), generate.output
-}
-
-fn test_asm_goto_across_lock_scope_inside_closure_is_rejected() {
-	generate, _ := generate_inline_asm_c('goto_lock_scope_closure_program', 'struct Counter {
-mut:
-	value int
-}
-
-fn main() {
-	shared counter := Counter{}
-	f := fn [shared counter] () {
-		lock counter {
-			asm goto amd64 {
-				jmp done
-				; ; ; ; done
-			}
-		}
-		done:
-	}
-	f()
-}
-')
-	assert generate.exit_code != 0, generate.output
-	assert generate.output.contains('different `lock`/`rlock` scope'), generate.output
-}
-
-fn test_asm_goto_to_undeclared_label_in_lock_scope_is_rejected() {
-	generate, _ := generate_inline_asm_c('goto_undeclared_label_program', 'struct Counter {
-mut:
-	value int
-}
-
-fn main() {
-	shared counter := Counter{}
-	lock counter {
-		asm goto amd64 {
-			jmp done
-			; ; ; ; done
-		}
-	}
-}
-')
-	assert generate.exit_code != 0, generate.output
 }
 
 fn test_asm_goto_across_objectless_lock_is_allowed() {
@@ -612,8 +617,46 @@ fn generate_inline_asm_c_for_arch(name string, source string, arch string) (os.R
 	return result, c_source
 }
 
-fn test_raw_asm_templates_reach_c_lowering_unchanged() {
-	generate, c_source := generate_inline_asm_c('raw_program', 'fn main() {
+fn inline_asm_function_body(c_source string, name string) string {
+	signature := 'void ${name}(void) {\n'
+	assert c_source.contains(signature), name
+	return c_source.all_after(signature).all_before('\n}')
+}
+
+struct InlineAsmLoweringCase {
+	name      string
+	source    string
+	expected  []string
+	forbidden []string
+}
+
+fn check_inline_asm_lowering_cases(name string, cases []InlineAsmLoweringCase) string {
+	mut source := ''
+	mut calls := []string{cap: cases.len}
+	for case in cases {
+		source += 'fn check_${case.name}() {${case.source}}\n\n'
+		calls << '\tcheck_${case.name}()'
+	}
+	source += 'fn main() {\n${calls.join('\n')}\n}\n'
+	generate, c_source := generate_inline_asm_c(name, source)
+	assert generate.exit_code == 0, generate.output
+	for case in cases {
+		body := inline_asm_function_body(c_source, 'check_${case.name}')
+		for fragment in case.expected {
+			assert body.contains(fragment), '${case.name}: expected ${fragment}\n${body}'
+		}
+		for fragment in case.forbidden {
+			assert !body.contains(fragment), '${case.name}: unexpected ${fragment}\n${body}'
+		}
+	}
+	return generate.output
+}
+
+fn test_amd64_asm_lowers_operands_labels_and_syntax() {
+	check_inline_asm_lowering_cases('amd64_operands_program', [
+		InlineAsmLoweringCase{
+			name:      'raw_template'
+			source:    '
 	mut value := i32(40)
 	increment := i32(2)
 	asm amd64 raw {
@@ -623,18 +666,14 @@ fn test_raw_asm_templates_reach_c_lowering_unchanged() {
 		; cc
 	}
 	println(value)
-}
-')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"addl %[increment], %[value]\\n\\t"'), c_source
-	assert c_source.contains('[value] "+r" (value)'), c_source
-	assert c_source.contains('[increment] "r" (increment)'), c_source
-	assert c_source.contains('"cc"'), c_source
-	assert !c_source.contains('.intel_syntax'), c_source
-}
-
-fn test_intel_asm_blocks_keep_operand_order_and_switch_syntax() {
-	generate, c_source := generate_inline_asm_c('intel_program', 'fn main() {
+'
+			expected:  ['"addl %[increment], %[value]\\n\\t"', '[value] "+r" (value)',
+				'[increment] "r" (increment)', '"cc"']
+			forbidden: ['.intel_syntax']
+		},
+		InlineAsmLoweringCase{
+			name:     'intel_operands'
+			source:   '
 	mut value := 40
 	increment := 2
 	asm amd64 intel {
@@ -644,18 +683,13 @@ fn test_intel_asm_blocks_keep_operand_order_and_switch_syntax() {
 		; cc
 	}
 	println(value)
-}
-')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('".intel_syntax noprefix\\n\\t"'), c_source
-	assert c_source.contains('"add %V[value], %V[increment]\\n\\t"'), c_source
-	assert c_source.contains('".att_syntax prefix\\n\\t"'), c_source
-	assert c_source.contains('[value] "+r" (value)'), c_source
-	assert c_source.contains('[increment] "r" (increment)'), c_source
-}
-
-fn test_structured_x86_asm_reverses_three_operand_instructions() {
-	generate, c_source := generate_inline_asm_c('reorder_program', 'fn main() {
+'
+			expected: ['".intel_syntax noprefix\\n\\t"', '"add %V[value], %V[increment]\\n\\t"',
+				'".att_syntax prefix\\n\\t"', '[value] "+r" (value)', '[increment] "r" (increment)']
+		},
+		InlineAsmLoweringCase{
+			name:     'three_operand_imul'
+			source:   '
 	lhs := 6
 	mut result := 0
 	asm amd64 {
@@ -665,14 +699,61 @@ fn test_structured_x86_asm_reverses_three_operand_instructions() {
 		; cc
 	}
 	println(result)
-}
-')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"imul \$7, %[lhs], %[result]\\n\\t"'), c_source
-}
-
-fn test_directional_numeric_asm_labels_are_accepted_and_lowered() {
-	generate, c_source := generate_inline_asm_c('directional_numeric_label_program', 'fn main() {
+'
+			expected: ['"imul \$7, %[lhs], %[result]\\n\\t"']
+		},
+		InlineAsmLoweringCase{
+			name:     'intel_memory'
+			source:   '
+	asm amd64 intel {
+		mov eax, dword ptr [rbx]
+		vaddss xmm0, xmm1, xmm2, {rn-sae}
+		fadd st, st(1)
+	}
+'
+			expected: ['"mov eax, dword ptr [rbx]\\n\\t"', '"vaddss xmm0, xmm1, xmm2, {rn-sae}\\n\\t"',
+				'"fadd st, st(1)\\n\\t"']
+		},
+		InlineAsmLoweringCase{
+			name:     'intel_decorators'
+			source:   '
+	input := u64(0)
+	asm amd64 intel {
+		vpxord zmm0{k1}{z}, zmm0, zmm0
+		; ; r (input)
+	}
+'
+			expected: ['"vpxord zmm0%{k1%}%{z%}, zmm0, zmm0\\n\\t"']
+		},
+		InlineAsmLoweringCase{
+			name:     'raw_avx512'
+			source:   '
+	asm amd64 raw {
+		"vpxord %%zmm0, %%zmm0, %%zmm0%{%%k1%}%{z%}\\n\\t"
+		; ; ; zmm0
+		  k1
+		  bnd0
+		  bnd3
+		  redzone
+	}
+'
+			expected: ['"vpxord %%zmm0, %%zmm0, %%zmm0%{%%k1%}%{z%}\\n\\t"', '"zmm0"', '"k1"',
+				'"bnd0"', '"bnd3"', '"redzone"']
+		},
+		InlineAsmLoweringCase{
+			name:     'segment_address'
+			source:   '
+	mut value := u64(0)
+	asm amd64 {
+		mov value, fs:[value]
+		; +r (value)
+	}
+'
+			expected: ['"mov %%fs:(%[value]), %[value]\\n\\t"']
+		},
+		InlineAsmLoweringCase{
+			name:     'numeric_labels'
+			source:   '
 	asm amd64 {
 		1:
 		nop
@@ -680,11 +761,66 @@ fn test_directional_numeric_asm_labels_are_accepted_and_lowered() {
 		jne f2
 		2:
 	}
-}
-')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"jmp 1b\\n\\t"'), c_source
-	assert c_source.contains('"jne 2f\\n\\t"'), c_source
+'
+			expected: ['"jmp 1b\\n\\t"', '"jne 2f\\n\\t"']
+		},
+		InlineAsmLoweringCase{
+			name:     'header_comment'
+			source:   '
+	asm amd64 /* raw */ {
+		mov rax, rbx
+	}
+'
+			expected: ['"mov %rbx, %rax\\n\\t"']
+		},
+		InlineAsmLoweringCase{
+			name:     'intel_amx'
+			source:   '
+	asm amd64 intel {
+		tilezero tmm0
+	}
+'
+			expected: ['"tilezero tmm0\\n\\t"']
+		},
+		InlineAsmLoweringCase{
+			name:     'intel_x86_64_alias'
+			source:   '
+	asm x86_64 intel {
+		mov rAx, rBx
+		lea rax, [rax + riz]
+		lea eax, [eax + eiz]
+	}
+'
+			expected: ['"mov rAx, rBx\\n\\t"', '"lea rax, [rax + riz]\\n\\t"',
+				'"lea eax, [eax + eiz]\\n\\t"']
+		},
+		InlineAsmLoweringCase{
+			name:     'dotted_labels'
+			source:   '
+	asm amd64 {
+		.L0: nop
+		jmp .L0
+		loop: ldr rax
+	}
+'
+			expected: ['"jmp .L0\\n\\t"', '".L0: nop\\n\\t"', '"loop: ldr %rax\\n\\t"']
+		},
+		InlineAsmLoweringCase{
+			name:     'architecture_guard'
+			source:   '
+	\$if arm64 {
+		asm arm64 {
+			nop
+		}
+	} \$else {
+		asm amd64 {
+			nop
+		}
+	}
+'
+			expected: ['"nop\\n\\t"']
+		},
+	])
 }
 
 fn test_x86_port_io_uses_32_bit_register_for_platform_int() {
@@ -706,45 +842,70 @@ fn main() {
 	assert c_source.contains('"in %[port], %k[result]\\n\\t"'), c_source
 }
 
-fn test_intel_asm_rejects_memory_capable_constraints() {
-	generate, _ := generate_inline_asm_c('intel_constraint_program', 'fn main() {
+struct InlineAsmRejection {
+	name     string
+	source   string
+	expected []string
+}
+
+struct InlineAsmDiagnostic {
+	file     string
+	severity string
+	message  string
+}
+
+fn test_amd64_inline_asm_rejects_invalid_operands_and_registers() {
+	cases := [
+		InlineAsmRejection{
+			name:     'memory_constraint'
+			source:   'fn main() {
 	value := 1
 	asm amd64 intel {
 		mov eax, value
 		; ; m (value)
 	}
 }
-')
-	assert generate.exit_code != 0, generate.output
-	assert generate.output.contains('constraint `m` is not supported for operands in structured `intel` assembly'), generate.output
-}
-
-fn test_inline_asm_rejects_immutable_outputs_for_every_constraint_spelling() {
-	for index, constraint in ['', '+r'] {
-		generate, _ := generate_inline_asm_c('immutable_asm_output_${index}', 'fn main() {
+'
+			expected: ['constraint `m` is not supported for operands in structured `intel` assembly']
+		},
+		InlineAsmRejection{
+			name:     'immutable_bare_output'
+			source:   'fn main() {
 	value := u64(1)
 	asm amd64 intel {
 		inc value
-		; ${constraint} (value)
+		;  (value)
 	}
 }
-')
-		assert generate.exit_code != 0, generate.output
-		assert generate.output.contains('`value` is immutable, declare it with `mut` to make it mutable'), generate.output
+'
+			expected: ['`value` is immutable, declare it with `mut` to make it mutable']
+		},
+		InlineAsmRejection{
+			name:     'immutable_read_write_output'
+			source:   'fn main() {
+	value := u64(1)
+	asm amd64 intel {
+		inc value
+		; +r (value)
 	}
-	non_lvalue, _ := generate_inline_asm_c('non_lvalue_asm_output', 'fn main() {
+}
+'
+			expected: ['`value` is immutable, declare it with `mut` to make it mutable']
+		},
+		InlineAsmRejection{
+			name:     'non_lvalue_output'
+			source:   'fn main() {
 	asm amd64 intel {
 		nop
 		; (u64(1))
 	}
 }
-')
-	assert non_lvalue.exit_code != 0, non_lvalue.output
-	assert non_lvalue.output.contains('inline assembly output must be an lvalue'), non_lvalue.output
-}
-
-fn test_intel_asm_rejects_constraints_in_the_wrong_operand_section() {
-	generate, _ := generate_inline_asm_c('intel_constraint_section_program', 'fn main() {
+'
+			expected: ['inline assembly output must be an lvalue']
+		},
+		InlineAsmRejection{
+			name:     'constraint_sections'
+			source:   'fn main() {
 	mut output := u64(0)
 	a := u64(1)
 	b := u64(2)
@@ -755,103 +916,131 @@ fn test_intel_asm_rejects_constraints_in_the_wrong_operand_section() {
 		; =r (a) +r (b) &r (c)
 	}
 }
-')
-	assert generate.exit_code != 0, generate.output
-	assert generate.output.contains('output constraint `r` must start with `=` or `+`'), generate.output
-	for constraint in ['=r', '+r', '&r'] {
-		assert generate.output.contains('input constraint `${constraint}` cannot use output modifiers'), generate.output
-	}
-}
-
-fn test_intel_asm_accepts_size_qualified_memory_operands() {
-	generate, c_source := generate_inline_asm_c('intel_memory_size_program', 'fn main() {
+'
+			expected: [
+				'output constraint `r` must start with `=` or `+`',
+				'input constraint `=r` cannot use output modifiers',
+				'input constraint `+r` cannot use output modifiers',
+				'input constraint `&r` cannot use output modifiers',
+			]
+		},
+		InlineAsmRejection{
+			name:     'narrow_register'
+			source:   'fn main() {
+	value := u32(7)
 	asm amd64 intel {
-		mov eax, dword ptr [rbx]
-		vaddss xmm0, xmm1, xmm2, {rn-sae}
-		fadd st, st(1)
+		mov eax, value
+		; ; r (value)
 	}
 }
-')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"mov eax, dword ptr [rbx]\\n\\t"'), c_source
-	assert c_source.contains('"vaddss xmm0, xmm1, xmm2, {rn-sae}\\n\\t"'), c_source
-	assert c_source.contains('"fadd st, st(1)\\n\\t"'), c_source
+'
+			expected: ['hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers']
+		},
+		InlineAsmRejection{
+			name:     'default_enum_narrow_register'
+			source:   'enum Kind {
+	one
 }
 
-fn test_intel_extended_asm_escapes_decorator_braces() {
-	generate, c_source := generate_inline_asm_c('intel_decorator_program', 'fn main() {
-	input := u64(0)
+fn main() {
+	value := Kind.one
 	asm amd64 intel {
-		vpxord zmm0{k1}{z}, zmm0, zmm0
-		; ; r (input)
+		mov eax, value
+		; ; r (value)
 	}
 }
-')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"vpxord zmm0%{k1%}%{z%}, zmm0, zmm0\\n\\t"'), c_source
+'
+			expected: ['hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers']
+		},
+		// The 64-bit mov accepted by the u64-backed enum checks the default enum as signed 32-bit.
+		InlineAsmRejection{
+			name:     'default_enum_wide_register'
+			source:   'enum Kind {
+	one
 }
 
-fn test_inline_asm_header_comments_do_not_enable_raw_mode() {
-	generate, c_source := generate_inline_asm_c('header_comment_program', 'fn main() {
-	asm amd64 /* raw */ {
-		mov rax, rbx
-	}
-}
-')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"mov %rbx, %rax\\n\\t"'), c_source
-}
-
-fn test_intel_asm_accepts_amx_tile_registers() {
-	generate, c_source := generate_inline_asm_c('intel_amx_program', 'fn main() {
+fn main() {
+	value := Kind.one
 	asm amd64 intel {
-		tilezero tmm0
+		mov rax, value
+		; ; r (value)
 	}
 }
-')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"tilezero tmm0\\n\\t"'), c_source
+'
+			expected: ['named source `value` has 32-bit signed type `default_enum_wide_register.Kind`, but instruction `mov` consumes the wider 64-bit register']
+		},
+		InlineAsmRejection{
+			name:     'narrow_enum_register'
+			source:   'enum Kind as u8 {
+	one
 }
 
-fn test_intel_asm_accepts_x86_arch_aliases() {
-	generate, c_source := generate_inline_asm_c('intel_x86_register_program', 'fn main() {
-	asm x86_64 intel {
-		mov rAx, rBx
-		lea rax, [rax + riz]
-		lea eax, [eax + eiz]
+fn main() {
+	value := Kind.one
+	asm amd64 intel {
+		mov al, value
+		; ; r (value)
 	}
 }
-')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"mov rAx, rBx\\n\\t"'), c_source
-	assert c_source.contains('"lea rax, [rax + riz]\\n\\t"'), c_source
-	assert c_source.contains('"lea eax, [eax + eiz]\\n\\t"'), c_source
-
-	for arch in ['i386', 'i486', 'i586', 'i686', 'x86', 'x86_32', 'ia-32', 'ia32'] {
-		x86_generate, x86_c_source := generate_inline_asm_c_for_arch('intel_${arch}_program', 'fn main() {
-	asm ${arch} intel {
-		mov eax, ebx
-	}
-}
-', 'i386')
-		assert x86_generate.exit_code == 0, '${arch}: ${x86_generate.output}'
-		assert x86_c_source.contains('"mov eax, ebx\\n\\t"'), '${arch}: ${x86_c_source}'
-	}
-}
-
-fn test_inline_asm_accepts_dotted_local_labels() {
-	generate, c_source := generate_inline_asm_c('dotted_local_label_program', 'fn main() {
+'
+			expected: ['hard register `al` is 8-bit, but named operands in structured `intel` assembly expand to 64-bit registers']
+		},
+		InlineAsmRejection{
+			name:     'register_suggestion'
+			source:   'fn main() {
 	asm amd64 {
-		.L0: nop
-		jmp .L0
-		loop: ldr rax
+		mov xmm01, xmm1
 	}
 }
-')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"jmp .L0\\n\\t"'), c_source
-	assert c_source.contains('".L0: nop\\n\\t"'), c_source
-	assert c_source.contains('"loop: ldr %rax\\n\\t"'), c_source
+'
+			expected: ['unknown register `xmm01`; did you mean `xmm1`?']
+		},
+		InlineAsmRejection{
+			name:     'clobber_suggestion'
+			source:   'fn main() {
+	asm amd64 {
+		nop
+		; ; ; raxx
+	}
+}
+'
+			expected: ['unknown clobbered register `raxx`; did you mean `rax`?']
+		},
+	]
+	check_inline_asm_rejections('operand_rejections', cases)!
+}
+
+fn check_inline_asm_rejections(name string, cases []InlineAsmRejection) ! {
+	root := inline_asm_tmp_path(name)
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut imports := []string{cap: cases.len}
+	for case in cases {
+		dir := os.join_path(root, case.name)
+		os.mkdir(dir)!
+		source := 'module ${case.name}\n\n' + case.source.replace_once('fn main()', 'pub fn check()')
+		os.write_file(os.join_path(dir, '${case.name}.v'), source)!
+		imports << 'import ${case.name} as _'
+	}
+	os.write_file(os.join_path(root, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {}\n')!
+	output := os.join_path(root, 'out.c')
+	result := run_inline_asm_c(['-os', 'linux', '-arch', 'amd64', '-cc', 'clang', '-json-errors',
+		'-o', output, root])
+	assert result.exit_code != 0, result.output
+
+	mut errors := map[string][]string{}
+	for line in result.output.split_into_lines() {
+		diagnostic := json2.decode[InlineAsmDiagnostic](line) or { panic(line) }
+		if diagnostic.severity == 'error' {
+			errors[os.file_name(diagnostic.file)] << diagnostic.message
+		}
+	}
+	for case in cases {
+		messages := errors['${case.name}.v']
+		for expected in case.expected {
+			assert messages.any(it.contains(expected)), '${case.name}: expected ${expected}\n${messages}'
+		}
+	}
 }
 
 fn test_arm64_asm_accepts_sme_za_register() {
@@ -879,38 +1068,8 @@ fn test_arm64_asm_accepts_sme_za_register() {
 	assert c_source.contains('"ptrue pn15.b\\n\\t"'), c_source
 }
 
-fn test_intel_asm_rejects_narrow_register_operands() {
-	generate, _ := generate_inline_asm_c('intel_narrow_register_program', 'fn main() {
-	value := u32(7)
-	asm amd64 intel {
-		mov eax, value
-		; ; r (value)
-	}
-}
-')
-	assert generate.exit_code != 0, generate.output
-	assert generate.output.contains('hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers'), generate.output
-}
-
-fn test_intel_asm_validates_enum_backing_widths() {
-	default_generate, _ := generate_inline_asm_c('intel_default_enum_register_program', 'enum Kind {
-	one
-}
-
-fn main() {
-	value := Kind.one
-	asm amd64 intel {
-		mov eax, value
-		; ; r (value)
-	}
-}
-')
-	assert default_generate.exit_code != 0, default_generate.output
-	assert default_generate.output.contains('hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers'), default_generate.output
-
-	// The same 64-bit instruction that accepts a `u64` backed enum below must see the
-	// default enum as a 32-bit signed value.
-	default_wide_generate, _ := generate_inline_asm_c('intel_default_enum_wide_register_program', 'enum Kind {
+fn test_intel_asm_accepts_wide_enum_backing() {
+	generate, c_source := generate_inline_asm_c('intel_wide_enum_register_program', 'enum Kind as u64 {
 	one
 }
 
@@ -922,37 +1081,7 @@ fn main() {
 	}
 }
 ')
-	assert default_wide_generate.exit_code != 0, default_wide_generate.output
-	assert default_wide_generate.output.contains('named source `value` has 32-bit signed type `Kind`, but instruction `mov` consumes the wider 64-bit register'), default_wide_generate.output
-
-	narrow_generate, _ := generate_inline_asm_c('intel_narrow_enum_register_program', 'enum Kind as u8 {
-	one
-}
-
-fn main() {
-	value := Kind.one
-	asm amd64 intel {
-		mov al, value
-		; ; r (value)
-	}
-}
-')
-	assert narrow_generate.exit_code != 0, narrow_generate.output
-	assert narrow_generate.output.contains('hard register `al` is 8-bit, but named operands in structured `intel` assembly expand to 64-bit registers'), narrow_generate.output
-
-	wide_generate, c_source := generate_inline_asm_c('intel_wide_enum_register_program', 'enum Kind as u64 {
-	one
-}
-
-fn main() {
-	value := Kind.one
-	asm amd64 intel {
-		mov rax, value
-		; ; r (value)
-	}
-}
-')
-	assert wide_generate.exit_code == 0, wide_generate.output
+	assert generate.exit_code == 0, generate.output
 	assert c_source.contains('"mov rax, %V[value]\\n\\t"'), c_source
 }
 
@@ -990,50 +1119,6 @@ fn test_arm64_asm_accepts_operand_keywords() {
 	assert c_source.contains('"smstart sm\\n\\t"'), c_source
 	assert c_source.contains('"smstop sm\\n\\t"'), c_source
 	assert c_source.contains('"sys #0, c7, c8, #0, x0\\n\\t"'), c_source
-}
-
-fn test_misspelled_asm_registers_are_reported_with_suggestions() {
-	generate, _ := generate_inline_asm_c('register_suggestion_program', 'fn main() {
-	asm amd64 {
-		mov xmm01, xmm1
-	}
-}
-')
-	assert generate.exit_code != 0, generate.output
-	assert generate.output.contains('unknown register `xmm01`; did you mean `xmm1`?'), generate.output
-}
-
-fn test_misspelled_asm_clobbers_are_reported_with_suggestions() {
-	generate, _ := generate_inline_asm_c('clobber_suggestion_program', 'fn main() {
-	asm amd64 {
-		nop
-		; ; ; raxx
-	}
-}
-')
-	assert generate.exit_code != 0, generate.output
-	assert generate.output.contains('unknown clobbered register `raxx`; did you mean `rax`?'), generate.output
-}
-
-fn test_raw_asm_keeps_avx512_mask_syntax_and_clobbers() {
-	generate, c_source := generate_inline_asm_c('avx512_program', 'fn main() {
-	asm amd64 raw {
-		"vpxord %%zmm0, %%zmm0, %%zmm0%{%%k1%}%{z%}\\n\\t"
-		; ; ; zmm0
-		  k1
-		  bnd0
-		  bnd3
-		  redzone
-	}
-}
-')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"vpxord %%zmm0, %%zmm0, %%zmm0%{%%k1%}%{z%}\\n\\t"'), c_source
-	assert c_source.contains('"zmm0"'), c_source
-	assert c_source.contains('"k1"'), c_source
-	assert c_source.contains('"bnd0"'), c_source
-	assert c_source.contains('"bnd3"'), c_source
-	assert c_source.contains('"redzone"'), c_source
 }
 
 fn test_asm_for_another_arch_reports_the_target_mismatch() {
@@ -1146,23 +1231,6 @@ fn test_asm_on_a_c_target_without_lowering_names_the_target() {
 	// A guard for the build's own architecture would be circular, so none is suggested.
 	assert generate.output.contains('inline assembly is not supported by the C backend for the `riscv32` target\n'), generate.output
 	assert generate.output.contains('inline assembly is not supported by the C backend for the `riscv32` target; guard the block with `\$if amd64 {}`'), generate.output
-}
-
-fn test_asm_for_another_arch_is_skipped_under_its_guard() {
-	generate, c_source := generate_inline_asm_c_for_arch('arch_guarded_program', 'fn main() {
-	\$if arm64 {
-		asm arm64 {
-			nop
-		}
-	} \$else {
-		asm amd64 {
-			nop
-		}
-	}
-}
-', 'amd64')
-	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('"nop\\n\\t"'), c_source
 }
 
 fn test_asm_on_a_backend_without_lowering_names_the_backend() {

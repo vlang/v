@@ -1,7 +1,7 @@
 // vtest ownership
 import os
 
-fn run_mut_receiver_reference_return(name string, source string, ownership bool) os.Result {
+fn run_mut_receiver_reference_return(name string, source string, ownership bool, compiler_flags ...string) os.Result {
 	root := os.join_path(os.vtmp_dir(),
 		'v_mut_receiver_reference_return_${name}_${ownership}_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
@@ -11,8 +11,9 @@ fn run_mut_receiver_reference_return(name string, source string, ownership bool)
 	path := os.join_path(root, 'main.v')
 	out := os.join_path(root, 'out')
 	os.write_file(path, source) or { panic(err) }
-	flags := if ownership { '-d ownership -ownership' } else { '' }
-	return os.execute('${os.quoted_path(@VEXE)} -no-memory-limit -nocache ${flags} -o ${os.quoted_path(out)} run ${os.quoted_path(path)}')
+	flags := if ownership { ['-d', 'ownership', '-ownership'] } else { []string{} }
+	return os.exec([@VEXE, '-no-memory-limit', '-nocache', ...flags, ...compiler_flags, '-o', out,
+		'run', path])
 }
 
 fn test_mut_receiver_reference_return_is_borrowed_in_ownership_mode() {
@@ -79,31 +80,22 @@ fn main() {
 	}
 }
 
-fn test_mut_receiver_reference_return_keeps_plain_mut_parameter_restriction() {
+fn test_mut_receiver_reference_return_keeps_restrictions() {
 	source := '
-struct Builder {
+struct ParameterBuilder {
 mut:
 	value int
 }
 
-fn reference(mut builder Builder) &Builder {
+fn reference(mut builder ParameterBuilder) &ParameterBuilder {
 	return builder
 }
 
-fn main() {
-	mut builder := Builder{}
+fn check_parameter() {
+	mut builder := ParameterBuilder{}
 	_ = reference(mut builder)
 }
-'
-	for ownership in [false, true] {
-		result := run_mut_receiver_reference_return('parameter', source, ownership)
-		assert result.exit_code != 0, result.output
-		assert result.output.contains('might be stored on stack'), result.output
-	}
-}
 
-fn test_mut_receiver_reference_return_keeps_immutable_receiver_restriction() {
-	source := '
 struct Builder {
 mut:
 	value int
@@ -114,14 +106,22 @@ fn (mut builder Builder) set(value int) &Builder {
 	return builder
 }
 
-fn main() {
+fn check_immutable() {
 	builder := Builder{}
 	_ = builder.set(42)
 }
+
+fn main() {
+	check_parameter()
+	check_immutable()
+}
 '
 	for ownership in [false, true] {
-		result := run_mut_receiver_reference_return('immutable', source, ownership)
+		// Keep both diagnostics visible if VFLAGS supplies a lower limit.
+		result := run_mut_receiver_reference_return('restrictions', source, ownership, '-message-limit',
+			'-1')
 		assert result.exit_code != 0, result.output
-		assert result.output.contains('immutable'), result.output
+		assert result.output.contains('might be stored on stack. Consider declaring `ParameterBuilder` as `@[heap]`'), result.output
+		assert result.output.contains('`builder` is immutable, declare it with `mut`'), result.output
 	}
 }

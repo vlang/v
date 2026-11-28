@@ -1,18 +1,63 @@
 import os
 import v.tempname
 
-fn spawn_args_gen_c(name string, src string) string {
+struct SpawnArgsFixture {
+	name   string
+	source string
+}
+
+fn spawn_args_gen_c(cases []SpawnArgsFixture) string {
 	dir := os.join_path(os.vtmp_dir(), 'v3_spawn_args_${tempname.unique_token()}')
 	os.mkdir(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
+	defer { os.rmdir_all(dir) or {} }
+	mut imports := []string{cap: cases.len}
+	mut calls := []string{cap: cases.len}
+	for case in cases {
+		module_dir := os.join_path(dir, case.name)
+		os.mkdir(module_dir) or { panic(err) }
+		imports << 'import ${case.name}'
+		calls << '\t${case.name}.exercise()'
+		source := 'module ${case.name}\n\n' + case.source
+		os.write_file(os.join_path(module_dir, 'case.v'), source.replace_once('\nfn main()',
+			'\npub fn exercise()')) or { panic(err) }
 	}
-	src_file := os.join_path(dir, '${name}.v')
-	os.write_file(src_file, src) or { panic(err) }
-	c_out := os.join_path(dir, '${name}.c')
-	compile := os.exec([@VEXE, src_file, '-o', c_out])
+	os.write_file(os.join_path(dir, 'main.v'), 'module main\n\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n') or {
+		panic(err)
+	}
+	c_out := os.join_path(dir, 'spawn.c')
+	compile := os.exec([@VEXE, dir, '-o', c_out])
 	assert compile.exit_code == 0, compile.output
-	return os.read_file(c_out) or { '' }
+	return os.read_file(c_out) or { panic(err) }
+}
+
+fn spawn_args_entry(c_code string, name string) string {
+	header := '\nvoid ${name}__exercise(void) {\n'
+	start := c_code.index(header) or { panic('missing C entry for ${name}') }
+	body := c_code[start + header.len..]
+	end := body.index('\n}\n') or { panic('missing end of C entry for ${name}') }
+	return body[..end]
+}
+
+fn spawn_args_wrapper(c_code string, name string) string {
+	header := '\nstatic void* ${name}(void* arg) {'
+	start := c_code.index(header) or { panic('missing C wrapper ${name}') }
+	body := c_code[start + header.len..]
+	mut depth := 1
+	for i, ch in body {
+		match ch {
+			`{` {
+				depth++
+			}
+			`}` {
+				depth--
+				if depth == 0 {
+					return body[..i]
+				}
+			}
+			else {}
+		}
+	}
+	panic('missing end of C wrapper ${name}')
 }
 
 fn spawn_args_compact_c(c_code string) string {
@@ -46,11 +91,137 @@ fn assert_spawn_pthread_decls(c_code string) {
 	assert !c_code.contains('pthread_attr_setstacksize(&_at'), c_code
 }
 
-// A `spawn` of a free function with arguments must pack the arguments into a heap
-// struct and run the real function through a wrapper, instead of emitting a
-// `(void*)0` no-op that silently drops the call and its arguments.
-fn test_spawn_free_function_with_arguments_packs_args() {
-	c_code := spawn_args_gen_c('v3_spawn_args_free', '
+// Spawn packs the free function's arguments into a heap packet and dispatches
+// the real function through a wrapper.
+fn check_spawn_free_arguments(c_code string, compact string) {
+	entry := spawn_args_compact_c(spawn_args_entry(c_code, 'free_args'))
+	assert compact.contains('typedefstruct{free_args__Counter*a0;i64a1;i64a2;}free_args__add_thread_args;'), c_code
+	assert entry.contains('->a0=c;'), entry
+	// A discarded handle starts detached.
+	assert entry.contains('__v_thread_spawn_detached(free_args__add_args_thread_wrapper_detached,(void*)_sa'), entry
+	assert c_code.contains('free_args__add(__v3_spawn_args->a0, __v3_spawn_args->a1, __v3_spawn_args->a2)'), c_code
+}
+
+// Spawn packs the receiver along with the explicit method arguments.
+fn check_spawn_method_arguments(c_code string, compact string) {
+	entry := spawn_args_compact_c(spawn_args_entry(c_code, 'method_args'))
+	assert compact.contains('typedefstruct{method_args__Counter*a0;i64a1;}method_args__Counter__bump_thread_args;'), c_code
+	assert entry.contains('->a0=c;'), entry
+	assert entry.contains('__v_thread_spawn_detached(method_args__Counter__bump_args_thread_wrapper_detached,(void*)_sa'), entry
+	assert c_code.contains('method_args__Counter__bump(__v3_spawn_args->a0, __v3_spawn_args->a1)'), c_code
+}
+
+// A by-value receiver is copied into the heap packet.
+fn check_spawn_value_receiver(c_code string, compact string) {
+	entry := spawn_args_compact_c(spawn_args_entry(c_code, 'value_receiver'))
+	assert compact.contains('typedefstruct{value_receiver__Greetera0;}value_receiver__Greeter__greet_thread_args;'), c_code
+	assert entry.contains('->a0=g;'), entry
+	assert !entry.contains('->a0=&g;'), entry
+	assert entry.contains('__v_thread_spawn_detached(value_receiver__Greeter__greet_args_thread_wrapper_detached,(void*)_sa'), entry
+	assert c_code.contains('value_receiver__Greeter__greet(__v3_spawn_args->a0)'), c_code
+	assert !c_code.contains('(value_receiver__Greeter)arg'), c_code
+}
+
+// Pointer rvalues are stored by value and addressed from the heap packet.
+fn check_spawn_pointer_rvalues(c_code string, compact string) {
+	assert compact.contains('typedefstruct{pointer_rvalues__Boxa0;}pointer_rvalues__Box__show_thread_args'), c_code
+	assert compact.contains('pointer_rvalues__Box__show(&__v3_spawn_args->a0)'), c_code
+	assert !compact.contains('typedefstruct{pointer_rvalues__Box*a0;}pointer_rvalues__Box__show_thread_args'), c_code
+	assert compact.contains('typedefstruct{i64a0;}pointer_rvalues__takes_ptr_thread_args'), c_code
+	assert compact.contains('pointer_rvalues__takes_ptr(&__v3_spawn_args->a0)'), c_code
+	assert !compact.contains('typedefstruct{i64*a0;}pointer_rvalues__takes_ptr_thread_args'), c_code
+}
+
+fn check_spawn_mutable_local_address(c_code string, compact string) {
+	entry := spawn_args_compact_c(spawn_args_entry(c_code, 'local_address'))
+	assert compact.contains('typedefstruct{i64*a0;}local_address__takes_ptr_thread_args'), c_code
+	assert entry.contains('->a0=value;'), entry
+	assert compact.contains('local_address__takes_ptr(__v3_spawn_args->a0)'), c_code
+	assert !compact.contains('typedefstruct{i64a0;}local_address__takes_ptr_thread_args'), c_code
+}
+
+fn check_spawn_checked_result(c_code string) {
+	wrapper := spawn_args_wrapper(c_code, 'checked_result__answer_thread_wrapper')
+	assert wrapper.contains('(i64*)__v_thread_alloc(sizeof(i64))'), wrapper
+	entry := spawn_args_entry(c_code, 'checked_result')
+	// wait() copies the handle and panics on an uninitialized thread.
+	index := entry.all_after('__v_thread __twthread').all_before(' = t;')
+	assert entry.contains('__v_thread __twthread${index} = t; if (!__twthread${index}.handle) v_panic(_S("unable to join thread")); void* __twres${index} = __v_thread_join(__twthread${index});'), entry
+	assert !c_code.contains('pthread_join((pthread_t)'), c_code
+}
+
+// The named closure remains caller-owned and can be reused after join.
+fn check_spawn_captured_fn_value(c_code string, compact string) {
+	entry := spawn_args_entry(c_code, 'captured_fn_value')
+	wrapper_name := entry.all_after('__v_thread_spawn(').all_before(',')
+	assert wrapper_name.starts_with('fn_value_args_thread_wrapper'), entry
+	assert entry.contains('fn_value_thread_args_'), entry
+	assert compact.contains('f;}fn_value_thread_args_'), c_code
+	wrapper := spawn_args_wrapper(c_code, wrapper_name)
+	assert wrapper.contains('__v3_spawn_args->f()'), wrapper
+	assert !spawn_args_compact_c(wrapper).contains('closure__closure_try_destroy((void*)__v3_spawn_args->f);'), wrapper
+	assert !spawn_args_compact_c(entry).contains('closure__closure_try_destroy((void*)cb);'), entry
+}
+
+// Discarded handles detach. Handles passed to a consumer or retained for wait()
+// stay joinable, and detached wrappers release unused return values.
+fn check_discarded_spawn(c_code string, compact string) {
+	entry := spawn_args_entry(c_code, 'discarded_spawn')
+	assert c_code.contains('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*))'), c_code
+	assert compact.count('__v_thread_spawn_detached(discarded_spawn__work_thread_wrapper_detached,') == 4, c_code
+	assert compact.count('__v_thread_spawn_detached(discarded_spawn__answer_thread_wrapper_detached,') == 1, c_code
+	assert compact.contains('__v_thread_spawn_detached(discarded_spawn__add_args_thread_wrapper_detached,(void*)_sa'), c_code
+	// The spawn nested in the arguments is joined by wait_for.
+	assert compact.contains('__v_thread_spawn_detached(discarded_spawn__wait_for_args_thread_wrapper_detached,(void*)_sa'), c_code
+	assert compact.count('__v_thread_spawn(discarded_spawn__answer_thread_wrapper,') == 3, c_code
+	assert compact.contains('__v_threadt=__v_thread_spawn(discarded_spawn__answer_thread_wrapper,'), c_code
+	array_wrapper := spawn_args_wrapper(c_code, 'discarded_spawn__make_array_thread_wrapper_detached')
+	assert array_wrapper.contains('(void)arg; void* __v3_signal_stack = __v_thread_signal_stack_enter(&arg); Array __tr = discarded_spawn__make_array();'), array_wrapper
+	assert array_wrapper.contains('array__free(&(__tr));'), array_wrapper
+	assert c_code.contains('static void* discarded_spawn__make_array_thread_wrapper(void* arg) { (void)arg; void* __v3_signal_stack = __v_thread_signal_stack_enter(&arg); Array* __tr = (Array*)__v_thread_alloc(sizeof(Array));'), c_code
+	thread_wrapper := spawn_args_wrapper(c_code, 'discarded_spawn__make_thread_thread_wrapper_detached')
+	assert thread_wrapper.contains('(void)arg; void* __v3_signal_stack = __v_thread_signal_stack_enter(&arg); __v_thread __tr = discarded_spawn__make_thread();'), thread_wrapper
+	assert thread_wrapper.contains('__v_thread_join(__tr);'), thread_wrapper
+	array_thread_wrapper := spawn_args_wrapper(c_code, 'discarded_spawn__make_array_thread_thread_wrapper_detached')
+	assert array_thread_wrapper.contains('(void)arg; void* __v3_signal_stack = __v_thread_signal_stack_enter(&arg); __v_thread __tr = discarded_spawn__make_array_thread();'), array_thread_wrapper
+	assert array_thread_wrapper.contains('array__free(&(__tr_inner'), array_thread_wrapper
+	closure_wrapper := spawn_args_wrapper(c_code, 'discarded_spawn__make_closure_thread_wrapper_detached')
+	assert closure_wrapper.starts_with(' (void)arg;'), closure_wrapper
+	assert closure_wrapper.contains('closure__closure_try_destroy((void*)(__tr));'), closure_wrapper
+	assert entry.all_after('__v_thread __twthread').all_before(';').ends_with(' = t'), entry
+}
+
+fn check_discarded_nested_results(c_code string) {
+	for name in ['make_array', 'make_optional', 'make_struct'] {
+		wrapper := spawn_args_wrapper(c_code, 'nested_result_cleanup__${name}_thread_wrapper_detached')
+		assert wrapper.contains('__v_thread_join('), '${name}: ${wrapper}'
+	}
+	closure_wrapper := spawn_args_wrapper(c_code, 'nested_result_cleanup__make_closure_thread_wrapper_detached')
+	assert closure_wrapper.contains('closure__closure_try_destroy('), closure_wrapper
+}
+
+fn check_discarded_aggregate_spawns(c_code string) {
+	entry := spawn_args_compact_c(spawn_args_entry(c_code, 'discarded_aggregate'))
+	assert entry.count('__v_thread_spawn_detached(discarded_aggregate__answer_thread_wrapper_detached,') == 8, entry
+	// Compared spawns keep their handles until the comparison finishes.
+	assert entry.count('__v_thread_spawn_comparable(discarded_aggregate__answer_thread_wrapper_detached,') == 2, entry
+	assert entry.count('__v_thread_spawn(discarded_aggregate__answer_thread_wrapper,') == 2, entry
+}
+
+// A discarded conditional detaches spawns in its value branches. A branch
+// yielding an existing handle leaves it joinable for a later wait().
+fn check_discarded_conditional_spawns(c_code string) {
+	entry := spawn_args_compact_c(spawn_args_entry(c_code, 'discarded_conditional'))
+	assert entry.count('__v_thread_spawn_detached(discarded_conditional__work_thread_wrapper_detached,') == 6, entry
+	assert entry.count('__v_thread_spawn_detached(discarded_conditional__other_thread_wrapper_detached,') == 6, entry
+	assert !entry.contains('__v_thread_spawn(discarded_conditional__other_thread_wrapper,'), entry
+	assert entry.contains('__v_threadt=__v_thread_spawn(discarded_conditional__work_thread_wrapper,'), entry
+	assert entry.count('(void)(t);') == 2, entry
+}
+
+fn test_spawn_arguments_and_cleanup_codegen() {
+	c_code := spawn_args_gen_c([
+		SpawnArgsFixture{'free_args', '
 struct Counter {
 mut:
 	total int
@@ -65,23 +236,8 @@ fn main() {
 	_ := spawn add(mut c, 3, 4)
 	println("ok")
 }
-	')
-	c_compact := spawn_args_compact_c(c_code)
-	assert c_code.contains('add_thread_args'), c_code
-	assert c_code.contains('pthread_create'), c_code
-	assert_spawn_pthread_decls(c_code)
-	assert c_compact.contains('typedefstruct{main__Counter*a0;i64a1;i64a2;}add_thread_args;'), c_code
-	assert c_compact.contains('->a0=c;'), c_code
-	// The handle is discarded, so the thread starts detached (efad5b26ba).
-	assert c_compact.contains('__v_thread_spawn_detached(add_args_thread_wrapper_detached,(void*)_sa'), c_code
-	// The wrapper reads the packet through `__v3_spawn_args` (5aa6d1d034).
-	assert c_code.contains('add(__v3_spawn_args->a0, __v3_spawn_args->a1, __v3_spawn_args->a2)'), c_code
-}
-
-// A `spawn` of a method with arguments must pack the receiver and arguments and
-// dispatch the real method instead of dropping the call.
-fn test_spawn_method_with_arguments_packs_receiver_and_args() {
-	c_code := spawn_args_gen_c('v3_spawn_args_method', '
+	'},
+		SpawnArgsFixture{'method_args', '
 struct Counter {
 mut:
 	total int
@@ -96,21 +252,8 @@ fn main() {
 	_ := spawn c.bump(10)
 	println("ok")
 }
-	')
-	c_compact := spawn_args_compact_c(c_code)
-	assert c_code.contains('pthread_create'), c_code
-	assert c_compact.contains('typedefstruct{main__Counter*a0;i64a1;}Counter__bump_thread_args;'), c_code
-	assert c_compact.contains('->a0=c;'), c_code
-	assert c_compact.contains('__v_thread_spawn_detached(Counter__bump_args_thread_wrapper_detached,(void*)_sa'), c_code
-
-	assert c_code.contains('Counter__bump(__v3_spawn_args->a0, __v3_spawn_args->a1)'), c_code
-}
-
-// A no-arg `spawn` of a by-value receiver method must copy the receiver into the
-// heap arg struct; casting the void* thread argument straight to the struct type
-// (`(Greeter)arg`) is invalid C.
-fn test_spawn_value_receiver_copies_receiver() {
-	c_code := spawn_args_gen_c('v3_spawn_value_receiver', '
+	'},
+		SpawnArgsFixture{'value_receiver', '
 struct Greeter {
 	name string
 }
@@ -124,24 +267,8 @@ fn main() {
 	_ := spawn g.greet()
 	println("ok")
 }
-	')
-	c_compact := spawn_args_compact_c(c_code)
-	assert c_code.contains('pthread_create'), c_code
-	assert c_compact.contains('typedefstruct{main__Greetera0;}Greeter__greet_thread_args;'), c_code
-	assert c_compact.contains('->a0=g;'), c_code
-	assert !c_compact.contains('->a0=&g;'), c_code
-	assert c_compact.contains('__v_thread_spawn_detached(Greeter__greet_args_thread_wrapper_detached,(void*)_sa'), c_code
-
-	assert c_code.contains('Greeter__greet(__v3_spawn_args->a0)'), c_code
-	assert !c_code.contains('(Greeter)arg'), c_code
-}
-
-// A pointer receiver/argument whose source is a rvalue must be stored by value in
-// the heap argument packet, then passed to the spawned call as `&__v3_spawn_args->field`.
-// Capturing the address of a stack temporary would race the caller's frame, and
-// assigning the rvalue directly into a pointer field is invalid C.
-fn test_spawn_pointer_rvalues_store_value_in_heap_packet() {
-	c_code := spawn_args_gen_c('v3_spawn_pointer_rvalue_receiver', '
+	'},
+		SpawnArgsFixture{'pointer_rvalues', '
 struct Box {
 	x int
 }
@@ -167,19 +294,8 @@ fn main() {
 	_ := spawn takes_ptr(make_int())
 	println("ok")
 }
-	')
-	c_compact := spawn_args_compact_c(c_code)
-	assert c_code.contains('pthread_create'), c_code
-	assert c_compact.contains('typedefstruct{main__Boxa0;}Box__show_thread_args'), c_code
-	assert c_compact.contains('Box__show(&__v3_spawn_args->a0)'), c_code
-	assert !c_compact.contains('typedefstruct{main__Box*a0;}Box__show_thread_args'), c_code
-	assert c_compact.contains('typedefstruct{i64a0;}takes_ptr_thread_args'), c_code
-	assert c_compact.contains('takes_ptr(&__v3_spawn_args->a0)'), c_code
-	assert !c_compact.contains('typedefstruct{i64*a0;}takes_ptr_thread_args'), c_code
-}
-
-fn test_spawn_mutable_local_address_preserves_escaping_pointer() {
-	c_code := spawn_args_gen_c('v3_spawn_mutable_local_address', '
+	'},
+		SpawnArgsFixture{'local_address', '
 fn takes_ptr(value &int) {
 	println(*value)
 }
@@ -192,16 +308,8 @@ fn main() {
 	}
 	println("ok")
 }
-	')
-	c_compact := spawn_args_compact_c(c_code)
-	assert c_compact.contains('typedefstruct{i64*a0;}takes_ptr_thread_args'), c_code
-	assert c_compact.contains('->a0=value;'), c_code
-	assert c_compact.contains('takes_ptr(__v3_spawn_args->a0)'), c_code
-	assert !c_compact.contains('typedefstruct{i64a0;}takes_ptr_thread_args'), c_code
-}
-
-fn test_spawn_result_uses_checked_allocation_and_typed_join() {
-	c_code := spawn_args_gen_c('v3_spawn_checked_result', '
+	'},
+		SpawnArgsFixture{'checked_result', '
 fn answer() int {
 	return 42
 }
@@ -210,16 +318,8 @@ fn main() {
 	t := spawn answer()
 	println(t.wait())
 }
-	')
-	assert c_code.contains('(i64*)__v_thread_alloc(sizeof(i64))'), c_code
-	// `wait()` copies the handle and panics on an uninitialized thread (7379623586).
-	assert c_code.contains('__v_thread __twthread0 = t; if (!__twthread0.handle) v_panic(_S("unable to join thread")); void* __twres0 = __v_thread_join(__twthread0);'), c_code
-	assert !c_code.contains('pthread_join((pthread_t)'), c_code
-}
-
-// A spawned named closure remains caller-owned because it can be reused after join.
-fn test_spawn_fn_value_closure_keeps_caller_ownership() {
-	c_code := spawn_args_gen_c('v3_spawn_fn_value_capture', '
+	'},
+		SpawnArgsFixture{'captured_fn_value', '
 fn main() {
 	x := 11
 	cb := fn [x] () int {
@@ -229,21 +329,8 @@ fn main() {
 	println(t.wait())
 	println(cb())
 }
-	')
-	c_compact := spawn_args_compact_c(c_code)
-	assert c_code.contains('fn_value_args_thread_wrapper'), c_code
-	assert c_compact.contains('f;}fn_value_thread_args_'), c_code
-	assert c_compact.contains('__v3_spawn_args->f()'), c_code
-	assert !c_compact.contains('closure__closure_try_destroy((void*)__v3_spawn_args->f);'), c_code
-	assert !c_compact.contains('closure__closure_try_destroy((void*)cb);'), c_code
-}
-
-// A `spawn` whose handle is discarded can never be joined, so its thread must be
-// detached. Left joinable, every such thread keeps its OS resources until exit
-// (under Boehm GC on macOS, one mach port each, until the kernel kills the
-// process). A handle that is kept must stay joinable for `.wait()`.
-fn test_discarded_spawn_detaches_thread() {
-	c_code := spawn_args_gen_c('v3_spawn_discarded_detach', '
+	'},
+		SpawnArgsFixture{'discarded_spawn', '
 fn work() {}
 
 fn answer() int {
@@ -305,30 +392,8 @@ fn main() {
 	owned := spawn make_array()
 	println(owned.wait())
 }
-	')
-	c_compact := spawn_args_compact_c(c_code)
-	assert c_code.contains('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*))'), c_code
-	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper_detached,') == 4, c_code
-	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper_detached,') == 1, c_code
-	assert c_compact.contains('__v_thread_spawn_detached(add_args_thread_wrapper_detached,(void*)_sa'), c_code
-	// The spawn nested in the arguments is joined by `wait_for`, so it stays joinable.
-	assert c_compact.contains('__v_thread_spawn_detached(wait_for_args_thread_wrapper_detached,(void*)_sa'), c_code
-	assert c_compact.count('__v_thread_spawn(answer_thread_wrapper,') == 3, c_code
-	assert c_compact.contains('__v_threadt=__v_thread_spawn(answer_thread_wrapper,'), c_code
-	assert c_code.contains('static void* make_array_thread_wrapper_detached(void* arg) { (void)arg; void* __v3_signal_stack = __v_thread_signal_stack_enter(&arg); Array __tr = make_array();'), c_code
-	assert c_code.contains('array__free(&(__tr));'), c_code
-	assert c_code.contains('static void* make_array_thread_wrapper(void* arg) { (void)arg; void* __v3_signal_stack = __v_thread_signal_stack_enter(&arg); Array* __tr = (Array*)__v_thread_alloc(sizeof(Array));'), c_code
-	assert c_code.contains('static void* make_thread_thread_wrapper_detached(void* arg) { (void)arg; void* __v3_signal_stack = __v_thread_signal_stack_enter(&arg); __v_thread __tr = make_thread();'), c_code
-	assert c_code.contains('__v_thread_join(__tr);'), c_code
-	assert c_code.contains('static void* make_array_thread_thread_wrapper_detached(void* arg) { (void)arg; void* __v3_signal_stack = __v_thread_signal_stack_enter(&arg); __v_thread __tr = make_array_thread();'), c_code
-	assert c_code.contains('array__free(&(__tr_inner'), c_code
-	assert c_code.contains('static void* make_closure_thread_wrapper_detached(void* arg) { (void)arg;'), c_code
-	assert c_code.contains('closure__closure_try_destroy((void*)(__tr));'), c_code
-	assert c_compact.contains('__v_thread__twthread0=t;'), c_code
-}
-
-fn test_discarded_spawn_cleans_nested_thread_and_closure_results() {
-	c_code := spawn_args_gen_c('v3_spawn_nested_result_cleanup', '
+	'},
+		SpawnArgsFixture{'nested_result_cleanup', '
 struct Worker {
 	child thread int
 }
@@ -368,17 +433,8 @@ fn main() {
 	spawn make_struct()
 	spawn make_closure()
 }
-	')
-	for name in ['make_array', 'make_optional', 'make_struct'] {
-		wrapper := c_code.all_after('static void* ${name}_thread_wrapper_detached').all_before('return NULL;')
-		assert wrapper.contains('__v_thread_join('), wrapper
-	}
-	closure_wrapper := c_code.all_after('static void* make_closure_thread_wrapper_detached').all_before('return NULL;')
-	assert closure_wrapper.contains('closure__closure_try_destroy('), closure_wrapper
-}
-
-fn test_discarded_aggregate_spawns_detach_threads() {
-	c_code := spawn_args_gen_c('v3_spawn_discarded_aggregate_detach', '
+	'},
+		SpawnArgsFixture{'discarded_aggregate', '
 struct Holder {
 	worker thread int
 }
@@ -405,21 +461,8 @@ fn main() {
 	t := spawn answer()
 	println(t.wait())
 }
-	')
-	c_compact := spawn_args_compact_c(c_code)
-	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper_detached,') == 8, c_code
-	// Compared spawns keep their handles until the comparison finishes.
-	assert c_compact.count('__v_thread_spawn_comparable(answer_thread_wrapper_detached,') == 2, c_code
-	assert c_compact.count('__v_thread_spawn(answer_thread_wrapper,') == 2, c_code
-}
-
-// A discarded `if`/`match`, including one in a `_` slot of a multi-assignment, must
-// detach the spawn in each branch that ends in one.
-// The transformer would otherwise lower the value into a temporary that hides the
-// spawns from cgen. A branch that yields an existing handle only evaluates it, so
-// the handle stays joinable for its later `.wait()`.
-fn test_discarded_conditional_spawns_detach_threads() {
-	c_code := spawn_args_gen_c('v3_spawn_discarded_conditional_detach', "
+	'},
+		SpawnArgsFixture{'discarded_conditional', "
 fn work() {}
 
 fn other() {}
@@ -452,11 +495,19 @@ fn main() {
 	}
 	t.wait()
 }
-	")
-	c_compact := spawn_args_compact_c(c_code)
-	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper_detached,') == 6, c_code
-	assert c_compact.count('__v_thread_spawn_detached(other_thread_wrapper_detached,') == 6, c_code
-	assert !c_compact.contains('__v_thread_spawn(other_thread_wrapper,'), c_code
-	assert c_compact.contains('__v_threadt=__v_thread_spawn(work_thread_wrapper,'), c_code
-	assert c_compact.count('(void)(t);') == 2, c_code
+	"},
+	])
+	compact := spawn_args_compact_c(c_code)
+	assert_spawn_pthread_decls(c_code)
+	check_spawn_free_arguments(c_code, compact)
+	check_spawn_method_arguments(c_code, compact)
+	check_spawn_value_receiver(c_code, compact)
+	check_spawn_pointer_rvalues(c_code, compact)
+	check_spawn_mutable_local_address(c_code, compact)
+	check_spawn_checked_result(c_code)
+	check_spawn_captured_fn_value(c_code, compact)
+	check_discarded_spawn(c_code, compact)
+	check_discarded_nested_results(c_code)
+	check_discarded_aggregate_spawns(c_code)
+	check_discarded_conditional_spawns(c_code)
 }

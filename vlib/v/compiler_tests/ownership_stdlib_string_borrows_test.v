@@ -99,39 +99,51 @@ fn main() {
 	}
 }
 
-fn test_ownership_user_string_consumers_keep_move_semantics() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_user_string_consumers_${os.getpid()}')
+fn test_ownership_string_arguments_keep_move_semantics() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_string_argument_moves_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn exists(value string) bool { return value.len > 0 }
-fn main() {
+	consumer := 'fn exists(value string) bool { return value.len > 0 }
+'
+	user_body := '
 	value := "owned".to_owned()
 	assert exists(value)
 	println(value)
-}
-')!
-	out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership -check ${os.quoted_path(source)}')
-	assert out.exit_code != 0, out.output
-	assert out.output.contains('use of moved value: `value`'), out.output
-}
-
-fn test_ownership_returned_string_fallback_moves_owned_argument() {
-	root := os.join_path(os.vtmp_dir(), 'ownership_string_fallback_move_${os.getpid()}')
-	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
-	source := os.join_path(root, 'main.v')
-	os.write_file(source, 'fn main() {
+'
+	fallback_body := '
 	fallback := "fallback".to_owned()
 	result := "abc".substr_or(0, 4, fallback)
 	println(result)
 	println(fallback)
+'
+	// Custom flags can limit the number of diagnostics.
+	batch := os.getenv('VFLAGS').trim_space() in ['', '-gc none']
+	if batch {
+		os.write_file(source, consumer + 'fn user_consumer() {${user_body}}
+fn returned_fallback() {${fallback_body}}
+fn main() {
+	user_consumer()
+	returned_fallback()
 }
 ')!
-	for mode in ['-no-parallel', ''] {
-		out := os.execute('${os.quoted_path(@VEXE)} -nocache -ownership -d ownership ${mode} -check ${os.quoted_path(source)}')
-		assert out.exit_code != 0, out.output
-		assert out.output.contains('use of moved value: `fallback`'), out.output
+		check_ownership_string_argument_moves(source, [], ['value', 'fallback'])
+	} else {
+		os.write_file(source, consumer + 'fn main() {${user_body}}\n')!
+		check_ownership_string_argument_moves(source, [], ['value'])
+	}
+	os.write_file(source, 'fn main() {${fallback_body}}\n')!
+	check_ownership_string_argument_moves(source, ['-no-parallel'], ['fallback'])
+	if !batch {
+		check_ownership_string_argument_moves(source, [], ['fallback'])
+	}
+}
+
+fn check_ownership_string_argument_moves(source string, mode []string, names []string) {
+	out := os.exec([@VEXE, '-nocache', '-ownership', '-d', 'ownership', ...mode, '-check', source])
+	assert out.exit_code != 0, '${mode}: ${out.output}'
+	for name in names {
+		assert out.output.contains('use of moved value: `${name}`'), '${mode}: ${name}: ${out.output}'
 	}
 }
 

@@ -1,56 +1,98 @@
 import os
 
-fn test_ownership_map_clear_pointer() {
+fn test_ownership_map_clear_and_string_key_lifetime() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_map_clear_pointer_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, "type Value = int | string
+	shared := "type Value = int | string
 
 fn clear_map[F](field &F) {
 	mut target := unsafe { field }
 	target.clear()
 }
 
-fn main() {
+fn free_map[F](field &F) {
+	mut target := unsafe { field }
+	target.free()
+}
+
+fn check_string_clear() {
 	mut items := map[string]Value{}
 	items['key'] = Value('value')
 	clear_map(&items)
+	print('clear string map ')
 	println(items.len)
 }
+
+fn check_string_free() {
+	mut items := map[string]Value{}
+	items['key'] = Value('value')
+	free_map(&items)
+	print('free string map ')
+	println(items.len)
+}
+"
+	os.write_file(os.join_path(root, 'key_lifetime.v'), "fn check_string_key_lifetime() {
+	mut values := map[string]int{}
+	for i in 0 .. 64 {
+		key := 'stored-key-\${i}'
+		values[key] = i + 1
+	}
+	for i in 0 .. 64 {
+		assert values['stored-key-\${i}'] == i + 1
+	}
+	keys := values.keys()
+	values.clear()
+	assert values.len == 0
+	assert keys.len == 64
+	for key in keys {
+		assert key.starts_with('stored-key-')
+	}
+	for i in 0 .. 64 {
+		values['next-key-\${i}'] = i + 1
+	}
+	for i in 0 .. 64 {
+		assert values['next-key-\${i}'] == i + 1
+	}
+	unsafe { values.free() }
+	assert values.len == 0
+	println('ok')
+}
 ")!
-	for mode in ['', '-no-parallel'] {
-		for gc_mode in ['vgc', 'none'] {
+	for gc_mode in ['vgc', 'none'] {
+		mut fixture := shared
+		mut calls := ['\tcheck_string_clear()', '\tcheck_string_free()']
+		mut expected := ['clear string map 0', 'free string map 0']
+		if gc_mode == 'none' {
+			fixture += "
+fn check_int_clear() {
+	mut items := map[int]Value{}
+	items[1] = Value('value')
+	clear_map(&items)
+	print('clear integer map ')
+	println(items.len)
+}
+"
+			calls << '\tcheck_int_clear()'
+			expected << 'clear integer map 0'
+		}
+		calls << '\tcheck_string_key_lifetime()'
+		expected << 'ok'
+		os.write_file(source, fixture + '\nfn main() {\n${calls.join('\n')}\n}\n')!
+		for mode in ['', '-no-parallel'] {
 			output := os.join_path(root, 'app')
 			mut args := [@VEXE, '-nocache', '-ownership', '-d', 'ownership', '-autofree', '-gc',
 				gc_mode, '-no-prealloc', '-o', output]
 			if mode != '' {
 				args << mode
 			}
-			args << source
+			args << root
 			result := os.exec(args)
 			assert result.exit_code == 0, result.output
 			run := os.exec([output])
 			assert run.exit_code == 0, run.output
-			assert run.output.trim_space() == '0', run.output
-			clear_source := os.read_file(source)!
-			os.write_file(source, clear_source.replace('target.clear()', 'target.free()'))!
-			free_build := os.exec(args)
-			assert free_build.exit_code == 0, free_build.output
-			free_run := os.exec([output])
-			assert free_run.exit_code == 0, free_run.output
-			assert free_run.output.trim_space() == '0', free_run.output
-			os.write_file(source, clear_source)!
-			if gc_mode == 'none' {
-				stored := os.read_file(source)!
-				os.write_file(source, stored.replace('map[string]Value', 'map[int]Value').replace("items['key']", 'items[1]'))!
-				runtime_build := os.exec(args)
-				assert runtime_build.exit_code == 0, runtime_build.output
-				integer_run := os.exec([output])
-				assert integer_run.exit_code == 0, integer_run.output
-				assert integer_run.output.trim_space() == '0', integer_run.output
-				os.write_file(source, stored)!
-			}
+			assert run.output.trim_space().split_into_lines() == expected, run.output
 		}
 	}
 }

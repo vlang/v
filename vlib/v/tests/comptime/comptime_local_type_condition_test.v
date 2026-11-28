@@ -5,6 +5,9 @@ fn test_comptime_type_conditions_use_local_field_value_types() {
 	os.mkdir_all(directory) or { panic(err) }
 	defer { os.rmdir_all(directory) or {} }
 	main_path := os.join_path(directory, 'main.v')
+	// Every case is a function of one program, so a `$compile_error` in any of them fails it.
+	mut declarations := []string{}
+	mut calls := []string{}
 	for value_type, value in {
 		'string': "'name'"
 		'bool':   'true'
@@ -25,14 +28,18 @@ fn test_comptime_type_conditions_use_local_field_value_types() {
 			} else {
 				body + 'assert local == app.value\n'
 			}
-			source := 'module main\nstruct App { value ${value_type} }\nfn main() {\napp := &App{value: ${value}}\n${statements}}\n'
-			os.write_file(main_path, source) or { panic(err) }
-			checked := os.exec([@VEXE, '-b', 'c', '-check', main_path])
-			assert checked.exit_code == 0, checked.output
-			result := os.exec([@VEXE, '-b', 'c', 'run', main_path])
-			assert result.exit_code == 0, result.output
+			app := 'App${calls.len}'
+			declarations << 'struct ${app} { value ${value_type} }\nfn case_${calls.len}() {\napp := &${app}{value: ${value}}\n${statements}}'
+			calls << 'case_${calls.len}()'
 		}
 	}
+	os.write_file(main_path, 'module main\n${declarations.join('\n')}\nfn main() {\n${calls.join('\n')}\n}\n') or {
+		panic(err)
+	}
+	checked := os.exec([@VEXE, '-b', 'c', '-check', main_path])
+	assert checked.exit_code == 0, checked.output
+	result := os.exec([@VEXE, '-b', 'c', 'run', main_path])
+	assert result.exit_code == 0, result.output
 }
 
 fn test_comptime_mut_parameters_keep_semantic_types() {

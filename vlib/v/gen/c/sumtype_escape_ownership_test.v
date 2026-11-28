@@ -1,32 +1,20 @@
 module main
 
 import os
-import v.cmdexec
 
 fn test_returned_pointer_sum_acquires_promoted_local_once() {
 	cc := os.find_abs_path_of_executable('clang') or { return }
 	dir := os.join_path(os.vtmp_dir(), 'sum_local_transfer_${os.getpid()}')
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
-	project := os.join_path(os.real_path(dir), 'compiler')
 	vlib := os.join_path(@VEXEROOT, 'vlib')
-	// Optimize the driver reused for hundreds of compilations, keeping its assertions.
-	// Export first to release V's frontend before native compilation.
-	generate := os.exec([@VEXE, '-b', 'c', '-cc', cc, '-gc', 'none', '-prealloc', '-cflags',
-		'-O1 -fno-inline-functions', '-d', 'ownership', '-path', vlib, '-generate-c-project', project,
-		os.join_path(vlib, 'v', 'v.v')])
-	assert generate.exit_code == 0, generate.output
-	build := $if windows {
-		cmdexec.run_in_merged('cmd', ['/c', 'build.bat'], project)
-	} $else {
-		cmdexec.run_in_merged('sh', [os.join_path(project, 'build.sh')], project)
-	}
+	// The cases are batched into a few dozen compilations, so a quick build of the driver beats
+	// an optimized one. -prealloc keeps it out of the test runner's shared -prod compiler, so the
+	// driver keeps its assertions.
+	compiler := os.join_path(os.real_path(dir), 'compiler') + $if windows { '.exe' } $else { '' }
+	build := os.exec([@VEXE, '-gc', 'none', '-prealloc', '-d', 'ownership', '-path', vlib, '-o',
+		compiler, os.join_path(vlib, 'v', 'v.v')])
 	assert build.exit_code == 0, build.output
-	compiler := if os.is_file(os.join_path(project, 'v')) {
-		os.join_path(project, 'v')
-	} else {
-		os.join_path(project, 'v.exe')
-	}
 	header := os.join_path(dir, 'drops.h')
 	os.write_file(header, 'static int transfer_drops[35];
 static void transfer_record(int code) { transfer_drops[code]++; }
@@ -426,7 +414,8 @@ fn main() {
 		}
 	}
 	invalid := os.join_path(dir, 'ambiguous.v')
-	os.write_file(invalid, 'struct Item { code int }
+	// Rejected programs are checked as modules of one program per mode.
+	mut rejected_sources := ['struct Item { code int }
 type Choice = int | &Item
 fn factory(flag bool, item &Item) Choice {
  mut result := Choice(0)
@@ -437,12 +426,8 @@ fn factory(flag bool, item &Item) Choice {
  }
  return result
 }
-fn main() { item := Item{code: 8}; value := factory(true, &item); assert value is &Item }')!
-	for mode in ['-autofree', '-ownership'] {
-		result := os.exec([compiler, '-no-closures', '-gc', 'none', mode, '-check', invalid])
-		assert result.exit_code != 0
-		assert result.output.contains('ambiguous local pointer source outside its scope'), result.output
-	}
+fn main() { item := Item{code: 8}; value := factory(true, &item); assert value is &Item }']
+	mut rejections := [ProgramRejection{0, 'ambiguous local pointer source outside its scope'}]
 	unsupported := {
 		'struct Item { code int }
 type Choice = int | &Item
@@ -594,12 +579,8 @@ fn factory() Holder {
  ${returned}
 }
 fn main() { value := factory(); assert value.value is &Item }'
-		os.write_file(invalid, source)!
-		for mode in ['-autofree', '-ownership'] {
-			result := os.exec([compiler, '-no-closures', '-gc', 'none', mode, '-check', invalid])
-			assert result.exit_code != 0
-			assert result.output.contains('cannot return a sum field or element borrowing local storage'), result.output
-		}
+		rejected_sources << source
+		rejections << ProgramRejection{0, 'cannot return a sum field or element borrowing local storage'}
 	}
 	aggregate_stores := [
 		'struct Item { code int }
@@ -689,12 +670,8 @@ fn consume(flag bool) {
 fn main() { consume(true) }',
 	]
 	for source in aggregate_stores {
-		os.write_file(invalid, source)!
-		for mode in ['-autofree', '-ownership'] {
-			result := os.exec([compiler, '-no-closures', '-gc', 'none', mode, '-check', invalid])
-			assert result.exit_code != 0
-			assert result.output.contains('shorter lifetime in aggregate storage'), result.output
-		}
+		rejected_sources << source
+		rejections << ProgramRejection{0, 'shorter lifetime in aggregate storage'}
 	}
 	mixed_loan := 'struct Item implements Drop { code int }
 fn (mut item Item) drop() {}
@@ -796,30 +773,25 @@ fn flow_next(mut state FlowState) !bool { if state.ready { return error("absent"
 		flow_sources << source
 		mixed_sources << source
 	}
-	for source in flow_sources {
-		os.write_file(invalid, source.replace(' local = Item{code: 3}\n', ''))!
-		for mode in ['-autofree', '-ownership'] {
-			for prealloc in [false, true] {
-				mut command := [compiler, '-no-closures', '-gc', 'none', mode]
-				if prealloc { command << '-prealloc' }
-				command << ['run', invalid]
-				control := os.exec(command)
-				assert control.exit_code == 0, control.output
-			}
+	// The controls run as modules of one program per mode instead of one build each.
+	flow_controls := write_module_programs(os.join_path(dir, 'flow_controls'), flow_sources.map(it.replace(' local = Item{code: 3}\n', '')))!
+	for mode in ['-autofree', '-ownership'] {
+		for prealloc in [false, true] {
+			mut command := [compiler, '-no-closures', '-gc', 'none', mode]
+			if prealloc { command << '-prealloc' }
+			command << ['run', flow_controls]
+			control := os.exec(command)
+			assert control.exit_code == 0, '${mode}, prealloc=${prealloc}: ${control.output}'
 		}
 	}
-	for source in mixed_sources {
-		os.write_file(invalid, source)!
-		for mode in ['-autofree', '-ownership'] {
-			for prealloc in [false, true] {
-				mut command := [compiler, '-no-closures', '-gc', 'none', mode]
-				if prealloc { command << '-prealloc' }
-				command << ['-check', invalid]
-				result := os.exec(command)
-				assert result.exit_code != 0
-				assert result.output.contains('borrowed by `alias`'), result.output
-				assert result.output.contains('ambiguous.v:12:'), result.output
-			}
+	mixed_checks := write_module_programs(os.join_path(dir, 'mixed_checks'), mixed_sources)!
+	for mode in ['-autofree', '-ownership'] {
+		for prealloc in [false, true] {
+			mut command := [compiler, '-no-closures', '-gc', 'none', '-message-limit', '100000',
+				mode]
+			if prealloc { command << '-prealloc' }
+			command << ['-check', mixed_checks]
+			assert_programs_rejected(os.exec(command), []ProgramRejection{len: mixed_sources.len, init: ProgramRejection{12, 'borrowed by `alias`'}})
 		}
 	}
 	distinct_loan := 'struct Item implements Drop { code int }
@@ -834,30 +806,30 @@ fn main() {
  MUTATE
  assert alias is &Item
 }'
+	mut distinct_sources := []string{}
 	for fallback in ['Choice(&right)', 'inner := Choice(&right); inner'] {
 		for root in ['left', 'right'] {
-			source := distinct_loan.replace('FALLBACK', fallback).replace('MUTATE', '${root} = Item{code: 3}')
-			os.write_file(invalid, source)!
-			for mode in ['-autofree', '-ownership'] {
-				for prealloc in [false, true] {
-					mut command := [compiler, '-no-closures', '-gc', 'none', mode]
-					if prealloc { command << '-prealloc' }
-					command << ['-check', invalid]
-					result := os.exec(command)
-					assert result.exit_code != 0
-					assert result.output.contains('borrowed by `alias`'), result.output
-					assert result.output.contains('ambiguous.v:10:'), result.output
-				}
-			}
+			distinct_sources << distinct_loan.replace('FALLBACK', fallback).replace('MUTATE', '${root} = Item{code: 3}')
+		}
+	}
+	distinct_checks := write_module_programs(os.join_path(dir, 'distinct_checks'), distinct_sources)!
+	for mode in ['-autofree', '-ownership'] {
+		for prealloc in [false, true] {
+			mut command := [compiler, '-no-closures', '-gc', 'none', '-message-limit', '100000',
+				mode]
+			if prealloc { command << '-prealloc' }
+			command << ['-check', distinct_checks]
+			assert_programs_rejected(os.exec(command), []ProgramRejection{len: distinct_sources.len, init: ProgramRejection{10, 'borrowed by `alias`'}})
 		}
 	}
 	for source, expected in unsupported {
-		os.write_file(invalid, source)!
-		for mode in ['-autofree', '-ownership'] {
-			result := os.exec([compiler, '-no-closures', '-gc', 'none', mode, '-check', invalid])
-			assert result.exit_code != 0
-			assert result.output.contains(expected), result.output
-		}
+		rejected_sources << source
+		rejections << ProgramRejection{0, expected}
+	}
+	unsupported_checks := write_module_programs(os.join_path(dir, 'unsupported_checks'), rejected_sources)!
+	for mode in ['-autofree', '-ownership'] {
+		assert_programs_rejected(os.exec([compiler, '-no-closures', '-gc', 'none', '-message-limit',
+			'100000', mode, '-check', unsupported_checks]), rejections)
 	}
 	moved_source := 'struct Item implements Drop { code int }
 fn (mut item Item) drop() {}
@@ -880,17 +852,13 @@ fn main() {
 	assert moved.exit_code != 0
 	assert moved.output.contains('use of moved value: `source.value`'), moved.output
 	assert moved.output.contains('ambiguous.v:12:'), moved.output
-	for source in mixed_sources {
-		os.write_file(invalid, source.replace('mut local :=', 'local :=').replace(' local = Item{code: 3}\n', '').replace(' assert alias is &Item', ' assert alias is &Item\n assert (value as &Item).code == 1'))!
-		for prealloc in [false, true] {
-			mut command := [compiler, '-no-closures', '-gc', 'none', '-ownership']
-			if prealloc { command << '-prealloc' }
-			command << ['-check', invalid]
-			mixed_moved := os.exec(command)
-			assert mixed_moved.exit_code != 0
-			assert mixed_moved.output.contains('use of moved value: `value`'), mixed_moved.output
-			assert mixed_moved.output.contains('ambiguous.v:13:'), mixed_moved.output
-		}
+	mixed_moves := write_module_programs(os.join_path(dir, 'mixed_moves'), mixed_sources.map(it.replace('mut local :=', 'local :=').replace(' local = Item{code: 3}\n', '').replace(' assert alias is &Item', ' assert alias is &Item\n assert (value as &Item).code == 1')))!
+	for prealloc in [false, true] {
+		mut command := [compiler, '-no-closures', '-gc', 'none', '-message-limit', '100000',
+			'-ownership']
+		if prealloc { command << '-prealloc' }
+		command << ['-check', mixed_moves]
+		assert_programs_rejected(os.exec(command), []ProgramRejection{len: mixed_sources.len, init: ProgramRejection{13, 'use of moved value: `value`'}})
 	}
 	storage_move := 'struct Item implements Drop { code int }
 fn (mut item Item) drop() {}
@@ -927,5 +895,46 @@ fn main() {
 			assert storage_moved.output.contains('use of moved value: `${slot}`'), storage_moved.output
 			assert storage_moved.output.contains('ambiguous.v:14:'), storage_moved.output
 		}
+	}
+}
+
+// write_module_programs writes every program as module `case_<index>` under `root`, its `main`
+// renamed to `exercise`, and a main.v that calls the cases in order. It returns main.v.
+fn write_module_programs(root string, sources []string) !string {
+	os.rmdir_all(root) or {}
+	mut imports := []string{cap: sources.len}
+	mut calls := []string{cap: sources.len}
+	for i, source in sources {
+		name := 'case_${i}'
+		assert source.contains('\nfn main() {'), source
+		os.mkdir_all(os.join_path(root, name))!
+		os.write_file(os.join_path(root, name, '${name}.v'), 'module ${name}\n' +
+			source.replace_once('\nfn main() {', '\npub fn exercise() {'))!
+		imports << 'import ${name}'
+		calls << '\t${name}.exercise()'
+	}
+	main_path := os.join_path(root, 'main.v')
+	os.write_file(main_path, '${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n')!
+	return main_path
+}
+
+struct ProgramRejection {
+	line     int // 1-based line of the program; 0 accepts any line
+	expected string
+}
+
+// assert_programs_rejected checks that a build of write_module_programs reports each program's
+// rejection in that program's file.
+fn assert_programs_rejected(result os.Result, rejections []ProgramRejection) {
+	assert result.exit_code != 0, result.output
+	diagnostics := result.output.split_into_lines().filter(it.contains(': error: '))
+	for i, rejection in rejections {
+		// The module clause moves every program line down by one.
+		location := if rejection.line > 0 {
+			'case_${i}.v:${rejection.line + 1}:'
+		} else {
+			'case_${i}.v:'
+		}
+		assert diagnostics.any(it.contains(location) && it.contains(rejection.expected)), 'case ${i}: expected `${rejection.expected}` at ${location}\n${result.output}'
 	}
 }

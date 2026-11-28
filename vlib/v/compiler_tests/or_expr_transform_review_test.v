@@ -25,18 +25,6 @@ fn or_review_gen_c(name string, cases map[string]string) string {
 	return os.read_file(c_path) or { panic(err) }
 }
 
-fn or_review_run(name string, src string) string {
-	dir := os.join_path(os.vtmp_dir(), 'v3_or_review_${tempname.unique_token()}')
-	os.mkdir(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	bin_path := or_review_compile_fixture(dir, name, src)
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
-	return run.output.trim_space()
-}
-
 fn or_review_compile_fixture(dir string, name string, src string) string {
 	bin_path := os.join_path(dir, 'v3_${name}')
 	src_path := bin_path + '.v'
@@ -46,7 +34,7 @@ fn or_review_compile_fixture(dir string, name string, src string) string {
 	return bin_path
 }
 
-fn or_review_run_batch(name string, cases map[string]OrReviewFixture, read_c bool) string {
+fn or_review_run_batch(name string, cases map[string]OrReviewFixture) string {
 	dir := os.join_path(os.vtmp_dir(), 'v3_or_review_${tempname.unique_token()}')
 	os.mkdir(dir) or { panic(err) }
 	defer { os.rmdir_all(dir) or {} }
@@ -72,11 +60,7 @@ ${calls.join('\n')}
 		assert run.exit_code == 0, '${fixture}: run failed\n${run.output}'
 		assert run.output.trim_space() == case.expected, '${fixture}: unexpected output\n${run.output}'
 	}
-	return if read_c {
-		os.read_file(bin_path + '.c') or { panic(err) }
-	} else {
-		''
-	}
+	return os.read_file(bin_path + '.c') or { panic(err) }
 }
 
 fn or_review_c_body(c_source string, signature_prefix string) string {
@@ -158,17 +142,103 @@ fn test_or_review_codegen_fixtures() {
 	assert pop_body.contains('sync__Channel__try_pop(*(ch),'), 'try_pop on pointer channel receiver does not dereference the channel handle'
 }
 
-fn test_optional_element_or_uses_fallback_without_err_binding() {
-	c_source := or_review_run_batch('optional_element_fallback', {
-		'array_optional_element_fallback_run': OrReviewFixture{
+fn test_or_review_runtime_fixtures() {
+	c_source := or_review_run_batch('or_review_runtime', {
+		'array_optional_element_fallback_run':      OrReviewFixture{
 			source:   'fn main() {\n\terr := 7\n\tmut arr := []?int{}\n\tarr << none\n\tarr << 5\n\tmissing := arr[0] or { err }\n\tpresent := arr[1] or { -1 }\n\tprintln(int_str(missing))\n\tprintln(int_str(present))\n}\n'
 			expected: '7\n5'
 		}
-		'map_optional_element_fallback_run':   OrReviewFixture{
+		'map_optional_element_fallback_run':        OrReviewFixture{
 			source:   "fn main() {\n\terr := 7\n\tmut m := map[string]?int{}\n\tm['x'] = none\n\tm['y'] = 5\n\tmissing := m['x'] or { err }\n\tpresent := m['y'] or { -1 }\n\tabsent := m['z'] or { -2 }\n\tprintln(int_str(missing))\n\tprintln(int_str(present))\n\tprintln(int_str(absent))\n}\n"
 			expected: '7\n5\n-2'
 		}
-	}, true)
+		'nested_optional_logical_or_short_circuit': OrReviewFixture{
+			source:   '__global calls int
+
+fn yes() ?bool {
+	return true
+}
+
+fn no() ?bool {
+	return false
+}
+
+fn fail_bool() ?bool {
+	calls++
+	return none
+}
+
+fn effect_true() ?bool {
+	calls++
+	return true
+}
+
+fn run_optional_logical_checks() ? {
+	calls = 0
+	a := (yes()? || fail_bool()?) or { false }
+	println(if a { "true" } else { "false" })
+	println(int_str(calls))
+	calls = 0
+	b := (no()? && fail_bool()?) or { true }
+	println(if b { "true" } else { "false" })
+	println(int_str(calls))
+	calls = 0
+	c := (no()? || effect_true()?) or { false }
+	println(if c { "true" } else { "false" })
+	println(int_str(calls))
+	calls = 0
+	d := (yes()? && effect_true()?) or { false }
+	println(if d { "true" } else { "false" })
+	println(int_str(calls))
+}
+
+fn main() {
+	run_optional_logical_checks() or { panic("unexpected none from optional checks") }
+}
+'
+			expected: 'true\n0\nfalse\n0\ntrue\n1\ntrue\n1'
+		}
+		'channel_receive_or_selector':              OrReviewFixture{
+			source:   "struct Holder {\n\tch chan int\n}\n\nfn main() {\n\th := Holder{ch: chan int{}}\n\th.ch.close()\n\tvalue := <-h.ch or {\n\t\tprintln('closed')\n\t\treturn\n\t}\n\tprintln(int_str(value))\n}\n"
+			expected: 'closed'
+		}
+		'channel_try_push_explicit_voidptr':        OrReviewFixture{
+			source:   'fn main() {\n\tch := chan voidptr{cap: 1}\n\tx := 42\n\tassert ch.try_push(voidptr(&x)) == .success\n\treceived := <-ch\n\tprintln(int_str(unsafe { *(&int(received)) }))\n}\n'
+			expected: '42'
+		}
+		'pointer_channel_send_or_receiver':         OrReviewFixture{
+			source:   'fn send(ch &chan int) bool {\n\tch <- 7 or { return false }\n\treturn true\n}\n\nfn main() {\n\tch := chan int{cap: 1}\n\tprintln(send(&ch))\n\tprintln(int_str(<-ch))\n}\n'
+			expected: 'true\n7'
+		}
+		'channel_send_or_storage':                  OrReviewFixture{
+			source:   'fn make_option() ?int {\n\treturn 3\n}\n\nfn main() {\n\toption_ch := chan ?int{cap: 1}\n\toption_value := make_option()\n\toption_ch <- option_value or { panic(err) }\n\n\tfixed_ch := chan [2]int{cap: 1}\n\tfixed_value := [11, 13]!\n\tfixed_ch <- fixed_value or { panic(err) }\n\tprintln("sent")\n}\n'
+			expected: 'sent'
+		}
+		'channel_send_or_error_interpolation':      OrReviewFixture{
+			source:   'fn main() {\n\terr := 7\n\tch := chan int{cap: 1}\n\tch.close()\n\tch <- 1 or {\n\t\tprintln("\${err}")\n\t}\n\tprintln(int_str(err))\n}\n'
+			expected: 'channel closed\n7'
+		}
+		'map_index_address_or_nil':                 OrReviewFixture{
+			source:   "fn main() {\n\tmut values := {\n\t\t'x': 7\n\t}\n\tpresent := unsafe { &values['x'] or { nil } }\n\tmissing := unsafe { &values['missing'] or { nil } }\n\tprintln(int_str(*present))\n\tprintln(missing == unsafe { nil })\n}\n"
+			expected: '7\ntrue'
+		}
+		'nested_optional_infix_or_fallback':        OrReviewFixture{
+			source:   '__global left_calls int\n__global right_calls int\n\nfn none_int() ?int {\n\treturn none\n}\n\nfn some_int() ?int {\n\treturn 2\n}\n\nfn left_effect() int {\n\tleft_calls++\n\treturn 40\n}\n\nfn right_effect() int {\n\tright_calls++\n\treturn 40\n}\n\nfn main() {\n\tleft_calls = 0\n\tright_calls = 0\n\ta := (none_int() + right_effect()) or { 0 }\n\tprintln(int_str(a))\n\tprintln(int_str(right_calls))\n\tb := (left_effect() + none_int()) or { 0 }\n\tprintln(int_str(b))\n\tprintln(int_str(left_calls))\n\tc := (some_int() + right_effect()) or { 0 }\n\tprintln(int_str(c))\n\tprintln(int_str(right_calls))\n}\n'
+			expected: '0\n0\n0\n1\n42\n1'
+		}
+		'or_fallback_shadowed_noreturn_names':      OrReviewFixture{
+			source:   'fn maybe() ?int {\n\treturn none\n}\n\nfn main() {\n\texit := fn () int { return 7 }\n\tx := maybe() or { exit() }\n\tpanic := fn () int { return 9 }\n\ty := maybe() or { panic() }\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n'
+			expected: '7\n9'
+		}
+		'user_defined_free_method':                 OrReviewFixture{
+			source:   'struct Hc256 {\nmut:\n\tfreed int\n}\n\nfn (mut h Hc256) free() {\n\th.freed = 7\n}\n\nfn main() {\n\tmut h := Hc256{}\n\th.free()\n\tprintln(int_str(h.freed))\n}\n'
+			expected: '7'
+		}
+		'or_storage_generic_map_value':             OrReviewFixture{
+			source:   'struct Box[T] {\n\tvalue T\n}\n\nfn make_map() ?map[string]Box[int] {\n\treturn {"answer": Box[int]{value: 42}}\n}\n\nfn main() {\n\titems := make_map() or { map[string]Box[int]{} }\n\tprintln(int_str(items["answer"].value))\n}\n'
+			expected: '42'
+		}
+	})
 	array_body := or_review_c_body(c_source, 'void array_optional_element_fallback_run(')
 	assert array_body.contains('__v_option_i64 __arr_opt_'), 'missing loaded optional temp'
 	assert array_body.contains('i64 err = 7;'), 'explicit outer err was not preserved'
@@ -177,57 +247,6 @@ fn test_optional_element_or_uses_fallback_without_err_binding() {
 	assert map_body.contains('__v_option_i64 __map_opt_'), 'missing loaded map optional temp'
 	assert map_body.contains('i64 err = 7;'), 'explicit outer err was not preserved'
 	assert !map_body.contains('IError err = __map_opt_'), 'map element failure branch binds an Option error'
-}
-
-fn test_nested_optional_logical_or_preserves_short_circuiting() {
-	out := or_review_run('nested_optional_logical_or_short_circuit',
-		'__global calls int\n\nfn yes() ?bool {\n\treturn true\n}\n\nfn no() ?bool {\n\treturn false\n}\n\nfn fail_bool() ?bool {\n\tcalls++\n\treturn none\n}\n\nfn effect_true() ?bool {\n\tcalls++\n\treturn true\n}\n\nfn main() {\n\tcalls = 0\n\ta := (yes()? || fail_bool()?) or { false }\n\tprintln(if a { "true" } else { "false" })\n\tprintln(int_str(calls))\n\tcalls = 0\n\tb := (no()? && fail_bool()?) or { true }\n\tprintln(if b { "true" } else { "false" })\n\tprintln(int_str(calls))\n\tcalls = 0\n\tc := (no()? || effect_true()?) or { false }\n\tprintln(if c { "true" } else { "false" })\n\tprintln(int_str(calls))\n\tcalls = 0\n\td := (yes()? && effect_true()?) or { false }\n\tprintln(if d { "true" } else { "false" })\n\tprintln(int_str(calls))\n}\n')
-	assert out == 'true\n0\nfalse\n0\ntrue\n1\ntrue\n1'
-}
-
-fn test_or_review_runtime_fixtures() {
-	or_review_run_batch('or_review_runtime', {
-		'channel_receive_or_selector':         OrReviewFixture{
-			source:   "struct Holder {\n\tch chan int\n}\n\nfn main() {\n\th := Holder{ch: chan int{}}\n\th.ch.close()\n\tvalue := <-h.ch or {\n\t\tprintln('closed')\n\t\treturn\n\t}\n\tprintln(int_str(value))\n}\n"
-			expected: 'closed'
-		}
-		'channel_try_push_explicit_voidptr':   OrReviewFixture{
-			source:   'fn main() {\n\tch := chan voidptr{cap: 1}\n\tx := 42\n\tassert ch.try_push(voidptr(&x)) == .success\n\treceived := <-ch\n\tprintln(int_str(unsafe { *(&int(received)) }))\n}\n'
-			expected: '42'
-		}
-		'pointer_channel_send_or_receiver':    OrReviewFixture{
-			source:   'fn send(ch &chan int) bool {\n\tch <- 7 or { return false }\n\treturn true\n}\n\nfn main() {\n\tch := chan int{cap: 1}\n\tprintln(send(&ch))\n\tprintln(int_str(<-ch))\n}\n'
-			expected: 'true\n7'
-		}
-		'channel_send_or_storage':             OrReviewFixture{
-			source:   'fn make_option() ?int {\n\treturn 3\n}\n\nfn main() {\n\toption_ch := chan ?int{cap: 1}\n\toption_value := make_option()\n\toption_ch <- option_value or { panic(err) }\n\n\tfixed_ch := chan [2]int{cap: 1}\n\tfixed_value := [11, 13]!\n\tfixed_ch <- fixed_value or { panic(err) }\n\tprintln("sent")\n}\n'
-			expected: 'sent'
-		}
-		'channel_send_or_error_interpolation': OrReviewFixture{
-			source:   'fn main() {\n\terr := 7\n\tch := chan int{cap: 1}\n\tch.close()\n\tch <- 1 or {\n\t\tprintln("\${err}")\n\t}\n\tprintln(int_str(err))\n}\n'
-			expected: 'channel closed\n7'
-		}
-		'map_index_address_or_nil':            OrReviewFixture{
-			source:   "fn main() {\n\tmut values := {\n\t\t'x': 7\n\t}\n\tpresent := unsafe { &values['x'] or { nil } }\n\tmissing := unsafe { &values['missing'] or { nil } }\n\tprintln(int_str(*present))\n\tprintln(missing == unsafe { nil })\n}\n"
-			expected: '7\ntrue'
-		}
-		'nested_optional_infix_or_fallback':   OrReviewFixture{
-			source:   '__global left_calls int\n__global right_calls int\n\nfn none_int() ?int {\n\treturn none\n}\n\nfn some_int() ?int {\n\treturn 2\n}\n\nfn left_effect() int {\n\tleft_calls++\n\treturn 40\n}\n\nfn right_effect() int {\n\tright_calls++\n\treturn 40\n}\n\nfn main() {\n\tleft_calls = 0\n\tright_calls = 0\n\ta := (none_int() + right_effect()) or { 0 }\n\tprintln(int_str(a))\n\tprintln(int_str(right_calls))\n\tb := (left_effect() + none_int()) or { 0 }\n\tprintln(int_str(b))\n\tprintln(int_str(left_calls))\n\tc := (some_int() + right_effect()) or { 0 }\n\tprintln(int_str(c))\n\tprintln(int_str(right_calls))\n}\n'
-			expected: '0\n0\n0\n1\n42\n1'
-		}
-		'or_fallback_shadowed_noreturn_names': OrReviewFixture{
-			source:   'fn maybe() ?int {\n\treturn none\n}\n\nfn main() {\n\texit := fn () int { return 7 }\n\tx := maybe() or { exit() }\n\tpanic := fn () int { return 9 }\n\ty := maybe() or { panic() }\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n'
-			expected: '7\n9'
-		}
-		'user_defined_free_method':            OrReviewFixture{
-			source:   'struct Hc256 {\nmut:\n\tfreed int\n}\n\nfn (mut h Hc256) free() {\n\th.freed = 7\n}\n\nfn main() {\n\tmut h := Hc256{}\n\th.free()\n\tprintln(int_str(h.freed))\n}\n'
-			expected: '7'
-		}
-		'or_storage_generic_map_value':        OrReviewFixture{
-			source:   'struct Box[T] {\n\tvalue T\n}\n\nfn make_map() ?map[string]Box[int] {\n\treturn {"answer": Box[int]{value: 42}}\n}\n\nfn main() {\n\titems := make_map() or { map[string]Box[int]{} }\n\tprintln(int_str(items["answer"].value))\n}\n'
-			expected: '42'
-		}
-	}, false)
 }
 
 fn test_or_rejects_non_options_and_implicit_element_errors() {

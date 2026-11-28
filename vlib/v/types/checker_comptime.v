@@ -998,7 +998,7 @@ fn (mut tc TypeChecker) check_comptime_static_variant_guard(id flat.NodeId, var_
 			memo.advance_context()
 		}
 	}
-	reflected := smartcasts.any(it.typ.source_type_id() == flat.source_type_id(var_name))
+	reflected := smartcasts.any(type_names_comptime_variant_var(it.typ, var_name))
 	variants := if reflected && field_cases.known {
 		field_cases.cases
 	} else {
@@ -1010,7 +1010,7 @@ fn (mut tc TypeChecker) check_comptime_static_variant_guard(id flat.NodeId, var_
 		saved_smartcasts := clone_smartcasts(tc.smartcasts)
 		tc.push_scope()
 		for binding in smartcasts {
-			typ := if binding.typ.source_type_id() == flat.source_type_id(var_name) {
+			typ := if type_names_comptime_variant_var(binding.typ, var_name) {
 				if variant.typ != 0 {
 					*tc.parse_type(variant.typ)
 				} else {
@@ -1030,6 +1030,19 @@ fn (mut tc TypeChecker) check_comptime_static_variant_guard(id flat.NodeId, var_
 		tc.smartcasts = saved_smartcasts
 	}
 	tc.invalidate_subtree_expr_types(id)
+}
+
+// type_names_comptime_variant_var reports whether `typ`, the type of a smartcast, names the
+// `$for` loop variable `var_name`. Outside `main`, `value is variant` resolves the name
+// in the current module, so it arrives qualified as `mod.variant`.
+fn type_names_comptime_variant_var(typ Type, var_name string) bool {
+	id := typ.source_type_id()
+	if id == flat.source_type_id(var_name) {
+		return true
+	}
+	syntax := flat.source_type_syntax(id)
+	return flat.source_type_shape(id).has(.dotted)
+		&& flat.source_type_name(syntax.unqualified()) == var_name
 }
 
 // comptime_static_condition_has_outer_metadata avoids evaluating an enclosing loop's

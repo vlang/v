@@ -34,23 +34,24 @@ fn test_out_files() {
 		return
 	}
 	paths := vtest.filter_vtest_only(tests, basepath: testdata_folder).sorted()
+	// Every program becomes a function of one executable, which runs the one named by its
+	// argument, so the programs share a single compilation.
+	file_options := '-g -check-overflow'
+	pexe := os.join_path(output_path, 'overflow_programs.exe')
+	programs_source := os.join_path(output_path, 'overflow_programs.v')
+	os.write_file(programs_source, overflow_programs_source(paths)!)!
+	alloptions := '-o ${os.quoted_path(pexe)} ${file_options}'
+	compile_cmd := '${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(programs_source)}'
+	sw_compile := time.new_stopwatch()
+	compilation := os.exec([vexe, ...(os.split_args(alloptions) or { panic(err) }), programs_source])
+	compile_ms := sw_compile.elapsed().milliseconds()
+	ensure_compilation_succeeded(compilation, compile_cmd)
 	mut total_errors := 0
 	for out_path in paths {
-		basename, path, relpath, out_relpath := target2paths(out_path, '.out')
-		pexe := os.join_path(output_path, '${basename}.exe')
-		//
-		file_options := '-g -check-overflow'
-		alloptions := '-o ${os.quoted_path(pexe)} ${file_options}'
+		basename, _, relpath, out_relpath := target2paths(out_path, '.out')
 		label := mj('v', file_options, 'run', relpath) + ' == ${mm(out_relpath)} '
-		//
-		compile_cmd := '${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}'
-		sw_compile := time.new_stopwatch()
-		compilation := os.exec([vexe, ...(os.split_args(alloptions) or { panic(err) }), path])
-		compile_ms := sw_compile.elapsed().milliseconds()
-		ensure_compilation_succeeded(compilation, compile_cmd)
-		//
 		sw_run := time.new_stopwatch()
-		res := os.exec([pexe])
+		res := os.exec([pexe, basename])
 		run_ms := sw_run.elapsed().milliseconds()
 		//
 		if res.exit_code < 0 {
@@ -95,6 +96,28 @@ fn test_out_files() {
 		}
 	}
 	assert total_errors == 0
+}
+
+// overflow_programs_source returns one program with a function for each `.vv` program of
+// `out_paths`; its `main` runs the function that its first argument names.
+fn overflow_programs_source(out_paths []string) !string {
+	mut declarations := []string{}
+	mut branches := []string{}
+	for out_path in out_paths {
+		basename, path, _, _ := target2paths(out_path, '.out')
+		program := os.read_file(path)!
+		function := 'case_${basename}'
+		if program.contains('fn main() {') {
+			declarations << program.replace_once('fn main() {', 'fn ${function}() {')
+		} else {
+			// A script: its statements are the body of the function.
+			body := program.trim_right('\n').split_into_lines().map('\t' + it).join('\n')
+			declarations << 'fn ${function}() {\n${body}\n}'
+		}
+		branches << "\t\t'${basename}' { ${function}() }"
+	}
+	dispatch := "fn main() {\n\tmatch os.args[1] {\n${branches.join('\n')}\n\t\telse { panic('unknown program') }\n\t}\n}\n"
+	return 'import os\n\n${declarations.join('\n\n')}\n\n${dispatch}'
 }
 
 fn normalize_panic_message(message string, vroot string) string {

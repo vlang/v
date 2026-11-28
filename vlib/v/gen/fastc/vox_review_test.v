@@ -29,6 +29,22 @@ fn native_box_value() int {
 	fastc_vox_review_run_files(name, files)
 }
 
+// fastc_vox_review_run_modules builds and runs every `module main` source as a module of one
+// program, its `main` renamed to `exercise`.
+fn fastc_vox_review_run_modules(name string, sources map[string]string) {
+	mut files := map[string]string{}
+	mut imports := []string{cap: sources.len}
+	mut calls := []string{cap: sources.len}
+	for case_name, source in sources {
+		assert source.starts_with('module main\n') && source.contains('\nfn main() {'), case_name
+		files['${case_name}/${case_name}.v'] = 'module ${case_name}\n' + source.all_after('module main\n').replace_once('\nfn main() {', '\npub fn exercise() {')
+		imports << 'import ${case_name}'
+		calls << '\t${case_name}.exercise()'
+	}
+	files['main.v'] = 'module main\n${imports.join('\n')}\n\nfn main() {\n${calls.join('\n')}\n}\n'
+	fastc_vox_review_run_files(name, files)
+}
+
 fn fastc_vox_review_run_files(name string, files map[string]string) {
 	$if !macos && !linux {
 		return
@@ -38,6 +54,7 @@ fn fastc_vox_review_run_files(name string, files map[string]string) {
 	defer { os.rmdir_all(root) or {} }
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'vox_review' }") or { panic(err) }
 	for path, source in files {
+		os.mkdir_all(os.dir(os.join_path(root, path))) or { panic(err) }
 		os.write_file(os.join_path(root, path), source) or { panic(err) }
 	}
 	for mode in ['tinyc', 'clang', 'clang-prod'] {
@@ -57,8 +74,10 @@ fn fastc_vox_review_run_files(name string, files map[string]string) {
 	}
 }
 
-fn test_fastc_vox_review_indexed_matches_keep_element_identity() {
-	fastc_vox_review_run('indexed_matches', r'module main
+fn test_fastc_vox_review_plain_v_cases() {
+	// Plain V cases share one build per mode as modules of one program.
+	fastc_vox_review_run_modules('plain_v_cases', {
+		'indexed_matches':    r'module main
 struct Left { value int }
 struct Right { value int }
 type Value = Left | Right
@@ -92,11 +111,8 @@ fn main() {
 	holder := Holder{value: Left{11}}
 	if holder.value is Left { assert read(holder.value) == 11 }
 }
-', '')
-}
-
-fn test_fastc_vox_review_indexed_matches_end_when_the_key_changes() {
-	fastc_vox_review_run('changed_indices', r'module main
+'
+		'changed_indices':    r'module main
 struct Left { value int only_left int }
 struct Right { value int }
 type Value = Left | Right
@@ -195,11 +211,8 @@ fn main() {
 	}
 	assert selected_map == 22
 }
-', '')
-}
-
-fn test_fastc_vox_review_boolean_map_pointer_reads_keep_compound_keys() {
-	fastc_vox_review_run('boolean_map_keys', r'module main
+'
+		'boolean_map_keys':   r'module main
 fn matches(cache &map[string]bool, programs &map[string]bool, name string) bool {
 	return cache["C." + name] || cache[name] || programs["C." + name] || programs[name]
 }
@@ -211,6 +224,60 @@ fn main() {
 	assert matches(&cache, &programs, "plain")
 	assert matches(&cache, &programs, "ordinary")
 	assert !matches(&cache, &programs, "absent")
+}
+'
+		'clang_arithmetic':   r'module main
+@[noinline]
+fn increases(value i32) bool { return value + 1 > value }
+@[noinline]
+fn power(base f64, exponent f64) f64 { return base ** exponent }
+fn main() {
+	assert !increases(i32(2147483647))
+	assert increases(42)
+	assert power(2.0, 3.0) == 8.0
+}
+'
+		'comptime_callbacks': r'module main
+struct Fields { x int long_field_name int }
+fn main() {
+	$for field in Fields.fields {
+		name := field.name
+		callback := fn () string { return field.name }
+		assert callback() == name
+		other := fn () string { return field.name + "!" }
+		assert other() == name + "!"
+	}
+}
+'
+	})
+}
+
+// `entries()!` propagates only from `main`, so this case keeps a program of its own.
+fn test_fastc_vox_review_optional_elements_keep_missing_index_fallback() {
+	fastc_vox_review_run('optional_bounds', r'module main
+type Recursive = []Recursive | int
+fn entries() ![]Recursive { return [Recursive(42)] }
+fn missing_index(mut calls []int) int { calls << 1; return 5 }
+fn main() {
+	values := [?int(42), ?int(none)]
+	if value := values[0] { assert value == 42 } else { assert false }
+	for index in [-1, 1, 2, 5] {
+		if value := values[index] { assert false, "${value}" }
+		assert values[index] or { 73 } == 73
+	}
+	assert values[0] or { 0 } == 42
+	empty := []?int{}
+	if value := empty[0] { assert false, "${value}" }
+	mut calls := []int{}
+	if value := values[missing_index(mut calls)] { assert false, "${value}" }
+	assert calls == [1]
+	mut items := []Recursive{}
+	items << entries()!
+	assert items.len == 1
+	match items[0] {
+		int { assert items[0] == 42 }
+		[]Recursive { assert false }
+	}
 }
 ', '')
 }
@@ -261,64 +328,6 @@ fn main() { assert C.native_answer() == 7 }
 		'types.h':  '#define NATIVE_ANSWER 7\n'
 		'native.m': 'static int native_answer(void) { return NATIVE_ANSWER; }\n'
 	})
-}
-
-fn test_fastc_vox_review_clang_preserves_wrapping_and_links_math() {
-	fastc_vox_review_run('clang_arithmetic', r'module main
-@[noinline]
-fn increases(value i32) bool { return value + 1 > value }
-@[noinline]
-fn power(base f64, exponent f64) f64 { return base ** exponent }
-fn main() {
-	assert !increases(i32(2147483647))
-	assert increases(42)
-	assert power(2.0, 3.0) == 8.0
-}
-', '')
-}
-
-fn test_fastc_vox_review_comptime_callbacks_have_distinct_bodies() {
-	fastc_vox_review_run('comptime_callbacks', r'module main
-struct Fields { x int long_field_name int }
-fn main() {
-	$for field in Fields.fields {
-		name := field.name
-		callback := fn () string { return field.name }
-		assert callback() == name
-		other := fn () string { return field.name + "!" }
-		assert other() == name + "!"
-	}
-}
-', '')
-}
-
-fn test_fastc_vox_review_optional_elements_keep_missing_index_fallback() {
-	fastc_vox_review_run('optional_bounds', r'module main
-type Recursive = []Recursive | int
-fn entries() ![]Recursive { return [Recursive(42)] }
-fn missing_index(mut calls []int) int { calls << 1; return 5 }
-fn main() {
-	values := [?int(42), ?int(none)]
-	if value := values[0] { assert value == 42 } else { assert false }
-	for index in [-1, 1, 2, 5] {
-		if value := values[index] { assert false, "${value}" }
-		assert values[index] or { 73 } == 73
-	}
-	assert values[0] or { 0 } == 42
-	empty := []?int{}
-	if value := empty[0] { assert false, "${value}" }
-	mut calls := []int{}
-	if value := values[missing_index(mut calls)] { assert false, "${value}" }
-	assert calls == [1]
-	mut items := []Recursive{}
-	items << entries()!
-	assert items.len == 1
-	match items[0] {
-		int { assert items[0] == 42 }
-		[]Recursive { assert false }
-	}
-}
-', '')
 }
 
 fn test_fastc_vox_review_native_includes_keep_macro_context() {
