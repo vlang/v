@@ -811,22 +811,28 @@ fn test_definition_of_a_declaration_is_the_declaration() {
 	])
 	// What already led to a declaration still does: the uses, the type written
 	// in a field, and an embedded struct, which is its type.
-	assert declaration(38, 'item', 0) == 'main.v:37:5'
-	assert declaration(38, 'offset', 0) == 'main.v:35:1'
-	assert declaration(31, 'time', 0) == 'main.v:30:1'
-	assert declaration(47, 'found', 0) == 'main.v:46:4'
-	assert declaration(50, 'time', 0) == 'main.v:15:1'
-	assert declaration(52, 'ident', 0) == 'main.v:9:12'
-	// A field of an embedded struct, through the struct that embeds it.
-	assert declaration(53, 'id', 0) == 'main.v:6:1'
-	assert declaration(16, 'Base', 0) == 'main.v:5:7'
-	assert declaration(14, 'Base', 0) == 'main.v:5:7'
+	assert_declaration_positions([
+		DeclarationExpectation{38, 'item', 'main.v:37:5'},
+		DeclarationExpectation{38, 'offset', 'main.v:35:1'},
+		DeclarationExpectation{31, 'time', 'main.v:30:1'},
+		DeclarationExpectation{47, 'found', 'main.v:46:4'},
+		DeclarationExpectation{50, 'time', 'main.v:15:1'},
+		DeclarationExpectation{52, 'ident', 'main.v:9:12'},
+		// A field of an embedded struct, through the struct that embeds it.
+		DeclarationExpectation{53, 'id', 'main.v:6:1'},
+		DeclarationExpectation{16, 'Base', 'main.v:5:7'},
+		DeclarationExpectation{14, 'Base', 'main.v:5:7'},
+	])
 	// A local in the bounds of a slice, `s[a..b]`, whose parser node is not the
 	// parent the index of parents names.
-	for nth in 0 .. 3 {
-		assert declaration(59, 'close', nth) == 'main.v:58:1', 'close ${nth}'
+	dir := os.join_path(work_dir, 'declarations')
+	slice_line := declarations_program.split('\n')[58]
+	slice_questions := [0, 1, 2].map(word_question(slice_line, 'gd^', 59, 'close', it))
+	slice_answers := ask_answers(dir, slice_questions)
+	for nth, position in slice_answers {
+		assert position == 'main.v:58:1', 'close ${nth}'
 	}
-	assert ask(os.join_path(work_dir, 'declarations'), 'hv^', 59, 'close', 0).contains('close int')
+	assert ask(dir, 'hv^', 59, 'close', 0).contains('close int')
 	// A local that the body of a loop declares, used further on in that body.
 	assert declaration(67, 'c', 0) == 'main.v:66:2'
 	assert declaration(74, 'y', 0) == 'main.v:73:2'
