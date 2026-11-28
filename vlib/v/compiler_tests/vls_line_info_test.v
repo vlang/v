@@ -761,17 +761,8 @@ struct DeclarationExpectation {
 	position string
 }
 
-fn assert_declaration_positions(checks []DeclarationExpectation) {
-	lines := declarations_program.split('\n')
-	questions := checks.map(word_question(lines[it.line - 1], 'gd^', it.line, it.word, 0))
-	answers := ask_answers(os.join_path(work_dir, 'declarations'), questions)
-	for i, check in checks {
-		assert answers[i] == check.position, questions[i]
-	}
-}
-
 fn test_definition_of_a_declaration_is_the_declaration() {
-	assert_declaration_positions([
+	checks := [
 		// A field, and one named like an imported module.
 		DeclarationExpectation{6, 'id', 'main.v:6:1'},
 		DeclarationExpectation{15, 'time', 'main.v:15:1'},
@@ -782,25 +773,19 @@ fn test_definition_of_a_declaration_is_the_declaration() {
 		// A method of an interface, and a const.
 		DeclarationExpectation{20, 'name', 'main.v:20:1'},
 		DeclarationExpectation{23, 'answer', 'main.v:23:6'},
-	])
-	// Locals, also one named like a function of an imported module, and one
-	// named like the module itself.
-	assert_declaration_positions([
+		// Locals, also one named like a function of an imported module, and one
+		// named like the module itself.
 		DeclarationExpectation{35, 'offset', 'main.v:35:1'},
 		DeclarationExpectation{36, 'out', 'main.v:36:5'},
 		DeclarationExpectation{30, 'time', 'main.v:30:1'},
-	])
-	// The variables of loops and of an `if x :=` guard.
-	assert_declaration_positions([
+		// The variables of loops and of an `if x :=` guard.
 		DeclarationExpectation{37, 'item', 'main.v:37:5'},
 		DeclarationExpectation{40, 'i', 'main.v:40:5'},
 		DeclarationExpectation{40, 'value', 'main.v:40:8'},
 		DeclarationExpectation{43, 'k', 'main.v:43:5'},
 		DeclarationExpectation{46, 'found', 'main.v:46:4'},
-	])
-	// What already led to a declaration still does: the uses, the type written
-	// in a field, and an embedded struct, which is its type.
-	assert_declaration_positions([
+		// What already led to a declaration still does: the uses, the type written
+		// in a field, and an embedded struct, which is its type.
 		DeclarationExpectation{38, 'item', 'main.v:37:5'},
 		DeclarationExpectation{38, 'offset', 'main.v:35:1'},
 		DeclarationExpectation{31, 'time', 'main.v:30:1'},
@@ -811,18 +796,6 @@ fn test_definition_of_a_declaration_is_the_declaration() {
 		DeclarationExpectation{53, 'id', 'main.v:6:1'},
 		DeclarationExpectation{16, 'Base', 'main.v:5:7'},
 		DeclarationExpectation{14, 'Base', 'main.v:5:7'},
-	])
-	// A local in the bounds of a slice, `s[a..b]`, whose parser node is not the
-	// parent the index of parents names.
-	dir := os.join_path(work_dir, 'declarations')
-	slice_line := declarations_program.split('\n')[58]
-	slice_questions := [0, 1, 2].map(word_question(slice_line, 'gd^', 59, 'close', it))
-	slice_answers := ask_answers(dir, slice_questions)
-	for nth, position in slice_answers {
-		assert position == 'main.v:58:1', 'close ${nth}'
-	}
-	assert ask(dir, 'hv^', 59, 'close', 0).contains('close int')
-	assert_declaration_positions([
 		// A local that the body of a loop declares, used further on in that body.
 		DeclarationExpectation{67, 'c', 'main.v:66:2'},
 		DeclarationExpectation{74, 'y', 'main.v:73:2'},
@@ -831,7 +804,23 @@ fn test_definition_of_a_declaration_is_the_declaration() {
 		// that type embeds.
 		DeclarationExpectation{80, 'ident', 'main.v:9:12'},
 		DeclarationExpectation{84, 'ident', 'main.v:9:12'},
-	])
+	]
+	dir := os.join_path(work_dir, 'declarations')
+	lines := declarations_program.split('\n')
+	mut questions := checks.map(word_question(lines[it.line - 1], 'gd^', it.line, it.word, 0))
+	// A local in the bounds of a slice, `s[a..b]`, whose parser node is not the
+	// parent the index of parents names.
+	slice_line := lines[58]
+	questions << [0, 1, 2].map(word_question(slice_line, 'gd^', 59, 'close', it))
+	questions << word_question(slice_line, 'hv^', 59, 'close', 0)
+	answers := ask_answers(dir, questions)
+	for i, check in checks {
+		assert answers[i] == check.position, questions[i]
+	}
+	for nth, position in answers[checks.len..checks.len + 3] {
+		assert position == 'main.v:58:1', 'close ${nth}'
+	}
+	assert answers.last().contains('close int')
 }
 
 fn test_a_name_stands_for_its_nearest_declaration_implicit_ones_too() {
@@ -1739,18 +1728,21 @@ fn test_a_local_of_a_generic_body_has_the_type_of_its_value() {
 	} {
 		checks << HoverExpectation{text, want.all_before(' '), want}
 	}
-	assert_hovers('locals', locals_program, checks)
 	// A local that holds a `T` has what its constraint declares, as the `T` does.
 	text := "\tprintln('\${same.name} \${first.name} \${one} \${two} \${word} \${size}')"
 	line := line_of(locals_program, text)
 	receivers := ['same', 'first']
-	mut questions := []string{cap: receivers.len}
+	mut questions := checks.map(word_question(it.line, 'hv^', line_of(locals_program, it.line),
+		it.word, 0))
 	for receiver in receivers {
 		col := text.index('${receiver}.') or { -1 } + receiver.len + 2
 		questions << '${line}:${col}'
 	}
-	member_answers := ask_answers(os.join_path(work_dir, 'locals'), questions)
-	for i, answer in member_answers {
+	answers := ask_answers(os.join_path(work_dir, 'locals'), questions)
+	for i, check in checks {
+		assert answers[i] == hover_of(check.text), '${check.line}: ${check.word}'
+	}
+	for i, answer in answers[checks.len..] {
 		labels := completion_details(answer).map(it.label)
 		assert labels == ['name'], '${receivers[i]}: ${labels}'
 	}
@@ -3647,6 +3639,7 @@ fn test_combined_compile_time_conditions_show_the_narrowed_types() {
 	first := '\t\treturn a.name.len + b.name.len + 1'
 	second := '\t\treturn a.name.len + b.name.len + 2'
 	third := '\t\treturn a.name.len + b.name.len + 3'
+	inner := '\t\t\treturn f64(a) + b + f64(c)'
 	assert_hovers('joined', joined_program, [
 		// `$if a is f64 && b is f64 && c is f64 {`: in its branch each of them is an
 		// `f64`, and so is a local that adds them; after it, any type of `Number`.
@@ -3731,12 +3724,7 @@ fn test_combined_compile_time_conditions_show_the_narrowed_types() {
 		// branch would have taken them.
 		HoverExpectation{third, 'a', 'a A\\nA: main.User | main.Admin'},
 		HoverExpectation{third, 'b', 'b main.User'},
-	])
-}
 
-fn test_a_test_that_cannot_be_followed_leaves_the_others_their_types() {
-	inner := '\t\t\treturn f64(a) + b + f64(c)'
-	assert_hovers('joined', joined_program, [
 		// A test that the editor cannot follow, `sizeof(B) == 8`, may go either way,
 		// and the other tests still decide their values; one of a type parameter
 		// without a constraint decides it too.
