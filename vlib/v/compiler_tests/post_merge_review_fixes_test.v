@@ -249,7 +249,14 @@ fn run_bad_module_batch(v3_bin string, name string, cases []ReviewRejection) {
 
 // run_bad_file_batch keeps fixtures that need main-module diagnostics in separate source files.
 fn run_bad_file_batch(v3_bin string, name string, cases []ReviewRejection) {
+	run_bad_file_project(v3_bin, name, cases, map[string]string{})
+}
+
+fn run_bad_file_project(v3_bin string, name string, cases []ReviewRejection, files map[string]string) {
 	root := '${tmp_test_path(name)}_project'
+	for file, src in files {
+		write_project_file(root, file, src)
+	}
 	for case in cases {
 		write_project_file(root, '${case.name}.v', case.source)
 	}
@@ -2903,9 +2910,9 @@ fn main() {
 	]
 }
 
-fn test_interface_equality_includes_option_result_return_boxes() {
+fn test_interface_equality_option_and_result_boxes() {
 	v3_bin := build_v3()
-	c_source := gen_c(v3_bin, 'interface_eq_option_result_return_boxes', 'interface IValue {}
+	c_source := gen_c(v3_bin, 'interface_equality_option_and_result_boxes', 'interface IValue {}
 
 struct OptionValue {
 	n int
@@ -2931,58 +2938,59 @@ fn same(value IValue) bool {
 	return value == value
 }
 
-fn main() {
+fn check_returns() {
 	option_value := make_option() or { panic("missing option") }
 	result_value := make_result() or { panic(err) }
 	println(same(option_value).str())
 	println(same(result_value).str())
 }
-')
-	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
-	assert same_body.contains('OptionValue*'), same_body
-	assert same_body.contains('ResultValue*'), same_body
-}
 
-fn test_interface_equality_includes_wrapped_option_result_boxes() {
-	v3_bin := build_v3()
-	c_source := gen_c(v3_bin, 'interface_eq_wrapped_option_result_boxes', 'interface IValue {}
+interface IWrapped {}
 
-struct OptionValue {
+struct WrappedOptionValue {
 	n int
 }
 
-struct ResultValue {
+struct WrappedResultValue {
 	n int
 }
 
-fn make_option() ?OptionValue {
-	return OptionValue{
+fn make_wrapped_option() ?WrappedOptionValue {
+	return WrappedOptionValue{
 		n: 3
 	}
 }
 
-fn make_result() !ResultValue {
-	return ResultValue{
+fn make_wrapped_result() !WrappedResultValue {
+	return WrappedResultValue{
 		n: 4
 	}
 }
 
-fn same(value IValue) bool {
+fn same_wrapped(value IWrapped) bool {
 	return value == value
 }
 
-fn main() {
-	mut option_value := ?IValue(none)
-	option_value = make_option()
+fn check_wrapped() {
+	mut option_value := ?IWrapped(none)
+	option_value = make_wrapped_option()
 	option_payload := option_value or { panic("missing option") }
-	println(same(option_payload).str())
-	result_payload := make_result() or { panic(err) }
-	println(same(result_payload).str())
+	println(same_wrapped(option_payload).str())
+	result_payload := make_wrapped_result() or { panic(err) }
+	println(same_wrapped(result_payload).str())
+}
+
+fn main() {
+	check_returns()
+	check_wrapped()
 }
 ')
-	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
-	assert same_body.contains('OptionValue*'), same_body
-	assert same_body.contains('ResultValue*'), same_body
+	return_body := c_fn_body(c_source, 'bool same(IValue value) {')
+	assert return_body.contains('OptionValue*'), return_body
+	assert return_body.contains('ResultValue*'), return_body
+	wrapped_body := c_fn_body(c_source, 'bool same_wrapped(IWrapped value) {')
+	assert wrapped_body.contains('WrappedOptionValue*'), wrapped_body
+	assert wrapped_body.contains('WrappedResultValue*'), wrapped_body
 }
 
 fn test_interface_auto_str_preludes_stay_inside_tag_guards() {
@@ -4089,9 +4097,9 @@ fn main() {
 	]
 }
 
-fn test_main_module_builtin_dispatch() {
+fn test_main_module_dispatch_and_generic_arrays() {
 	v3_bin := build_v3()
-	good_bin := run_good_main_batch(v3_bin, 'main_module_builtin_dispatch', [
+	good_bin := run_good_main_batch(v3_bin, 'main_module_dispatch_and_generic_arrays', [
 		ReviewRuntimeCase{'channel_alias_close_method_before_builtin', 'fn (c MyChan) close() int {
 	return 71
 }
@@ -4133,19 +4141,7 @@ fn main() {
 	println(show(value))
 }
 ', "Any({'answer': 42})"},
-	], {
-		'channel_alias.v': 'type MyChan = chan int\n'
-	})
-	c_source := os.read_file(good_bin + '.c') or { panic(err) }
-	close_body := c_fn_body(c_source, 'void channel_alias_close_method_before_builtin(void) {')
-	assert close_body.contains('sync__Channel__close(*p,'), close_body
-	assert close_body.contains('sizeof(IError)'), close_body
-	assert !close_body.contains('sync__Channel__close(*p);'), close_body
-}
-
-fn test_channel_auto_str_helpers_are_rooted_for_aggregates() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'channel_aggregate_auto_str_helpers', 'struct Holder {
+		ReviewRuntimeCase{'channel_aggregate_auto_str_helpers', 'struct Holder {
 	ch chan int
 }
 
@@ -4157,10 +4153,33 @@ fn main() {
 	})
 	println(Holder{})
 }
-')
-	assert out.contains('chan int{\n    cap: 2, closed: false\n}')
-	assert out.contains('Holder{')
-	assert out.contains('chan int{\n        cap: 0, closed: false\n    }')
+', '[chan int{\n    cap: 2, closed: false\n}]\nHolder{\n    ch: chan int{\n        cap: 2, closed: false\n    }\n}\nHolder{\n    ch: chan int{\n        cap: 0, closed: false\n    }\n}'},
+		ReviewRuntimeCase{'generic_array_interpolation_main_struct', 'fn render[T](items []T) string {
+	return "\${items}"
+}
+
+fn main() {
+	println(render([Item{
+		value: 7
+	}]))
+}
+', '[Item{\n    value: 7\n}]'},
+		ReviewRuntimeCase{'array_generic_specialization_recovery', 'import json2
+
+fn main() {
+	items := json2.decode[[]Item]("[{\\"value\\":7}]") or { panic(err.msg()) }
+	println(items[0].value)
+}
+', '7'},
+	], {
+		'channel_alias.v': 'type MyChan = chan int\n'
+		'item.v':          'struct Item {\n\tvalue int\n}\n'
+	})
+	c_source := os.read_file(good_bin + '.c') or { panic(err) }
+	close_body := c_fn_body(c_source, 'void channel_alias_close_method_before_builtin(void) {')
+	assert close_body.contains('sync__Channel__close(*p,'), close_body
+	assert close_body.contains('sizeof(IError)'), close_body
+	assert !close_body.contains('sync__Channel__close(*p);'), close_body
 }
 
 fn test_array_builtin_method_fallback_keeps_return_type() {
@@ -4819,9 +4838,10 @@ fn main() {
 	]
 }
 
-fn test_implicit_interface_str_dispatch_stringifies_struct_alias() {
+fn test_interface_str_alias_and_field_dispatch() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_struct_alias', 'interface Printable {
+	run_good_module_batch(v3_bin, 'interface_str_alias_and_field_dispatch', [
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_struct_alias', 'interface Printable {
 	str() string
 }
 
@@ -4838,18 +4858,8 @@ fn main() {
 	value := Printable(aliased)
 	println(value.str())
 }
-')
-	assert out.contains('x: 7')
-	assert !out.contains('Foo{}')
-}
-
-fn test_implicit_interface_str_dispatch_rejects_sum_without_dispatch_id() {
-	v3_bin := build_v3()
-}
-
-fn test_implicit_interface_str_dispatch_stringifies_typed_map_fields() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_typed_map_fields', 'interface Printable {
+', 'Foo{\n    x: 7\n}'},
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_typed_map_fields', 'interface Printable {
 	str() string
 }
 
@@ -4871,16 +4881,8 @@ fn main() {
 	})
 	println(value.str())
 }
-')
-	assert out.contains("'one': Bar{"), out
-	assert out.contains('x: 7'), out
-	assert !out.contains('<map value>'), out
-	assert !out.contains('Bar{}'), out
-}
-
-fn test_implicit_interface_str_dispatch_stringifies_optional_fields() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'implicit_interface_str_dispatch_optional_fields', 'interface Printable {
+', "Foo{\n    m: {'one': Bar{\n            x: 7\n        }}\n}"},
+		ReviewRuntimeCase{'implicit_interface_str_dispatch_optional_fields', 'interface Printable {
 	str() string
 }
 
@@ -4897,11 +4899,38 @@ fn main() {
 	})
 	println(value.str())
 }
-')
-	assert out.contains('present: Option(7)'), out
-	assert out.contains('missing: Option(none)'), out
-	assert out.contains("text: Option('hi')"), out
-	assert !out.contains('?int{}'), out
+', "Foo{\n    present: Option(7)\n    missing: Option(none)\n    text: Option('hi')\n}"},
+		ReviewRuntimeCase{'review_pointer_fields_implicit_str', "interface Printable {
+	str() string
+}
+
+struct Bar {
+	x int
+}
+
+struct Foo {
+	m   &map[string]int
+	bar &Bar
+}
+
+fn main() {
+	m := {
+		'a': 3
+	}
+	f := Printable(Foo{
+		m:   &m
+		bar: &Bar{
+			x: 7
+		}
+	})
+	println(f.str())
+}
+", "Foo{\n    m: {'a': 3}\n    bar: Bar{\n        x: 7\n    }\n}"},
+	])
+}
+
+fn test_implicit_interface_str_dispatch_rejects_sum_without_dispatch_id() {
+	v3_bin := build_v3()
 }
 
 fn test_bare_aligned_attribute_metadata_and_cgen() {
@@ -6285,7 +6314,7 @@ fn main() {
 ", 'error: present method selected')
 }
 
-fn test_review_index_overload_and_interface_regressions() {
+fn test_review_index_overload_regressions() {
 	v3_bin := build_v3()
 	overload_out := run_good_with_flags(v3_bin, 'review_index_overload_regressions', '-enable-globals', "__global (
 	hits int
@@ -6423,35 +6452,6 @@ fn main() {
 }
 ")
 	assert overload_out == '7\n12\n1\n10\nax\n5\n2\n5'
-	str_out := run_good(v3_bin, 'review_pointer_fields_implicit_str', "interface Printable {
-	str() string
-}
-
-struct Bar {
-	x int
-}
-
-struct Foo {
-	m   &map[string]int
-	bar &Bar
-}
-
-fn main() {
-	m := {
-		'a': 3
-	}
-	f := Printable(Foo{
-		m:   &m
-		bar: &Bar{
-			x: 7
-		}
-	})
-	println(f.str())
-}
-")
-	assert str_out.contains("m: {'a': 3}"), str_out
-	assert str_out.contains('bar: Bar'), str_out
-	assert str_out.contains('x: 7'), str_out
 }
 
 fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
@@ -6464,31 +6464,17 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 	assert fixed_field_out == '7'
 }
 
-fn test_imported_private_free_function_is_rejected() {
+fn test_imported_call_rejections() {
 	v3_bin := build_v3()
-	run_bad_project(v3_bin, 'review_imported_private_free_function', {
-		'v.mod':         "Module { name: 'review_imported_private_free_function' }\n"
-		'other/other.v': 'module other\n\nfn hidden() int {\n\treturn 7\n}\n'
-		'main.v':        'module main\n\nimport other\n\nfn main() {\n\tprintln(int_str(other.hidden()))\n}\n'
-	}, ['main.v'], 'other.hidden` is private')
-}
-
-fn test_imported_private_static_function_uses_source_name_in_diagnostic() {
-	v3_bin := build_v3()
-	run_bad_project(v3_bin, 'review_imported_private_static_function', {
-		'v.mod':     "Module { name: 'review_imported_private_static_function' }\n"
-		'dep/dep.v': 'module dep\n\npub struct Widget {}\n\nfn Widget.make() Widget {\n\treturn Widget{}\n}\n'
-		'main.v':    'module main\n\nimport dep\n\nfn main() {\n\t_ = dep.Widget.make()\n}\n'
-	}, ['main.v'], 'function `dep.Widget.make` is private')
-}
-
-fn test_cross_module_mut_receiver_checks_visible_mutation() {
-	v3_bin := build_v3()
-	run_bad_project(v3_bin, 'review_cross_module_public_mut_receiver', {
-		'v.mod':          "Module { name: 'review_cross_module_public_mut_receiver' }\n"
+	run_bad_file_project(v3_bin, 'imported_call_rejections', [
+		ReviewRejection{'review_imported_private_free_function', 'module main\n\nimport other\n\nfn review_imported_private_free_function() {\n\tprintln(int_str(other.hidden()))\n}\n', 'other.hidden` is private'},
+		ReviewRejection{'review_imported_private_static_function', 'module main\n\nimport dep\n\nfn review_imported_private_static_function() {\n\t_ = dep.Widget.make()\n}\n', 'function `dep.Widget.make` is private'},
+		ReviewRejection{'review_cross_module_public_mut_receiver', 'module main\n\nimport other\n\nfn review_cross_module_public_mut_receiver() {\n\tcfg := other.Config{\n\t\tvalue: 1\n\t}\n\tcfg.reset()\n}\n', '`cfg` is immutable, declare it with `mut` to make it mutable'},
+	], {
+		'other/other.v':  'module other\n\nfn hidden() int {\n\treturn 7\n}\n'
+		'dep/dep.v':      'module dep\n\npub struct Widget {}\n\nfn Widget.make() Widget {\n\treturn Widget{}\n}\n'
 		'other/config.v': 'module other\n\npub struct Config {\npub mut:\n\tvalue int\n}\n\npub fn (mut cfg Config) reset() {\n\tcfg.value = 0\n}\n'
-		'main.v':         'module main\n\nimport other\n\nfn main() {\n\tcfg := other.Config{\n\t\tvalue: 1\n\t}\n\tcfg.reset()\n}\n'
-	}, ['main.v'], '`cfg` is immutable, declare it with `mut` to make it mutable')
+	})
 }
 
 fn test_late_resolution_and_promoted_init_regressions() {
@@ -9668,42 +9654,18 @@ fn main() {
 	assert out == '[7]\nbad\n[7]\nbad'
 }
 
-fn test_generic_array_interpolation_resolves_main_struct() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'generic_array_interpolation_main_struct', 'struct Item {
-	value int
-}
-
-fn render[T](items []T) string {
-	return "\${items}"
-}
-
-fn main() {
-	println(render([Item{
-		value: 7
-	}]))
-}
-')
-	assert out.contains('Item{')
-	assert out.contains('value: 7')
-}
-
 fn test_top_level_statements_with_postinclude_generate_main() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'top_level_postinclude_main', '#postinclude <limits.h>\n\n@[export: "v3_exported_helper"]\nfn exported_helper() {}\n\nprintln("ok")\n')
 	assert out == 'ok'
 }
 
-fn test_comptime_define_call_is_not_parenthesized_condition_warning() {
+fn test_warning_free_compilation() {
 	v3_bin := build_v3()
-	out := run_good_with_flags(v3_bin, 'comptime_define_if_warning', '-W', 'fn main() {\n\tif \$d("enabled", true) {\n\t\tprintln("ok")\n\t}\n}\n')
-	assert out == 'ok'
-}
-
-fn test_pointer_map_assignment_does_not_require_or_block() {
-	v3_bin := build_v3()
-	out := run_good_with_flags(v3_bin, 'pointer_map_assignment_warning', '-W', 'struct Item {}\n\nfn main() {\n\tmut items := map[string]&Item{}\n\titems["one"] = &Item{}\n\tprintln(items.len)\n}\n')
-	assert out == '1'
+	run_good_main_batch(v3_bin, 'warning_free_compilation', [
+		ReviewRuntimeCase{'comptime_define_if_warning', 'fn main() {\n\tif \$d("enabled", true) {\n\t\tprintln("ok")\n\t}\n}\n', 'ok'},
+		ReviewRuntimeCase{'pointer_map_assignment_warning', 'struct Item {}\n\nfn main() {\n\tmut items := map[string]&Item{}\n\titems["one"] = &Item{}\n\tprintln(items.len)\n}\n', '1'},
+	], map[string]string{}, '-W')
 }
 
 fn test_params_struct_fields_use_callback_and_userdata_compatibility() {
@@ -9734,22 +9696,6 @@ run(callback: app.callback, user_data: app)
 println(app.called)
 ')
 	assert out == 'true'
-}
-
-fn test_array_generic_specialization_is_recovered_from_lowered_callee() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'array_generic_specialization_recovery', 'import json2
-
-struct Item {
-	value int
-}
-
-fn main() {
-	items := json2.decode[[]Item]("[{\\"value\\":7}]")!
-	println(items[0].value)
-}
-')
-	assert out == '7'
 }
 
 fn test_imported_generic_closure_preserves_main_embedded_context_type() {
