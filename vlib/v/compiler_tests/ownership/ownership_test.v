@@ -2340,81 +2340,6 @@ fn main() {
 	assert fail_default_to_owned_field_read.exit_code != 0
 	assert fail_default_to_owned_field_read.output.contains('use of moved value: `h.value`'), fail_default_to_owned_field_read.output
 
-	fail_index := run_ownership_check(v3_bin, 'assign_index', '
-fn main() {
-	mut arr := [""]
-	r := "item".to_owned()
-	arr[0] = r
-	println(r)
-}
-')
-	assert fail_index.exit_code != 0
-	assert fail_index.output.contains('use of moved value: `r`'), fail_index.output
-
-	fail_index_read := run_ownership_check(v3_bin, 'assign_index_then_duplicate_read', '
-fn main() {
-	mut arr := [""]
-	r := "item".to_owned()
-	arr[0] = r
-	t := arr[0]
-	println(arr[0])
-	_ = t
-}
-')
-	assert fail_index_read.exit_code != 0
-	assert fail_index_read.output.contains('use of moved value: `arr[0]`'), fail_index_read.output
-
-	fail_array_literal_read := run_ownership_check(v3_bin, 'array_literal_then_duplicate_read', '
-fn main() {
-	s := "item".to_owned()
-	arr := [s]
-	t := arr[0]
-	println(arr[0])
-	_ = t
-}
-')
-	assert fail_array_literal_read.exit_code != 0
-	assert fail_array_literal_read.output.contains('use of moved value: `arr[0]`'), fail_array_literal_read.output
-
-	fail_for_in_owned_element := run_ownership_check(v3_bin, 'for_in_owned_element', '
-fn main() {
-	s := "item".to_owned()
-	arr := [s]
-	for x in arr {
-		y := x
-		println(x)
-		_ = y
-	}
-}
-')
-	assert fail_for_in_owned_element.exit_code != 0
-	assert fail_for_in_owned_element.output.contains('use of moved value: `x`'), fail_for_in_owned_element.output
-
-	fail_conditional_array_literal_read := run_ownership_check(v3_bin, 'conditional_array_literal_then_duplicate_read', '
-fn main() {
-	cond := true
-	s := "item".to_owned()
-	arr := if cond { [s] } else { []string{} }
-	t := arr[0]
-	println(arr[0])
-	_ = t
-}
-')
-	assert fail_conditional_array_literal_read.exit_code != 0
-	assert fail_conditional_array_literal_read.output.contains('use of moved value: `arr[0]`'), fail_conditional_array_literal_read.output
-
-	fail_array_literal_expr_read := run_ownership_check(v3_bin, 'array_literal_then_expression_read', '
-fn main() {
-	s := "item".to_owned()
-	arr := [s]
-	t := arr[0]
-	println(arr[0] + "")
-	_ = t
-}
-')
-	assert fail_array_literal_expr_read.exit_code != 0
-	assert fail_array_literal_expr_read.output.contains('use of moved value: `arr[0]`'), fail_array_literal_expr_read.output
-
 	fail_returned_default_field_read := run_ownership_check(v3_bin, 'returned_default_field_then_duplicate_read', '
 struct Holder {
 	value string = "item".to_owned()
@@ -2489,18 +2414,6 @@ fn main() {
 ')
 	assert ok_array_loop_dynamic_append_return.exit_code == 0, ok_array_loop_dynamic_append_return.output
 
-	fail_array_pop_return := run_ownership_check(v3_bin, 'array_pop_returns_owned', '
-fn main() {
-	mut arr := ["item".to_owned()]
-	x := arr.pop()
-	y := x
-	println(x)
-	_ = y
-}
-')
-	assert fail_array_pop_return.exit_code != 0
-	assert fail_array_pop_return.output.contains('use of moved value: `x`'), fail_array_pop_return.output
-
 	fail_array_pop_return_from_fn := run_ownership_check(v3_bin, 'array_pop_return_from_later_fn', '
 fn main() {
 	x := make()
@@ -2530,42 +2443,6 @@ fn main() {
 }
 ')
 	assert ok_array_first_call_arg.exit_code == 0, ok_array_first_call_arg.output
-
-	for method in ['first', 'last'] {
-		fail_accessor_result := run_ownership_check(v3_bin, 'array_${method}_result_is_owned', '
-fn main() {
-	arr := ["item".to_owned()]
-	x := arr.${method}()
-	y := x
-	println(x)
-	_ = y
-}
-')
-		assert fail_accessor_result.exit_code != 0
-		assert fail_accessor_result.output.contains('use of moved value: `x`'), fail_accessor_result.output
-	}
-
-	fail_array_first_discard := run_ownership_check(v3_bin, 'array_first_discard_moves_element', '
-fn main() {
-	mut arr := ["item".to_owned()]
-	arr.first()
-	x := arr[0]
-	_ = x
-}
-')
-	assert fail_array_first_discard.exit_code != 0
-	assert fail_array_first_discard.output.contains('use of moved value: `arr[0]`'), fail_array_first_discard.output
-
-	fail_array_first_blank := run_ownership_check(v3_bin, 'array_first_blank_moves_element', '
-fn main() {
-	mut arr := ["item".to_owned()]
-	_ = arr.first()
-	x := arr[0]
-	_ = x
-}
-')
-	assert fail_array_first_blank.exit_code != 0
-	assert fail_array_first_blank.output.contains('use of moved value: `arr[0]`'), fail_array_first_blank.output
 
 	ok_array_pop_discard_append := run_ownership_check(v3_bin, 'array_pop_discard_updates_length', '
 fn main() {
@@ -2759,6 +2636,85 @@ fn test_ownership_array_storage_rejects_reads_after_moves() {
 ', 'println(x)', 'x'},
 	]
 	check_ownership_move_rejections('array_storage_rejections', cases)
+}
+
+fn test_ownership_array_access_move_rejections() {
+	mut cases := [
+		OwnershipMoveRejection{'assign_index', '
+	mut arr := [""]
+	r := "item".to_owned()
+	arr[0] = r
+	println(r)
+', 'println(r)', 'r'},
+		OwnershipMoveRejection{'assign_index_then_duplicate_read', '
+	mut arr := [""]
+	r := "item".to_owned()
+	arr[0] = r
+	t := arr[0]
+	println(arr[0])
+	_ = t
+', 'println(arr[0])', 'arr[0]'},
+		OwnershipMoveRejection{'array_literal_then_duplicate_read', '
+	s := "item".to_owned()
+	arr := [s]
+	t := arr[0]
+	println(arr[0])
+	_ = t
+', 'println(arr[0])', 'arr[0]'},
+		OwnershipMoveRejection{'for_in_owned_element', '
+	s := "item".to_owned()
+	arr := [s]
+	for x in arr {
+		y := x
+		println(x)
+		_ = y
+	}
+', 'println(x)', 'x'},
+		OwnershipMoveRejection{'conditional_array_literal_then_duplicate_read', '
+	cond := true
+	s := "item".to_owned()
+	arr := if cond { [s] } else { []string{} }
+	t := arr[0]
+	println(arr[0])
+	_ = t
+', 'println(arr[0])', 'arr[0]'},
+		OwnershipMoveRejection{'array_literal_then_expression_read', '
+	s := "item".to_owned()
+	arr := [s]
+	t := arr[0]
+	println(arr[0] + "")
+	_ = t
+', 'println(arr[0] + "")', 'arr[0]'},
+		OwnershipMoveRejection{'array_pop_returns_owned', '
+	mut arr := ["item".to_owned()]
+	x := arr.pop()
+	y := x
+	println(x)
+	_ = y
+', 'println(x)', 'x'},
+		OwnershipMoveRejection{'array_first_discard_moves_element', '
+	mut arr := ["item".to_owned()]
+	arr.first()
+	x := arr[0]
+	_ = x
+', 'x := arr[0]', 'arr[0]'},
+		OwnershipMoveRejection{'array_first_blank_moves_element', '
+	mut arr := ["item".to_owned()]
+	_ = arr.first()
+	x := arr[0]
+	_ = x
+', 'x := arr[0]', 'arr[0]'},
+	]
+	for method in ['first', 'last'] {
+		cases << OwnershipMoveRejection{'array_${method}_result_is_owned', '
+	arr := ["item".to_owned()]
+	x := arr.${method}()
+	y := x
+	println(x)
+	_ = y
+', 'println(x)', 'x'}
+	}
+	check_ownership_move_rejections('array_access_move_rejections', cases)
 }
 
 fn check_ownership_move_rejections(name string, cases []OwnershipMoveRejection) {
