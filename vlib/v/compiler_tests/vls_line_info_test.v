@@ -3166,14 +3166,18 @@ fn test_a_value_in_the_condition_of_a_compile_time_if_is_a_value_there() {
 fn test_a_type_parameter_is_declared_in_the_list_of_its_declaration() {
 	// `T` of `take[T Named]`, of `plain[T]`, of `Box[T Named]` and of a method of
 	// `Box[T]` is the type parameter, which hides the struct `T` of the module.
-	dir := os.join_path(work_dir, 'type_param_definition')
-	os.mkdir_all(dir) or { panic(err) }
-	os.write_file(os.join_path(dir, 'main.v'), "module main\n\ninterface Named {\n\tname string\n}\n\nstruct T {\n\tname string\n}\n\nfn take[T Named](x T) T {\n\treturn x\n}\n\nfn plain[T](x T) T {\n\treturn x\n}\n\nstruct Box[T Named] {\n\titem T\n}\n\nfn (b Box[T]) get() T {\n\treturn T(b.item)\n}\n\nfn main() {\n\tt := T{\n\t\tname: 'a'\n\t}\n\tprintln(take(t).name)\n\tprintln(plain(t).name)\n}\n") or {
-		panic(err)
-	}
+	source := "module main\n\ninterface Named {\n\tname string\n}\n\nstruct T {\n\tname string\n}\n\nfn take[T Named](x T) T {\n\treturn x\n}\n\nfn plain[T](x T) T {\n\treturn x\n}\n\nstruct Box[T Named] {\n\titem T\n}\n\nfn (b Box[T]) get() T {\n\treturn T(b.item)\n}\n\nfn main() {\n\tt := T{\n\t\tname: 'a'\n\t}\n\tprintln(take(t).name)\n\tprintln(plain(t).name)\n}\n"
+	dir := program_dir('type_param_definition', source)
+	lines := source.split('\n')
+	mut questions := []string{cap: 6}
 	for nth in 0 .. 3 {
-		assert ask(dir, 'gd^', 11, 'T', nth) == 'main.v:11:8'
-		assert ask(dir, 'gd^', 15, 'T', nth) == 'main.v:15:9'
+		questions << word_question(lines[10], 'gd^', 11, 'T', nth)
+		questions << word_question(lines[14], 'gd^', 15, 'T', nth)
+	}
+	answers := ask_answers(dir, questions)
+	for nth in 0 .. 3 {
+		assert answers[2 * nth] == 'main.v:11:8', 'take T occurrence ${nth + 1}'
+		assert answers[2 * nth + 1] == 'main.v:15:9', 'plain T occurrence ${nth + 1}'
 	}
 	assert ask(dir, 'gd^', 20, 'T', 0) == 'main.v:19:11'
 	assert ask(dir, 'gd^', 23, 'T', 1) == 'main.v:23:10'
