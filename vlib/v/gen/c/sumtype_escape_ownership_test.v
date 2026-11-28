@@ -1,32 +1,20 @@
 module main
 
 import os
-import v.cmdexec
 
 fn test_returned_pointer_sum_acquires_promoted_local_once() {
 	cc := os.find_abs_path_of_executable('clang') or { return }
 	dir := os.join_path(os.vtmp_dir(), 'sum_local_transfer_${os.getpid()}')
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
-	project := os.join_path(os.real_path(dir), 'compiler')
 	vlib := os.join_path(@VEXEROOT, 'vlib')
-	// Optimize the driver reused for hundreds of compilations, keeping its assertions.
-	// Export first to release V's frontend before native compilation.
-	generate := os.exec([@VEXE, '-b', 'c', '-cc', cc, '-gc', 'none', '-prealloc', '-cflags',
-		'-O1 -fno-inline-functions', '-d', 'ownership', '-path', vlib, '-generate-c-project', project,
-		os.join_path(vlib, 'v', 'v.v')])
-	assert generate.exit_code == 0, generate.output
-	build := $if windows {
-		cmdexec.run_in_merged('cmd', ['/c', 'build.bat'], project)
-	} $else {
-		cmdexec.run_in_merged('sh', [os.join_path(project, 'build.sh')], project)
-	}
+	// The cases are batched into a few dozen compilations, so a quick build of the driver beats
+	// an optimized one. -prealloc keeps it out of the test runner's shared -prod compiler, so the
+	// driver keeps its assertions.
+	compiler := os.join_path(os.real_path(dir), 'compiler') + $if windows { '.exe' } $else { '' }
+	build := os.exec([@VEXE, '-gc', 'none', '-prealloc', '-d', 'ownership', '-path', vlib, '-o',
+		compiler, os.join_path(vlib, 'v', 'v.v')])
 	assert build.exit_code == 0, build.output
-	compiler := if os.is_file(os.join_path(project, 'v')) {
-		os.join_path(project, 'v')
-	} else {
-		os.join_path(project, 'v.exe')
-	}
 	header := os.join_path(dir, 'drops.h')
 	os.write_file(header, 'static int transfer_drops[35];
 static void transfer_record(int code) { transfer_drops[code]++; }
