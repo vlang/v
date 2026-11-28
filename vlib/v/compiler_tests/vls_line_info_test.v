@@ -674,17 +674,6 @@ fn is_name_byte(c u8) bool {
 	return c.is_letter() || c.is_digit() || c == `_`
 }
 
-fn hover(line int, word string, nth int) string {
-	answer := ask(work_dir, 'hv^', line, word, nth)
-	if answer == '' {
-		return ''
-	}
-	prefix := '{"contents":{"kind":"markdown","value":"```v\\n'
-	suffix := '\\n```"}}'
-	assert answer.starts_with(prefix) && answer.ends_with(suffix), answer
-	return answer[prefix.len..answer.len - suffix.len]
-}
-
 fn test_hover_writes_declarations_as_v1_did() {
 	lines := program.split('\n')
 	type_hovers := ask_answers(work_dir, [
@@ -706,12 +695,22 @@ fn test_hover_writes_declarations_as_v1_did() {
 		hover_of('Perm.write = 0b10 (2)'),
 		hover_of('Perm.write = 0b10 (2)'),
 	]
-	assert hover(41, 'sum', 0) == 'fn sum() int'
-	assert hover(44, 'limit', 0) == 'const limit int'
-	assert hover(57, 'total', 0) == 'fn total(base int, nums ...int) int'
-	assert hover(59, 'new_builder', 0) == 'fn new_builder(initial_size int) strings.Builder'
-	assert hover(60, 'write_string', 0) == 'fn write_string(s string)'
-	assert hover(58, 'args', 0) == 'const args []string'
+	function_and_const_hovers := ask_answers(work_dir, [
+		word_question(lines[40], 'hv^', 41, 'sum', 0),
+		word_question(lines[43], 'hv^', 44, 'limit', 0),
+		word_question(lines[56], 'hv^', 57, 'total', 0),
+		word_question(lines[58], 'hv^', 59, 'new_builder', 0),
+		word_question(lines[59], 'hv^', 60, 'write_string', 0),
+		word_question(lines[57], 'hv^', 58, 'args', 0),
+	])
+	assert function_and_const_hovers == [
+		hover_of('fn sum() int'),
+		hover_of('const limit int'),
+		hover_of('fn total(base int, nums ...int) int'),
+		hover_of('fn new_builder(initial_size int) strings.Builder'),
+		hover_of('fn write_string(s string)'),
+		hover_of('const args []string'),
+	]
 	field_and_local_hovers := ask_answers(work_dir, [
 		// A field, and a field named in a struct literal.
 		word_question(lines[55], 'hv^', 56, 'x', 0),
@@ -764,10 +763,6 @@ fn test_definition_prints_the_position_of_the_declaration() {
 	assert implicit == ['main.v:47:25', 'main.v:53:8', 'main.v:56:15']
 }
 
-fn declaration(line int, word string, nth int) string {
-	return ask(os.join_path(work_dir, 'declarations'), 'gd^', line, word, nth)
-}
-
 struct DeclarationExpectation {
 	line     int
 	word     string
@@ -798,9 +793,11 @@ fn test_definition_of_a_declaration_is_the_declaration() {
 	])
 	// Locals, also one named like a function of an imported module, and one
 	// named like the module itself.
-	assert declaration(35, 'offset', 0) == 'main.v:35:1'
-	assert declaration(36, 'out', 0) == 'main.v:36:5'
-	assert declaration(30, 'time', 0) == 'main.v:30:1'
+	assert_declaration_positions([
+		DeclarationExpectation{35, 'offset', 'main.v:35:1'},
+		DeclarationExpectation{36, 'out', 'main.v:36:5'},
+		DeclarationExpectation{30, 'time', 'main.v:30:1'},
+	])
 	// The variables of loops and of an `if x :=` guard.
 	assert_declaration_positions([
 		DeclarationExpectation{37, 'item', 'main.v:37:5'},
@@ -833,14 +830,16 @@ fn test_definition_of_a_declaration_is_the_declaration() {
 		assert position == 'main.v:58:1', 'close ${nth}'
 	}
 	assert ask(dir, 'hv^', 59, 'close', 0).contains('close int')
-	// A local that the body of a loop declares, used further on in that body.
-	assert declaration(67, 'c', 0) == 'main.v:66:2'
-	assert declaration(74, 'y', 0) == 'main.v:73:2'
-	// A method called in the body of a generic function, which the checker does
-	// not type: the method of the receiver's declared type, or of the struct
-	// that type embeds.
-	assert declaration(80, 'ident', 0) == 'main.v:9:12'
-	assert declaration(84, 'ident', 0) == 'main.v:9:12'
+	assert_declaration_positions([
+		// A local that the body of a loop declares, used further on in that body.
+		DeclarationExpectation{67, 'c', 'main.v:66:2'},
+		DeclarationExpectation{74, 'y', 'main.v:73:2'},
+		// A method called in the body of a generic function, which the checker does
+		// not type: the method of the receiver's declared type, or of the struct
+		// that type embeds.
+		DeclarationExpectation{80, 'ident', 'main.v:9:12'},
+		DeclarationExpectation{84, 'ident', 'main.v:9:12'},
+	])
 }
 
 fn test_a_name_stands_for_its_nearest_declaration_implicit_ones_too() {
