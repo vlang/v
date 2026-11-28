@@ -1718,6 +1718,21 @@ fn run_array_map_ownership_batch(name string, cases []TransformFixture) {
 	}
 }
 
+fn assert_array_map_source_lifetimes(c_source string, drop_cases []TransformFixture, retained_cases []TransformFixture) {
+	for i, case in [...drop_cases, ...retained_cases] {
+		body := c_fn_body(c_source, 'void fixture_${i}__exercise(void) {')
+		assert body.contains('__map_source_'), '${case.name}: map source missing from generated C'
+		compact := body.replace(' ', '').replace('\t', '').replace('\n', '')
+		source_drop_pos := compact.index('array__free(&(__map_source_') or { -1 }
+		if i < drop_cases.len {
+			result_move_pos := compact.index('Arrayselected=') or { -1 }
+			assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, '${case.name}: ${body}'
+		} else {
+			assert source_drop_pos == -1, '${case.name}: ${body}'
+		}
+	}
+}
+
 struct ArrayMapEscapeCase {
 	name         string
 	files        map[string]string
@@ -11173,9 +11188,9 @@ fn main() {
 	])
 }
 
-fn test_array_map_keeps_temporary_source_through_conditional_external_pointer_alias() {
+fn test_array_map_source_lifetime_through_branches() {
 	v3_bin := build_v3_review_transform_ownership()
-	source := 'struct Item {
+	conditional_source := 'struct Item {
 text string
 }
 
@@ -11218,44 +11233,18 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	out, c_source := run_good_with_c(v3_bin, 'array_map_conditional_external_pointer_alias', '-ownership', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_main.contains('array__free(&(__map_source_'), main_body
-	assert out == '0\nsource'
-
-	match_source := source.replace('if flag {\n\t\t\t\talias = &saved\n\t\t\t}', 'match flag {\n\t\t\t\ttrue { alias = &saved }\n\t\t\t\telse {}\n\t\t\t}')
-	assert match_source != source
-	match_out, match_c_source := run_good_with_c(v3_bin, 'array_map_match_external_pointer_alias', '-ownership', match_source)
-	match_main_body := c_fn_body(match_c_source, 'int main(int argc, char** argv) {')
-	compact_match_main := match_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_match_main.contains('array__free(&(__map_source_'), match_main_body
-	assert match_out == '0\nsource'
-
-	loop_source := source.replace('if flag {\n\t\t\t\talias = &saved\n\t\t\t}', 'for flag {\n\t\t\t\talias = &saved\n\t\t\t\tbreak\n\t\t\t}')
-	assert loop_source != source
-	loop_out, loop_c_source := run_good_with_c(v3_bin, 'array_map_loop_external_pointer_alias', '-ownership', loop_source)
-	loop_main_body := c_fn_body(loop_c_source, 'int main(int argc, char** argv) {')
-	compact_loop_main := loop_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_loop_main.contains('array__free(&(__map_source_'), loop_main_body
-	assert loop_out == '0\nsource'
-
-	or_source := source.replace('fn make_items() []Item {', "fn may_fail() ! {
+	match_source := conditional_source.replace('if flag {\n\t\t\t\talias = &saved\n\t\t\t}', 'match flag {\n\t\t\t\ttrue { alias = &saved }\n\t\t\t\telse {}\n\t\t\t}')
+	assert match_source != conditional_source
+	loop_source := conditional_source.replace('if flag {\n\t\t\t\talias = &saved\n\t\t\t}', 'for flag {\n\t\t\t\talias = &saved\n\t\t\t\tbreak\n\t\t\t}')
+	assert loop_source != conditional_source
+	or_source := conditional_source.replace('fn make_items() []Item {', "fn may_fail() ! {
 	return error('failed')
 }
 
 fn make_items() []Item {").replace('if flag {\n\t\t\t\talias = &saved\n\t\t\t}', 'may_fail() or {\n\t\t\t\talias = &saved\n\t\t\t}')
-	assert or_source != source
-	or_out, or_c_source := run_good_with_c(v3_bin, 'array_map_or_external_pointer_alias', '-ownership', or_source)
-	or_main_body := c_fn_body(or_c_source, 'int main(int argc, char** argv) {')
-	compact_or_main := or_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_or_main.contains('array__free(&(__map_source_'), or_main_body
-	assert or_out == '0\nsource'
-}
+	assert or_source != conditional_source
 
-fn test_array_map_tracks_pointer_origin_through_selected_comptime_branch() {
-	v3_bin := build_v3_review_transform_ownership()
-	source_true := 'struct Item {
+	comptime_alias_source := 'struct Item {
 text string
 }
 
@@ -11297,19 +11286,144 @@ fn main() {
 	println(saved.value.text)
 }
 '
-	out_true, c_source_true := run_good_with_c(v3_bin, 'array_map_comptime_external_pointer_alias_true', '-ownership', source_true)
-	main_body_true := c_fn_body(c_source_true, 'int main(int argc, char** argv) {')
-	compact_main_true := main_body_true.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_main_true.contains('array__free(&(__map_source_'), main_body_true
-	assert out_true == '0\nsource'
+	inactive_comptime_alias_source := comptime_alias_source.replace('\$if true {', '\$if false {')
 
-	source_false := source_true.replace('\$if true {', '\$if false {')
-	out_false, c_source_false := run_good_with_c(v3_bin, 'array_map_comptime_external_pointer_alias_false', '-ownership', source_false)
-	main_body_false := c_fn_body(c_source_false, 'int main(int argc, char** argv) {')
-	source_drop_pos := main_body_false.index('array__free(&(') or { -1 }
-	result_move_pos := main_body_false.index('Array selected = ') or { -1 }
-	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body_false
-	assert out_false == '0\nexternal'
+	comptime_mutator_source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn (mut box PointerBox) set(value &Item, fallback &Item) {
+	$if true {
+		box.value = value
+	} $else {
+		box.value = fallback
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	selected := make_items().map(match true {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			box.set(unsafe { &it }, unsafe { &external })
+			box
+		}
+		else {
+			PointerBox{
+				value: unsafe { &external }
+			}
+		}
+	})
+	println(selected[0].value.text)
+}
+'
+	inactive_comptime_mutator_source := comptime_mutator_source.replace('\$if true {', '\$if false {')
+
+	comptime_map_source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	selected := make_items().map($if true {
+		unsafe { &it }
+	} $else {
+		unsafe { &external }
+	})
+	println(selected[0].text)
+}
+'
+	inactive_comptime_map_source := comptime_map_source.replace('\$if true {', '\$if false {')
+
+	labeled_continue_source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			outer: for _ in 0 .. 1 {
+				alias = &local
+				for _ in 0 .. 1 {
+					alias.value = unsafe { &it }
+					alias = &saved
+					continue outer
+				}
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+
+	drop_cases := [
+		TransformFixture{'array_map_comptime_external_pointer_alias_false', inactive_comptime_alias_source, '0\nexternal'},
+		TransformFixture{'array_map_comptime_mutator_false', inactive_comptime_mutator_source, 'external'},
+		TransformFixture{'array_map_comptime_if_false', inactive_comptime_map_source, 'external'},
+		TransformFixture{'array_map_labeled_continue_inner_fixed_point', labeled_continue_source, '0\nexternal'},
+	]
+	retained_cases := [
+		TransformFixture{'array_map_conditional_external_pointer_alias', conditional_source, '0\nsource'},
+		TransformFixture{'array_map_match_external_pointer_alias', match_source, '0\nsource'},
+		TransformFixture{'array_map_loop_external_pointer_alias', loop_source, '0\nsource'},
+		TransformFixture{'array_map_or_external_pointer_alias', or_source, '0\nsource'},
+		TransformFixture{'array_map_comptime_external_pointer_alias_true', comptime_alias_source, '0\nsource'},
+		TransformFixture{'array_map_comptime_mutator_true', comptime_mutator_source, 'source'},
+		TransformFixture{'array_map_comptime_if_true', comptime_map_source, 'source'},
+	]
+	good_bin := run_good_module_batch_with_flags(v3_bin, 'array_map_branch_lifetimes', '-ownership',
+		[...drop_cases, ...retained_cases])
+	c_source := os.read_file(good_bin + '.c') or { panic(err) }
+	assert_array_map_source_lifetimes(c_source, drop_cases, retained_cases)
 }
 
 fn test_array_map_keeps_temporary_source_for_indirect_mutator() {
@@ -11491,26 +11605,15 @@ fn main() {
 		TransformFixture{'array_map_mutator_storage_late_defer', late_defer_source, 'source'},
 		TransformFixture{'array_map_mutator_storage_select', select_source, 'source'},
 	]
-	checked_cases := [...drop_cases, ...retained_cases]
 	fixtures := [
-		...checked_cases,
+		...drop_cases,
+		...retained_cases,
 		TransformFixture{'array_map_deferred_direct_exit_alias', direct_exit_source, '7\nsource'},
 	]
 	good_bin := run_good_module_batch_with_flags(v3_bin, 'array_map_mutator_storage', '-ownership',
 		fixtures)
 	c_source := os.read_file(good_bin + '.c') or { panic(err) }
-	for i, case in checked_cases {
-		body := c_fn_body(c_source, 'void fixture_${i}__exercise(void) {')
-		assert body.contains('__map_source_'), '${case.name}: map source missing from generated C'
-		compact := body.replace(' ', '').replace('\t', '').replace('\n', '')
-		source_drop_pos := compact.index('array__free(&(__map_source_') or { -1 }
-		if i < drop_cases.len {
-			result_move_pos := compact.index('Arrayselected=') or { -1 }
-			assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, '${case.name}: ${body}'
-		} else {
-			assert source_drop_pos == -1, '${case.name}: ${body}'
-		}
-	}
+	assert_array_map_source_lifetimes(c_source, drop_cases, retained_cases)
 }
 
 fn test_array_map_evaluates_return_expression_before_deferred_origin_snapshot() {
@@ -11629,106 +11732,6 @@ fn main() {
 		aggregate_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_aggregate_main.contains('array__free(&(__map_source_'), aggregate_main_body
 	assert aggregate_out == 'source'
-}
-
-fn test_array_map_traces_only_selected_comptime_mutator_branch() {
-	v3_bin := build_v3_review_transform_ownership()
-	source_true := 'struct Item {
-text string
-}
-
-struct PointerBox {
-	mut:
-	value &Item
-}
-
-fn (mut box PointerBox) set(value &Item, fallback &Item) {
-	$if true {
-		box.value = value
-	} $else {
-		box.value = fallback
-	}
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	selected := make_items().map(match true {
-		true {
-			mut box := PointerBox{
-				value: unsafe { &external }
-			}
-			box.set(unsafe { &it }, unsafe { &external })
-			box
-		}
-		else {
-			PointerBox{
-				value: unsafe { &external }
-			}
-		}
-	})
-	println(selected[0].value.text)
-}
-'
-	out_true, c_source_true := run_good_with_c(v3_bin, 'array_map_comptime_mutator_true', '-ownership', source_true)
-	main_body_true := c_fn_body(c_source_true, 'int main(int argc, char** argv) {')
-	compact_main_true := main_body_true.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_main_true.contains('array__free(&(__map_source_'), main_body_true
-	assert out_true == 'source'
-
-	source_false := source_true.replace('\$if true {', '\$if false {')
-	out_false, c_source_false := run_good_with_c(v3_bin, 'array_map_comptime_mutator_false', '-ownership', source_false)
-	main_body_false := c_fn_body(c_source_false, 'int main(int argc, char** argv) {')
-	source_drop_pos := main_body_false.index('array__free(&(') or { -1 }
-	result_move_pos := main_body_false.index('Array selected = ') or { -1 }
-	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body_false
-	assert out_false == 'external'
-}
-
-fn test_array_map_traces_only_selected_comptime_if_branch() {
-	v3_bin := build_v3_review_transform_ownership()
-	source_true := 'struct Item {
-	text string
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	selected := make_items().map($if true {
-		unsafe { &it }
-	} $else {
-		unsafe { &external }
-	})
-	println(selected[0].text)
-}
-'
-	out_true, c_source_true := run_good_with_c(v3_bin, 'array_map_comptime_if_true', '-ownership', source_true)
-	main_body_true := c_fn_body(c_source_true, 'int main(int argc, char** argv) {')
-	compact_main_true := main_body_true.replace(' ', '').replace('\t', '').replace('\n', '')
-	assert !compact_main_true.contains('array__free(&(__map_source_'), main_body_true
-	assert out_true == 'source'
-
-	source_false := source_true.replace('\$if true {', '\$if false {')
-	out_false, c_source_false := run_good_with_c(v3_bin, 'array_map_comptime_if_false', '-ownership', source_false)
-	main_body_false := c_fn_body(c_source_false, 'int main(int argc, char** argv) {')
-	source_drop_pos := main_body_false.index('array__free(&(') or { -1 }
-	result_move_pos := main_body_false.index('Array selected = ') or { -1 }
-	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body_false
-	assert out_false == 'external'
 }
 
 fn test_array_map_keeps_temporary_source_through_inherited_struct_update_field() {
@@ -12379,62 +12382,6 @@ fn test_parallel_transform_merges_generic_call_metadata() {
 	source += '\tprintln(total)\n}\n'
 	out := run_good_with_env(v3_bin, 'parallel_transform_generic_calls', 'VJOBS=4', source)
 	assert out == expected.str()
-}
-
-fn test_array_map_labeled_continue_does_not_feed_inner_loop_fixed_point() {
-	v3_bin := build_v3_review_transform_ownership()
-	source := 'struct Item {
-	text string
-}
-
-struct PointerBox {
-mut:
-	value &Item
-}
-
-fn make_items() []Item {
-	return [Item{
-		text: "source"
-	}]
-}
-
-fn main() {
-	external := Item{
-		text: "external"
-	}
-	mut saved := PointerBox{
-		value: unsafe { &external }
-	}
-	selected := make_items().map(match true {
-		true {
-			mut local := PointerBox{
-				value: unsafe { &external }
-			}
-			mut alias := &local
-			outer: for _ in 0 .. 1 {
-				alias = &local
-				for _ in 0 .. 1 {
-					alias.value = unsafe { &it }
-					alias = &saved
-					continue outer
-				}
-			}
-			0
-		}
-		else {
-			0
-		}
-	})
-	println(selected[0])
-	println(saved.value.text)
-}
-'
-	out, c_source := run_good_with_c(v3_bin, 'array_map_labeled_continue_inner_fixed_point', '-ownership', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
-	source_drop_pos := main_body.index('array__free(&(') or { -1 }
-	result_move_pos := main_body.index('Array selected = ') or { -1 }
-	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
-	assert out == '0\nexternal'
 }
 
 fn test_array_map_keeps_source_for_external_array_slice_backing() {
